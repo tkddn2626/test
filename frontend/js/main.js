@@ -2455,11 +2455,12 @@ function formatCrawlMessage(messageKey, messageData = {}) {
     return template;
 }
 
-// WebSocket 메시지 처리 부분 수정
+// WebSocket 메시지 처리 부분
 if (data.summary) {
     let message;
     if (typeof data.summary === 'object' && data.summary.message_key) {
-        message = formatMessage(data.summary.message_key, data.summary.message_data);
+        // 🔥 함수명 수정: formatMessage → formatCrawlMessage
+        message = formatCrawlMessage(data.summary.message_key, data.summary.message_data || {});
     } else {
         message = data.summary; // 기존 호환성
     }
