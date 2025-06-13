@@ -17,6 +17,22 @@ let isMouseDownOnAutocomplete = false;
 let isProgrammaticInput = false;
 let currentCrawlId = null;
 
+// 전역 오류 처리기
+window.addEventListener('error', function(e) {
+    console.error('전역 JavaScript 오류:', {
+        message: e.message,
+        filename: e.filename,
+        lineno: e.lineno,
+        colno: e.colno,
+        error: e.error
+    });
+    
+    // 사용자에게 친화적인 메시지 표시
+    if (e.message.includes('data is not defined')) {
+        showTemporaryMessage('일시적인 데이터 처리 오류가 발생했습니다. 다시 시도해주세요.', 'error');
+    }
+});
+
 // ==================== API 및 환경 설정 ====================
 // 환경별 API 설정을 반환하는 함수
 function getApiConfig() {
@@ -2326,65 +2342,31 @@ async function startCrawling() {
         };
 
         currentSocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            if (data.cancelled) {
-                console.log('크롤링 취소됨:', data.message);
-                showTemporaryMessage(data.message || '크롤링이 취소되었습니다.', 'info');
-                hideProgress();
-                isLoading = false;
-                updateCrawlButton();
-                currentSocket.close();
-                currentSocket = null;
-                currentCrawlId = null;
-                hideCancelButton();
-                return;
+    try {
+        const data = JSON.parse(event.data);
+        
+        // 🔥 데이터 검증 추가
+        if (!data) {
+            console.warn('빈 데이터 수신');
+            return;
+        }
+        
+        if (data.summary) {
+            let message;
+            if (typeof data.summary === 'object' && data.summary.message_key) {
+                // 🔥 message_data 기본값 설정
+                const messageData = data.summary.message_data || {};
+                message = formatCrawlMessage(data.summary.message_key, messageData);
+            } else {
+                message = data.summary;
             }
-
-            if (data.progress !== undefined) {
-                updateProgress(data.progress, data.status, data.found_posts, data.current_page);
-            }
-            
-            if (data.done && data.data) {
-                crawlResults = data.data;
-                displayResults(data.data, start);
-                hideProgress();
-                isLoading = false;
-                updateCrawlButton();
-                currentSocket.close();
-                currentSocket = null;
-                
-                hideCancelButton();        
-                showDownloadButton();
-
-                ensureSearchInterfaceVisible();
-                
-                if (data.summary) {
-                    setTimeout(() => {
-                        let message;
-                        if (typeof data.summary === 'object' && data.summary.message_key) {
-                            // 🔥 새로운 형식: 백엔드에서 구조화된 메시지
-                            message = formatCrawlMessage(data.summary.message_key, data.summary.message_data);
-                        } else {
-                            // 🔥 기존 형식: 직접 문자열 (호환성)
-                            message = data.summary;
-                        }
-                        showTemporaryMessage(message, 'success');
-                    }, 500);
-                }
-            }
-            
-            if (data.error) {
-                showTemporaryMessage('에러 발생: ' + data.error, 'error');
-                hideProgress();
-                isLoading = false;
-                updateCrawlButton();
-                currentSocket.close();
-                currentSocket = null;
-                hideCancelButton();
-            }
-        };
-
+            showTemporaryMessage(message, 'success');
+        }
+        
+    } catch (error) {
+        console.error('WebSocket 메시지 처리 오류:', error);
+    }
+};
         currentSocket.onclose = () => {
             console.log('WebSocket 연결 종료');
             
@@ -2451,10 +2433,9 @@ function showTemporaryMessage(message, type = 'info', variables = {}) {
     }, 3000);
 }
 //백엔드에서 처리한 임시 메세지 표시
-function formatCrawlMessage(messageKey, messageData) {
+function formatCrawlMessage(messageKey, messageData = {}) {
     const lang = window.languages[currentLanguage];
     
-    // 🔥 새로운 메시지 구조 사용
     let template = lang.messages?.crawl?.[messageKey] || 
                    lang.successMessages?.[messageKey];
     
@@ -2463,18 +2444,17 @@ function formatCrawlMessage(messageKey, messageData) {
         return messageKey;
     }
     
-    // 사이트명 번역
-    if (messageData.site && lang.messages?.crawl?.site_specific) {
-        messageData.site = lang.messages.crawl.site_specific[messageData.site] || messageData.site;
+    // 🔥 안전한 데이터 처리
+    if (messageData && typeof messageData === 'object') {
+        Object.keys(messageData).forEach(key => {
+            const value = messageData[key] || '';
+            template = template.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+        });
     }
-    
-    // 템플릿 변수 치환
-    Object.keys(messageData).forEach(key => {
-        template = template.replace(new RegExp(`\\{${key}\\}`, 'g'), messageData[key]);
-    });
     
     return template;
 }
+
 // WebSocket 메시지 처리 부분 수정
 if (data.summary) {
     let message;
