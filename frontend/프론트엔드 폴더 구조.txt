@@ -1,0 +1,15 @@
+frontend/
+├── index.html              # HTML 구조만 (200-300줄)
+├── css/
+│   └── styles.css          # 모든 CSS 통합 (1,500줄) --완료
+├── js/
+│   ├── main.js             # 메인 로직 및 초기화 (800줄) -- 완료
+│   ├── crawling.js         # 크롤링 관련 기능 (600줄) -- 없음
+│   ├── ui-components.js    # UI 컴포넌트 관리 (500줄) -- 없음
+│   ├── autocomplete.js     # 자동완성 기능 (400줄) -- 없음
+│   ├── shortcuts.js        # 바로가기 관리 (300줄) -- 없음
+│   ├── feedback.js         # 피드백 시스템 (기존)
+│   └── languages.js        # 다국어 지원 (기존)
+└── assets/
+    ├── logo.png
+    └── site_logo.png

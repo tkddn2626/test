@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+uvicorn[standard]
+websockets
+aiohttp
+requests
+beautifulsoup4
+praw
+python-dotenv
+pandas
+openpyxl
+python-dateutil
