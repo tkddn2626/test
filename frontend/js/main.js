@@ -2354,15 +2354,31 @@ async function startCrawling() {
         if (data.summary) {
             let message;
             if (typeof data.summary === 'object' && data.summary.message_key) {
-                // 🔥 message_data 기본값 설정
+                const messageKey = data.summary.message_key;
                 const messageData = data.summary.message_data || {};
-                message = formatCrawlMessage(data.summary.message_key, messageData);
+                
+                // 🎯 백엔드 message_key를 언어팩 키로 매핑
+                if (messageKey === 'crawl_complete') {
+                    message = formatCrawlMessage('complete', messageData);
+                } 
+                else if (messageKey === 'crawl_complete_filtered') {
+                    message = formatCrawlMessage('complete_filtered', messageData);
+                }
+                else if (messageKey === 'no_posts_found') {
+                    message = formatCrawlMessage('no_posts_found', messageData);
+                }
+                else {
+                    // 직접 매핑
+                    message = formatCrawlMessage(messageKey, messageData);
+                }
             } else {
                 message = data.summary;
             }
-            showTemporaryMessage(message, 'success');
+            
+            // 🎯 메시지 타입도 적절하게
+            const messageType = data.summary.message_key?.includes('no_') ? 'warning' : 'success';
+            showTemporaryMessage(message, messageType);
         }
-        
     } catch (error) {
         console.error('WebSocket 메시지 처리 오류:', error);
     }
@@ -2436,35 +2452,20 @@ function showTemporaryMessage(message, type = 'info', variables = {}) {
 function formatCrawlMessage(messageKey, messageData = {}) {
     const lang = window.languages[currentLanguage];
     
-    let template = lang.messages?.crawl?.[messageKey] || 
-                   lang.successMessages?.[messageKey];
+    // 🎯 messages.crawl 경로에서 찾기
+    let template = lang?.messages?.crawl?.[messageKey];
     
     if (!template) {
         console.warn(`메시지 템플릿을 찾을 수 없음: ${messageKey}`);
         return messageKey;
     }
     
-    // 🔥 안전한 데이터 처리
-    if (messageData && typeof messageData === 'object') {
-        Object.keys(messageData).forEach(key => {
-            const value = messageData[key] || '';
-            template = template.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
-        });
-    }
+    // 변수 치환
+    Object.keys(messageData).forEach(key => {
+        template = template.replace(new RegExp(`\\{${key}\\}`, 'g'), messageData[key]);
+    });
     
     return template;
-}
-
-// WebSocket 메시지 처리 부분
-if (data.summary) {
-    let message;
-    if (typeof data.summary === 'object' && data.summary.message_key) {
-        // 🔥 함수명 수정: formatMessage → formatCrawlMessage
-        message = formatCrawlMessage(data.summary.message_key, data.summary.message_data || {});
-    } else {
-        message = data.summary; // 기존 호환성
-    }
-    showTemporaryMessage(message, 'success');
 }
 
 // 검색 인터페이스가 보이도록 보장하는 함수
