@@ -1,0 +1,24 @@
+[build]
+  # 빌드 명령어 (정적 사이트이므로 없음)
+  command = ""
+  # 배포할 디렉토리
+  publish = "."
+
+[build.environment]
+  # 환경 변수 (선택사항)
+  NODE_ENV = "production"
+
+# SPA 라우팅을 위한 리다이렉트 (필요시)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# 보안 헤더 설정
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
