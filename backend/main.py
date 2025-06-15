@@ -595,7 +595,7 @@ if endpoint_manager is None:
         try:
             # 설정 데이터 수신
             config = await websocket.receive_json()
-            user_lang = await get_user_language(config)
+            user_lang = get_user_language(config)
             
             input_data = config.get("input", "")
             sort = config.get("sort", "recent")
