@@ -782,6 +782,10 @@ else:
 async def crawl_auto_socket(websocket: WebSocket):
     """통합 자동 크롤링 WebSocket 핸들러 (기존 호환성 유지)"""
     origin = websocket.headers.get("origin", "")
+    
+    # 기본 언어 설정 (초기화)
+    user_lang = "ko"  # 기본값 설정
+    crawl_id = None
 
     if APP_ENV == "production":
         allowed_patterns = ["netlify.app", "onrender.com"]
@@ -810,8 +814,22 @@ async def crawl_auto_socket(websocket: WebSocket):
     logger.info(f"🚀 새 크롤링 시작: {crawl_id}")
     
     try:
-        init_data = await websocket.receive_json()
-        user_lang = await get_user_language(init_data)
+        # 초기 데이터 수신 및 언어 설정
+        try:
+            init_data = await websocket.receive_json()
+            user_lang = get_user_language(init_data)  # async 제거
+        except Exception as conn_error:
+            if "ConnectionClosed" in str(type(conn_error).__name__):
+                logger.warning(f"🔌 WebSocket 연결이 초기화 중 종료됨: {crawl_id}")
+            return
+        except Exception as e:
+            logger.error(f"❌ 초기 데이터 수신 오류: {e}")
+            await websocket.send_json(create_error_message(
+                error_key="initialization_error",
+                lang=user_lang,  # 이미 기본값으로 초기화됨
+                error_data={"error": str(e)}
+            ))
+            return
         
         board_input = init_data.get("board", "")
         sort = init_data.get("sort", "recent")
@@ -834,268 +852,124 @@ async def crawl_auto_socket(websocket: WebSocket):
         # 사이트 감지 (하위 호환성을 위해 기존 로직 유지)
         site_detector = SiteDetector()
         detected_site = await site_detector.detect_site_type(board_input)
-        logger.info(f"Detected site: {detected_site}")
+        auto_crawler = AutoCrawler()
 
-        check_cancelled()
-
+        # 실제 날짜 범위 계산
         actual_start_date, actual_end_date = calculate_actual_dates(
             time_filter, start_date_input, end_date_input
         )
-        
-        logger.info(f"🗓️ 계산된 날짜: {actual_start_date} ~ {actual_end_date}")
-        has_date_filter = bool(actual_start_date and actual_end_date)
 
-        if detected_site != 'universal' and detected_site != 'bbc':
-            board_name = site_detector.extract_board_identifier(board_input, detected_site)
-        else:
-            if ' ' in board_input:
-                parts = board_input.split(' ', 1)
-                board_url = parts[0]
-                board_name = parts[1] if len(parts) > 1 else ""
-            else:
-                board_url = board_input
-                board_name = ""
+        # 크롤링 설정
+        crawl_config = {
+            'sort': sort,
+            'start': start,
+            'end': end,
+            'min_views': min_views,
+            'min_likes': min_likes,
+            'time_filter': time_filter,
+            'start_date': actual_start_date,
+            'end_date': actual_end_date,
+            'crawl_id': crawl_id
+        }
 
+        # 사이트 감지 진행률 업데이트
         await websocket.send_json(create_localized_message(
             progress=5,
-            status_key="period_filter",
+            status_key="detecting_site",
             lang=user_lang,
-            status_data={
-                "timeFilter": time_filter,
-                "dateRange": f" ({actual_start_date}~{actual_end_date})" if has_date_filter else " (전체)"
-            },
-            detected_site=detected_site,
-            board_name=board_name
+            status_data={"input": board_input}
         ))
 
         check_cancelled()
 
-        if has_date_filter or min_views > 0 or min_likes > 0:
-            required_limit = min(end * 5, 500)
-            enforce_date_limit = True
-        else:
-            required_limit = end + 5
-            enforce_date_limit = False
-
-        raw = None
+        # 통합 크롤링 실행
+        raw_posts = await auto_crawler.crawl(board_input, **crawl_config)
         
-        if detected_site == 'reddit':
-            reddit_sort_map = {
-                "popular": "hot", "recommend": "top", "recent": "new",
-                "comments": "top", "top": "top", "hot": "hot", 
-                "new": "new", "rising": "rising", "best": "best"
-            }
-            reddit_sort = reddit_sort_map.get(sort, "top")
-            
-            await websocket.send_json(create_localized_message(
-                progress=15,
-                status_key="reddit_collecting",
-                lang=user_lang,
-                status_data={"boardName": board_name, "sort": reddit_sort}
-            ))
-            
-            raw = await fetch_posts_with_cancel_check(
-                subreddit_name=board_name,
-                limit=required_limit,
-                sort=reddit_sort,
-                time_filter=time_filter,
-                websocket=websocket,
-                min_views=min_views,
-                min_likes=min_likes,
-                start_date=actual_start_date,
-                end_date=actual_end_date,
-                enforce_date_limit=enforce_date_limit,
-                start_index=start,
-                end_index=end,
-                crawl_id=crawl_id
-            )
-            
-        elif detected_site == 'dcinside':
-            await websocket.send_json(create_localized_message(
-                progress=15,
-                status_key="dcinside_collecting",
-                lang=user_lang,
-                status_data={"boardName": board_name, "sort": sort}
-            ))
-
-            raw = await crawl_dcinside_board_with_cancel_check(
-                board_name=board_name,
-                limit=required_limit,
-                sort=sort,
-                min_views=min_views,
-                min_likes=min_likes,
-                time_filter=time_filter,
-                start_date=actual_start_date,
-                end_date=actual_end_date,
-                websocket=websocket,
-                enforce_date_limit=enforce_date_limit,
-                start_index=start,
-                end_index=end,
-                crawl_id=crawl_id
-            )
-            
-        elif detected_site == 'blind':
-            await websocket.send_json(create_localized_message(
-                progress=15,
-                status_key="blind_collecting",
-                lang=user_lang,
-                status_data={"boardName": board_name, "sort": sort}
-            ))
-            
-            raw = await crawl_blind_board_with_cancel_check(
-                board_input=board_name,
-                limit=required_limit,
-                sort=sort,
-                min_views=min_views,
-                min_likes=min_likes,
-                time_filter=time_filter,
-                start_date=actual_start_date,
-                end_date=actual_end_date,
-                websocket=websocket,
-                enforce_date_limit=enforce_date_limit,
-                start_index=start,
-                end_index=end,
-                crawl_id=crawl_id
-            )
-            
-        elif detected_site == 'bbc': 
-            await websocket.send_json(create_localized_message(
-                progress=15,
-                status_key="bbc_starting",
+        if not raw_posts:
+            await websocket.send_json(create_error_message(
+                error_key="no_posts_found",
                 lang=user_lang
             ))
-            
-            raw = await crawl_bbc_board_with_cancel_check(
-                board_url=board_input,
-                limit=required_limit,
-                sort=sort,
-                min_views=min_views,
-                min_likes=min_likes,
-                min_comments=0,
-                time_filter=time_filter,
-                start_date=actual_start_date,
-                end_date=actual_end_date,
-                websocket=websocket,
-                board_name="",
-                enforce_date_limit=enforce_date_limit,
-                start_index=start,
-                end_index=end,
-                crawl_id=crawl_id
-            )
+            return
 
-        elif detected_site == 'lemmy': 
-            await websocket.send_json(create_localized_message(
-                progress=15,
-                status_key="lemmy_starting",
-                lang=user_lang,
-                status_data={"community": board_name}
-            ))
-
-            raw = await crawl_lemmy_board_with_cancel_check(
-                community_input=board_input,
-                limit=required_limit,
-                sort=sort,
-                min_views=min_views,
-                min_likes=min_likes,
-                time_filter=time_filter,
-                start_date=actual_start_date,
-                end_date=actual_end_date,
-                websocket=websocket,
-                enforce_date_limit=enforce_date_limit,
-                start_index=start,
-                end_index=end,
-                crawl_id=crawl_id
-            )
-
-        elif detected_site == 'universal':
-            await websocket.send_json(create_localized_message(
-                progress=15,
-                status_key="universal_starting",
-                lang=user_lang
-            ))
-            
-            raw = await crawl_universal_board(
-                board_url=board_input,
-                limit=required_limit,
-                sort=sort,
-                min_views=min_views,
-                min_likes=min_likes,
-                time_filter=time_filter,
-                start_date=actual_start_date,
-                end_date=actual_end_date,
-                websocket=websocket,
-                board_name=board_name,
-                enforce_date_limit=enforce_date_limit,
-                start_index=start,
-                end_index=end
-            )
-
-        check_cancelled()
-        
+        # 번역 진행률 업데이트
         await websocket.send_json(create_localized_message(
             progress=85,
             status_key="translating_posts",
             lang=user_lang,
             details_key="translating_details", 
-            details_data={"count": len(raw)}
+            details_data={"count": len(raw_posts)}
         ))
 
+        # 번역 처리
         results = []
-        for idx, post in enumerate(raw, start=1):
+        for idx, post in enumerate(raw_posts):
             check_cancelled()
             
-            if detected_site == 'bbc' and user_lang == 'ko':
-                post['번역제목'] = await deepl_translate(post['원제목'], user_lang)
+            original_title = post['원제목']
+            # 한국어가 포함된 경우 번역하지 않음
+            if any(ord(char) > 127 for char in original_title):
+                post['번역제목'] = original_title
             else:
-                post['번역제목'] = await deepl_translate(post['원제목'], user_lang)
-            results.append(post)
-            
-            if len(raw) > 0:
-                translation_progress = 60 + int((idx / len(raw)) * 30)
-                await websocket.send_json({"progress": translation_progress})
+                # 영어나 기타 언어인 경우 번역
+                translated_title = deepl_translate(original_title, target_lang="KO")
+                post['번역제목'] = translated_title
 
-        await websocket.send_json({
-            "done": True, 
-            "data": results,
-            "detected_site": detected_site,
-            "board_name": board_name if detected_site not in ['universal', 'bbc'] else board_url,
-            "total_found": len(results),
-            "date_filtered": has_date_filter,
-            "summary": create_message_response(
-                "complete",
+            results.append(post)
+
+            # 진행률 업데이트
+            progress = 85 + int((idx + 1) / len(raw_posts) * 10)
+            await websocket.send_json(create_localized_message(
+                progress=progress,
+                status_key="translating_posts",
                 lang=user_lang,
-                site=detected_site,
-                count=len(results),
-                start=start,
-                end=start+len(results)-1,
-                has_date_filter=has_date_filter,
-                start_date=actual_start_date,
-                end_date=actual_end_date
-            )
+                details_key="translating_details",
+                details_data={"current": idx + 1, "total": len(raw_posts)}
+            ))
+
+        # 완료 메시지
+        await websocket.send_json({
+            "done": True,
+            "data": results,
+            "progress": 100,
+            "message": "크롤링이 완료되었습니다!",
+            "timestamp": time.time()
         })
-        
-        logger.info(f"Auto crawl completed: {len(results)} posts returned from {detected_site}")
 
     except asyncio.CancelledError:
-        logger.info(f"❌ 크롤링 취소됨: {crawl_id}")
-        await websocket.send_json({
-            "cancelled": True,
-            "message": "크롤링이 사용자에 의해 취소되었습니다."
-        })
+        logger.info(f"🛑 크롤링 취소됨: {crawl_id}")
+        await websocket.send_json(create_error_message(
+            error_key="crawling_cancelled",
+            lang=user_lang,
+            error_data={"crawl_id": crawl_id}
+        ))
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
         logger.error(f"❌ Auto crawl error: {e}")
         logger.error(f"❌ Full traceback: {error_detail}")
         
-        await websocket.send_json(create_error_message(
-            error_key="crawling_error",
-            lang=user_lang,
-            error_data={"error": str(e)}
-        ))
+        # WebSocket이 여전히 연결되어 있는지 확인
+        try:
+            await websocket.send_json(create_error_message(
+                error_key="crawling_error",
+                lang=user_lang,
+                error_data={"error": str(e)}
+            ))
+        except Exception as send_error:
+            logger.error(f"❌ 오류 메시지 전송 실패: {send_error}")
     finally:
-        crawl_manager.cleanup_crawl(crawl_id)
-        await websocket.close()
+        # 크롤링 정리
+        if crawl_id:
+            crawl_manager.cleanup_crawl(crawl_id)
+        
+        # WebSocket 안전하게 종료
+        try:
+            if not websocket.client_state.DISCONNECTED:
+                await websocket.close()
+        except Exception as close_error:
+            logger.error(f"❌ WebSocket 종료 오류: {close_error}")
+            # 이미 연결이 끊어진 경우 무시
 
 # ==================== 크롤링 취소 시스템 ====================
 @app.websocket("/ws/cancel")
