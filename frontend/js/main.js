@@ -69,17 +69,17 @@
                 const wsUrl = `${WS_BASE_URL}/ws/${endpoint}`;
                 const ws = new WebSocket(wsUrl);
                 
+                // 연결 타임아웃을 더 짧게 설정
+                const timeout = setTimeout(() => {
+                    ws.close();
+                }, 5000); // 10초 → 5초로 단축
+                
                 await new Promise((resolve, reject) => {
-                    const timeout = setTimeout(() => {
-                        ws.close();
-                        reject(new Error(`연결 타임아웃 (${endpoint})`));
-                    }, 10000);
-
                     ws.onopen = () => {
                         clearTimeout(timeout);
                         console.log(`✅ WebSocket 연결 성공: ${endpoint}`);
                         
-                        // 🔥 설정 데이터 전송
+                        // 설정 전송
                         ws.send(JSON.stringify(config));
                         console.log('📤 크롤링 설정 전송:', config);
                         
@@ -89,18 +89,18 @@
                     ws.onerror = (error) => {
                         clearTimeout(timeout);
                         console.error(`❌ WebSocket 연결 오류 (${endpoint}):`, error);
-                        reject(new Error(`연결 실패 (${endpoint}): ${error.message || 'Unknown error'}`));
+                        reject(new Error(`연결 실패 (${endpoint})`));
                     };
 
                     ws.onclose = (event) => {
                         clearTimeout(timeout);
                         if (event.code !== 1000) {
-                            reject(new Error(`연결 종료 (${endpoint}): ${event.code} - ${event.reason}`));
+                            reject(new Error(`연결 종료 (${endpoint}): ${event.code}`));
                         }
                     };
                 });
 
-                // 🔥 통합 메시지 핸들러 설정
+                // 메시지 핸들러 설정
                 setupWebSocketMessageHandlers(ws, endpoint);
                 
                 return ws;
@@ -112,8 +112,8 @@
                     throw error;
                 }
                 
-                // 재시도 전 대기
-                await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
+                // 지수적 백오프 (1초, 2초, 4초)
+                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retry)));
             }
         }
     }
@@ -2282,25 +2282,26 @@
     }
 
     // 🔥 통합 엔드포인트용 설정 생성
+    // ✅ 올바른 buildCrawlConfig 함수
     function buildCrawlConfig(boardInput) {
         const selectedLangs = getSelectedLanguages();
-        const sort = document.getElementById('sortSelect')?.value || 'recent';
+        const sort = document.getElementById('sortMethod')?.value || 'recent';
         const range = getSelectedRange();
+        const timeFilter = document.getElementById('timePeriod')?.value || 'day';
         
         return {
             // 핵심 입력
-            input: boardInput,  // 🔥 'input' 필드 사용 (endpoints.py와 호환)
+            input: boardInput,
+            site: currentSite || 'auto',
             
-            // 사이트 선택 (선택사항 - 자동 감지 우선)
-            site: currentSite || 'auto',  // 사용자가 선택한 사이트 또는 자동
-            
-            // 크롤링 옵션
+            // 크롤링 옵션 (HTML ID와 일치)
             sort: sort,
             start: range.start,
             end: range.end,
             min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-            min_likes: parseInt(document.getElementById('minLikes')?.value || '0'),
-            time_filter: document.getElementById('timeFilter')?.value || 'day',
+            min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'), // minLikes → minRecommend
+            min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
+            time_filter: timeFilter,
             start_date: document.getElementById('startDate')?.value || null,
             end_date: document.getElementById('endDate')?.value || null,
             
@@ -2312,12 +2313,11 @@
             user_agent: navigator.userAgent,
             timestamp: new Date().toISOString(),
             
-            // 디버그 정보
             debug: {
                 frontend_version: '2.0.0',
                 endpoint_type: 'unified',
                 user_selected_site: currentSite,
-                detected_site: null  // 백엔드에서 감지 후 업데이트
+                detected_site: null
             }
         };
     }
@@ -2325,19 +2325,21 @@
     // 레거시 auto-crawl용 설정 생성 
     function buildLegacyCrawlConfig(boardInput) {
         const selectedLangs = getSelectedLanguages();
-        const sort = document.getElementById('sortSelect')?.value || 'recent';
+        const sort = document.getElementById('sortMethod')?.value || 'recent';
         const range = getSelectedRange();
         
         return {
-            // 기존 필드명 유지
-            board: boardInput,  // 🔄 레거시는 'board' 필드 사용
+            // 레거시 필드명
+            board: boardInput,  // 레거시는 'board' 사용
             
+            // 표준화된 필드들
             sort: sort,
             start: range.start,
             end: range.end,
             min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-            min_likes: parseInt(document.getElementById('minLikes')?.value || '0'),
-            time_filter: document.getElementById('timeFilter')?.value || 'day',
+            min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
+            min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
+            time_filter: document.getElementById('timePeriod')?.value || 'day',
             start_date: document.getElementById('startDate')?.value || null,
             end_date: document.getElementById('endDate')?.value || null,
             
@@ -2351,7 +2353,6 @@
             }
         };
     }
-
 
     // 임시 메시지를 표시하는 함수
     function showTemporaryMessage(message, type = 'info', variables = {}) {
@@ -2555,29 +2556,37 @@
     function handleCrawlError(error, endpoint) {
         console.error(`❌ 크롤링 오류 (${endpoint}):`, error);
         
-        let errorMessage = `크롤링 중 오류가 발생했습니다 (${endpoint})`;
+        let errorMessage;
+        const lang = window.languages[currentLanguage];
         
-        if (typeof error === 'string') {
-            errorMessage += `: ${error}`;
+        // 에러 타입별 메시지 처리
+        if (error.error_code) {
+            errorMessage = getLocalizedMessage(`errors.${error.error_code}`, error);
+        } else if (typeof error === 'string') {
+            errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error}`;
         } else if (error.message) {
-            errorMessage += `: ${error.message}`;
+            errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error.message}`;
+        } else {
+            errorMessage = lang?.errors?.unknown || '알 수 없는 오류가 발생했습니다';
         }
         
         showTemporaryMessage(errorMessage, 'error');
         resetCrawlingState();
     }
-
     // 진행률 처리 (통합)
     function handleCrawlProgress(data, endpoint) {
         const progress = data.progress || 0;
-        const status = data.status || data.message || '처리 중...';
+        let status = data.status || data.message || '처리 중...';
+        
+        // 레거시 상태 메시지 번역
+        status = translateLegacyStatus(status);
         
         console.log(`📊 진행률 (${endpoint}): ${progress}% - ${status}`);
         
-        // 진행률 바 업데이트
-        updateProgressBar(progress, status);
+        // 진행률 업데이트
+        updateProgress(progress, status, data.details || {});
         
-        // 부분 결과가 있다면 실시간 표시
+        // 부분 결과 실시간 표시
         if (data.partial_results && data.partial_results.length > 0) {
             displayPartialResults(data.partial_results);
         }
@@ -2629,26 +2638,26 @@
     }
 
     function updateUIForCrawlStart() {
-        // 기존 결과 클리어
-        crawlResults = [];
-        document.getElementById('results').innerHTML = '';
-        
-        // 로딩 상태 표시
-        const searchButton = document.getElementById('searchButton');
-        if (searchButton) {
-            searchButton.disabled = true;
-            searchButton.textContent = '크롤링 중...';
-        }
-        
-        // 진행률 바 표시
-        showProgressBar(true);
-        
-        // 취소 버튼 활성화
-        const cancelButton = document.getElementById('cancelButton');
-        if (cancelButton) {
-            cancelButton.style.display = 'inline-block';
-            cancelButton.disabled = false;
-        }
+    // 기존 결과 클리어
+    crawlResults = [];
+    const resultsContainer = document.getElementById('resultsContainer');
+    if (resultsContainer) {
+        resultsContainer.innerHTML = '';
+    }
+    
+    // 크롤링 버튼 상태 변경
+    const crawlBtn = document.getElementById('crawlBtn'); // searchButton → crawlBtn
+    if (crawlBtn) {
+        crawlBtn.disabled = true;
+        const lang = window.languages[currentLanguage];
+        crawlBtn.textContent = lang?.crawlingStatus?.inProgress || '크롤링 중...';
+    }
+    
+    // 진행률 표시
+    showProgress();
+    
+    // 취소 버튼 활성화
+    showCancelButton();
     }
 
     function resetCrawlingState() {
@@ -2676,6 +2685,8 @@
             currentSocket = null;
         }
     }
+
+   
 
     // 🔥 사이트별 엔드포인트 지원 (레거시 호환성)
     // 필요시 기존 사이트별 함수들도 통합 엔드포인트를 우선 사용하도록 업데이트
@@ -3469,8 +3480,18 @@
 
     // 선택된 언어 가져오기
     function getSelectedLanguages() {
-        const checkboxes = document.querySelectorAll('input[name="languages"]:checked');
-        return Array.from(checkboxes).map(cb => cb.value);
+        // 언어 선택 체크박스가 있는지 확인
+        const languageCheckboxes = document.querySelectorAll('input[name="target_languages"]:checked');
+        if (languageCheckboxes.length > 0) {
+            return Array.from(languageCheckboxes).map(cb => cb.value);
+        }
+        
+        // 기본값: 현재 선택된 언어로 번역
+        if (currentLanguage !== 'ko') {
+            return [currentLanguage];
+        }
+        
+        return []; // 번역 안함
     }
 
     // 선택된 범위 가져오기
