@@ -160,8 +160,22 @@ const languages = {
         privacy: "개인정보처리방침",
         terms: "약관",
         feedback: "피드백",
-        business: "비즈니스"
+        business: "비즈니스",
+        
+        boardPlaceholder: "게시판 이름을 입력하세요...",
+        boardPlaceholders: {
+            default: "게시판 이름을 입력하세요...",
+            reddit: "서브레딧 이름 (예: askreddit)",
+            dcinside: "갤러리 이름 (예: programming)",
+            blind: "게시판 이름 (예: 개발자)",
+            lemmy: "커뮤니티@인스턴스 (예: technology@lemmy.world)",
+            bbc: "BBC 섹션 URL",
+            universal: "크롤링할 웹사이트 URL을 입력하세요..."
+        },
+
+    
     },
+
     
     // ==================== 일본어 (핵심 메시지만) ====================
     ja: {
@@ -255,7 +269,18 @@ const languages = {
             connection_failed: "サーバーへの接続に失敗しました。しばらくしてから再試行してください",
             file_too_large: "ファイルサイズは5MB以下に制限されています",
             no_data: "ダウンロードするデータがありません"
-        }
+        },
+
+        boardPlaceholder: "掲示板名を入力してください...",
+        boardPlaceholders: {
+            default: "掲示板名を入力してください...",
+            reddit: "サブレディット名 (例: askreddit)",
+            dcinside: "ギャラリー名 (例: programming)",
+            blind: "掲示板名 (例: 開発者)",
+            lemmy: "コミュニティ@インスタンス (例: technology@lemmy.world)",
+            bbc: "BBC セクション URL",
+            universal: "クロールするウェブサイトのURLを入力してください..."
+        },
     },
     
     // ==================== 영어 (핵심 메시지만) ====================
@@ -350,7 +375,18 @@ const languages = {
             connection_failed: "Failed to connect to server. Please try again later",
             file_too_large: "File size is limited to 5MB or less",
             no_data: "No data to download"
-        }
+        },
+        
+        boardPlaceholder: "Enter board name...",
+        boardPlaceholders: {
+            default: "Enter board name...",
+            reddit: "Subreddit name (e.g., askreddit)",
+            dcinside: "Gallery name (e.g., programming)",
+            blind: "Board name (e.g., developers)",
+            lemmy: "community@instance (e.g., technology@lemmy.world)",
+            bbc: "BBC section URL",
+            universal: "Enter website URL to crawl..."
+        },
     }
 };
 
