@@ -2606,129 +2606,21 @@
         showTemporaryMessage(errorMessage, 'error');
         resetCrawlingState();
     }
-    function setupWebSocketMessageHandlers(ws, endpoint) {
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log(`📨 메시지 수신 (${endpoint}):`, data);
-
-                // 🔥 메시지 타입별 처리 (백엔드 messages.py와 호환)
-                if (data.message_type === 'progress') {
-                    handleProgressMessage(data);
-                } else if (data.message_type === 'status') {
-                    handleStatusMessage(data);
-                } else if (data.message_type === 'error') {
-                    handleErrorMessage(data);
-                } else if (data.message_type === 'complete') {
-                    handleCompleteMessage(data);
-                }
-                // 레거시 형태 지원
-                else if (data.error) {
-                    handleCrawlError(data.error, endpoint);
-                } else if (data.done) {
-                    handleCrawlComplete(data, endpoint);
-                } else if (data.progress !== undefined) {
-                    // 🔥 레거시 진행률 메시지 처리
-                    handleLegacyProgress(data, endpoint);
-                } else if (data.status) {
-                    handleCrawlStatus(data, endpoint);
-                } else if (data.data) {
-                    handlePartialResults(data, endpoint);
-                } else {
-                    console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
-                }
-
-            } catch (error) {
-                console.error('메시지 파싱 오류:', error, event.data);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
-            showTemporaryMessage(`연결 오류가 발생했습니다 (${endpoint})`, 'error');
-        };
-
-        ws.onclose = (event) => {
-            console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
-            
-            if (isLoading && event.code !== 1000) {
-                showTemporaryMessage(`연결이 예기치 않게 종료되었습니다 (${endpoint})`, 'error');
-                resetCrawlingState();
-            }
-        };
-
-
-        function handleStatusMessage(data) {
-            const step = data.step || 'unknown';
-            const site = data.site || '';
-            const details = data.details || {};
-            
-            console.log(`ℹ️ 상태: ${step}`);
-            
-            const lang = window.languages[currentLanguage];
-            let message = `상태: ${step}`;
-            
-            if (lang.crawlingStatus && lang.crawlingStatus[step]) {
-                message = lang.crawlingStatus[step]
-                    .replace('{site}', site.toUpperCase());
-                    
-                Object.keys(details).forEach(key => {
-                    message = message.replace(`{${key}}`, details[key]);
-                });
-            }
-            
-            showTemporaryMessage(message, 'info');
-        }
-    }
 
     function handleErrorMessage(data) {
         const errorCode = data.error_code || 'unknown_error';
         const errorDetail = data.error_detail || '';
-        const site = data.site || '';
+        const site = (data.site || '').toUpperCase();
         
         console.error(`❌ 오류: ${errorCode}`);
         
-        const lang = window.languages[currentLanguage];
-        let message = `오류가 발생했습니다: ${errorCode}`;
+        const messageKey = `errors.${errorCode}`;
+        const translatedMessage = getLocalizedMessage(messageKey, {
+            site: site,
+            detail: errorDetail
+        });
         
-        if (lang.errors && lang.errors[errorCode]) {
-            message = lang.errors[errorCode]
-                .replace('{site}', site.toUpperCase())
-                .replace('{detail}', errorDetail);
-        }
-        
-        showTemporaryMessage(message, 'error');
-        resetCrawlingState();
-    }
-
-    function handleCompleteMessage(data) {
-        const totalCount = data.total_count || 0;
-        const site = data.site || '';
-        const board = data.board || '';
-        const startRank = data.start_rank || 1;
-        const endRank = data.end_rank || totalCount;
-        
-        console.log(`✅ 완료: ${totalCount}개 게시물`);
-        
-        // 결과 데이터 저장
-        if (data.data && data.data.length > 0) {
-            crawlResults = data.data;
-            displayResults(data.data);
-        }
-        
-        const lang = window.languages[currentLanguage];
-        let message = `크롤링 완료: ${totalCount}개 게시물`;
-        
-        if (lang.crawling && lang.crawling.complete) {
-            message = lang.crawling.complete
-                .replace('{site}', site.toUpperCase())
-                .replace('{board}', board)
-                .replace('{count}', totalCount)
-                .replace('{start}', startRank)
-                .replace('{end}', endRank);
-        }
-        
-        showTemporaryMessage(message, 'success');
+        showTemporaryMessage(translatedMessage, 'error');
         resetCrawlingState();
     }
 
@@ -2835,7 +2727,6 @@
         
         resetCrawlingState();
     }
-
     // 레거시 상태 처리
     function handleLegacyStatus(data, endpoint) {
         let status = data.status || '상태 업데이트';
@@ -2844,7 +2735,6 @@
         console.log(`ℹ️ 레거시 상태 (${endpoint}): ${status}`);
         showTemporaryMessage(status, 'info');
     }
-
 
     // 부분 결과 처리 (실시간 업데이트)
     function handlePartialResults(data, endpoint) {
@@ -2864,6 +2754,7 @@
             }
         }
     }
+    
     // UI 업데이트 함수들...
 
     function updateProgressBar(progress, status) {
@@ -3026,24 +2917,6 @@
         });
         
         showTemporaryMessage(translatedMessage, 'info');
-    }
-
-    // 에러 메시지 처리
-    function handleErrorMessage(data) {
-        const errorCode = data.error_code || 'unknown_error';
-        const errorDetail = data.error_detail || '';
-        const site = (data.site || '').toUpperCase();
-        
-        console.error(`❌ 오류: ${errorCode}`);
-        
-        const messageKey = `errors.${errorCode}`;
-        const translatedMessage = getLocalizedMessage(messageKey, {
-            site: site,
-            detail: errorDetail
-        });
-        
-        showTemporaryMessage(translatedMessage, 'error');
-        resetCrawlingState();
     }
 
     // 완료 메시지 처리
