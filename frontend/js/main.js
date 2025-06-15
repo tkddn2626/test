@@ -50,7 +50,7 @@
         }
         
         // 프로덕션 환경 - HTTPS/WSS 사용
-        const RENDER_DOMAIN = 'testfdd.onrender.com';
+        const RENDER_DOMAIN = 'test-1-zm0k.onrender.com';
         
         return {
             API_BASE_URL: `https://${RENDER_DOMAIN}`,
