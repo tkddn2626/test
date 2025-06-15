@@ -1,4 +1,4 @@
-// PickPost 언어팩 - 최적화된 버전 (사용하는 메시지만 유지)
+// PickPost 언어팩 - 완성된 버전
 const languages = {
     ko: {
         // ==================== 기본 UI 요소 ====================
@@ -21,6 +21,15 @@ const languages = {
         // ==================== 입력 필드 ====================
         sitePlaceholder: "사이트 이름 또는 주소를 입력하세요...",
         boardPlaceholder: "게시판 이름을 입력하세요...",
+        boardPlaceholders: {
+            default: "게시판 이름을 입력하세요...",
+            reddit: "서브레딧 이름 (예: askreddit)",
+            dcinside: "갤러리 이름 (예: programming)",
+            blind: "게시판 이름 (예: 개발자)",
+            lemmy: "커뮤니티@인스턴스 (예: technology@lemmy.world)",
+            bbc: "BBC 섹션 URL",
+            universal: "크롤링할 웹사이트 URL을 입력하세요..."
+        },
         
         // ==================== 검색 옵션 ====================
         minViews: "최소 조회수",
@@ -54,9 +63,8 @@ const languages = {
         translation: "번역",
         fail: "(번역 실패)",
         
-        // ==================== 크롤링 진행 상태 (핵심) ====================
+        // ==================== 크롤링 진행 상태 ====================
         crawlingSteps: {
-            // 신규 메시지 시스템용
             initializing: "크롤링 준비 중...",
             detecting_site: "사이트 분석 중...",
             connecting: "{site} 연결 중...",
@@ -69,7 +77,6 @@ const languages = {
         },
         
         crawlingStatus: {
-            // 레거시 패턴 매칭용 (하위 호환성)
             metadata_processing: "메타데이터 처리 중...",
             collecting_posts: "게시물 수집 중...",
             analyzing_content: "컨텐츠 분석 중...",
@@ -82,7 +89,6 @@ const languages = {
             lemmy_connecting: "Lemmy 서버 연결 중...",
             universal_parsing: "웹페이지 구조 분석 중...",
             
-            // 상태 표시용
             found: "개 발견",
             page: "페이지",
             timeRemaining: "예상 시간"
@@ -93,7 +99,18 @@ const languages = {
             complete: "{site} {board}에서 {count}개 게시물 수집 완료 ({start}-{end}위)"
         },
         
-        // ==================== 에러 메시지 (핵심만) ====================
+        // ==================== 버튼 메시지 ====================
+        crawlButtonMessages: {
+            siteNotSelected: "사이트를 선택하세요",
+            boardEmpty: "게시판을 입력하세요", 
+            universalEmpty: "URL을 입력하세요",
+            universalUrlError: "올바른 URL을 입력하세요",
+            lemmyEmpty: "커뮤니티를 입력하세요",
+            lemmyFormatError: "올바른 Lemmy 형식을 입력하세요",
+            redditFormatError: "올바른 Reddit 형식을 입력하세요"
+        },
+        
+        // ==================== 에러 메시지 ====================
         errors: {
             general: "크롤링 중 오류가 발생했습니다",
             unknown: "알 수 없는 오류가 발생했습니다",
@@ -160,34 +177,12 @@ const languages = {
         privacy: "개인정보처리방침",
         terms: "약관",
         feedback: "피드백",
-        business: "비즈니스",
-        
-        boardPlaceholder: "게시판 이름을 입력하세요...",
-        boardPlaceholders: {
-            default: "게시판 이름을 입력하세요...",
-            reddit: "서브레딧 이름 (예: askreddit)",
-            dcinside: "갤러리 이름 (예: programming)",
-            blind: "게시판 이름 (예: 개발자)",
-            lemmy: "커뮤니티@인스턴스 (예: technology@lemmy.world)",
-            bbc: "BBC 섹션 URL",
-            universal: "크롤링할 웹사이트 URL을 입력하세요..."
-        },
-
-        crawlButtonMessages: {
-            siteNotSelected: "사이트를 선택하세요",
-            boardEmpty: "게시판을 입력하세요", 
-            universalEmpty: "URL을 입력하세요",
-            universalUrlError: "올바른 URL을 입력하세요",
-            lemmyEmpty: "커뮤니티를 입력하세요",
-            lemmyFormatError: "올바른 Lemmy 형식을 입력하세요",
-            redditFormatError: "올바른 Reddit 형식을 입력하세요"
-        },
-    
+        business: "비즈니스"
     },
 
-    
-    // ==================== 일본어 (핵심 메시지만) ====================
+    // ==================== 일본어 ====================
     ja: {
+        // ==================== 기본 UI 요소 ====================
         start: "クロール開始",
         clear: "結果をクリア",
         ok: "確認",
@@ -195,23 +190,41 @@ const languages = {
         download: "Excelダウンロード",
         title: "PickPost",
         
+        // ==================== 사이트 관련 ====================
         siteSelect: "サイトを選択してください",
         reddit: "Reddit",
-        dcinside: "DCInサイド",
+        dcinside: "DCインサイド",
         blind: "Blind",
         lemmy: "Lemmy",
         bbc: "BBC",
         universal: "汎用",
         
+        // ==================== 입력 필드 ====================
         sitePlaceholder: "サイト名またはアドレスを入力してください...",
         boardPlaceholder: "掲示板名を入力してください...",
+        boardPlaceholders: {
+            default: "掲示板名を入力してください...",
+            reddit: "サブレディット名 (例: askreddit)",
+            dcinside: "ギャラリー名 (例: programming)",
+            blind: "掲示板名 (例: 開発者)",
+            lemmy: "コミュニティ@インスタンス (例: technology@lemmy.world)",
+            bbc: "BBC セクション URL",
+            universal: "クロールするウェブサイトのURLを入力してください..."
+        },
         
+        // ==================== 검색 옵션 ====================
         minViews: "最小閲覧数",
         minRecommend: "最小推奨数",
         minComments: "最小コメント数",
         startRank: "開始順位",
         endRank: "終了順位",
+        sortMethod: "ソート方法",
+        timePeriod: "期間",
+        startDate: "開始日",
+        endDate: "終了日",
+        advancedSearch: "高度な検索",
         
+        // ==================== 시간 필터 ====================
         timeFilterLabels: {
             hour: "1時間",
             day: "1日",
@@ -222,6 +235,16 @@ const languages = {
             custom: "カスタム範囲"
         },
         
+        // ==================== 결과 표시 ====================
+        views: "閲覧数",
+        likes: "推奨数",
+        comments: "コメント数",
+        date: "作成日",
+        original: "原文リンク",
+        translation: "翻訳",
+        fail: "(翻訳失敗)",
+        
+        // ==================== 크롤링 진행 상태 ====================
         crawlingSteps: {
             initializing: "クロール準備中...",
             detecting_site: "サイト分析中...",
@@ -245,52 +268,19 @@ const languages = {
             blind_processing: "Blind処理中...",
             bbc_fetching: "BBCニュース取得中...",
             lemmy_connecting: "Lemmyサーバー接続中...",
-            universal_parsing: "ウェブページ構造分析中..."
+            universal_parsing: "ウェブページ構造分析中...",
+            
+            found: "件発見",
+            page: "ページ",
+            timeRemaining: "予想時間"
         },
         
+        // ==================== 완료 메시지 ====================
         crawling: {
             complete: "{site} {board}から{count}個の投稿を収集完了 ({start}-{end}位)"
         },
         
-        errors: {
-            general: "クロール中にエラーが発生しました",
-            unknown: "不明なエラーが発生しました",
-            connection_failed: "サーバー接続に失敗しました",
-            invalid_url: "正しくないURLです",
-            site_not_found: "サイトが見つかりません",
-            no_posts_found: "条件に合う投稿がありません",
-            timeout: "リクエストタイムアウトです",
-            rate_limited: "リクエスト制限にかかりました。しばらく後に試してください"
-        },
-        
-        feedbackTitle: "PickPostに意見を送る",
-        feedbackDescLabel: "意見を説明してください。（必須）",
-        submit: "送信",
-        
-        messages: {
-            feedback: {
-                success: "フィードバックが送信されました。ありがとうございます！",
-                required: "フィードバック内容を入力してください"
-            }
-        },
-        
-        notifications: {
-            connection_failed: "サーバーへの接続に失敗しました。しばらくしてから再試行してください",
-            file_too_large: "ファイルサイズは5MB以下に制限されています",
-            no_data: "ダウンロードするデータがありません"
-        },
-
-        boardPlaceholder: "掲示板名を入力してください...",
-        boardPlaceholders: {
-            default: "掲示板名を入力してください...",
-            reddit: "サブレディット名 (例: askreddit)",
-            dcinside: "ギャラリー名 (例: programming)",
-            blind: "掲示板名 (例: 開発者)",
-            lemmy: "コミュニティ@インスタンス (例: technology@lemmy.world)",
-            bbc: "BBC セクション URL",
-            universal: "クロールするウェブサイトのURLを入力してください..."
-        },
-        
+        // ==================== 버튼 메시지 ====================
         crawlButtonMessages: {
             siteNotSelected: "サイトを選択してください",
             boardEmpty: "掲示板を入力してください",
@@ -300,10 +290,80 @@ const languages = {
             lemmyFormatError: "正しいLemmy形式を入力してください",
             redditFormatError: "正しいReddit形式を入力してください"
         },
+        
+        // ==================== 에러 메시지 ====================
+        errors: {
+            general: "クロール中にエラーが発生しました",
+            unknown: "不明なエラーが発生しました",
+            connection_failed: "サーバー接続に失敗しました",
+            invalid_url: "正しくないURLです",
+            site_not_found: "サイトが見つかりません",
+            no_posts_found: "条件に合う投稿がありません",
+            timeout: "リクエストタイムアウトです",
+            rate_limited: "リクエスト制限にかかりました。しばらく後に試してください",
+            invalid_bbc_url: "正しいBBC ニュースURLを入力してください",
+            crawling_error: "クロール処理中にエラーが発生しました"
+        },
+        
+        // ==================== 피드백 시스템 ====================
+        feedbackTitle: "PickPostに意見を送る",
+        feedbackDescLabel: "意見を説明してください。（必須）",
+        warningTitle: "機密情報は含めないでください",
+        warningDetail: "個人情報、パスワード、金融情報などは含めないでください。",
+        submit: "送信",
+        fileAttach: "写真添付",
+        fileAttached: "ファイル添付済み",
+        
+        messages: {
+            feedback: {
+                success: "フィードバックが送信されました。ありがとうございます！",
+                required: "フィードバック内容を入力してください",
+                sending: "送信中..."
+            }
+        },
+        
+        // ==================== 일반 알림 ====================
+        notifications: {
+            connection_failed: "サーバーへの接続に失敗しました。しばらくしてから再試行してください",
+            file_too_large: "ファイルサイズは5MB以下に制限されています",
+            invalid_file_type: "画像ファイルのみアップロードできます",
+            no_data: "ダウンロードするデータがありません",
+            download_success: "ファイルがダウンロードされました: {filename}"
+        },
+        
+        // ==================== 공지사항 ====================
+        announcementTitle: "お知らせ",
+        announcementBtnText: "お知らせ",
+        newBadge: "New",
+        categories: {
+            update: "アップデート",
+            maintenance: "メンテナンス",
+            feature: "機能",
+            notice: "お知らせ",
+            security: "セキュリティ"
+        },
+        priorities: {
+            high: "重要",
+            normal: "通常",
+            low: "参考"
+        },
+        
+        // ==================== 기타 ====================
+        shortcuts: "ショートカット",
+        addShortcut: "追加",
+        shortcutName: "ショートカット名",
+        shortcutUrl: "掲示板URLまたは名前",
+        save: "保存",
+        backBtn: "戻る",
+        privacy: "プライバシーポリシー",
+        terms: "利用規約",
+        feedback: "フィードバック",
+        business: "ビジネス"
     },
     
-    // ==================== 영어 (핵심 메시지만) ====================
+    // ==================== 영어 ====================
     en: {
+        // ==================== 기본 UI 요소 ====================
         start: "Start Crawling",
         clear: "Clear Results", 
         ok: "OK",
@@ -311,6 +371,7 @@ const languages = {
         download: "Download Excel",
         title: "PickPost",
         
+        // ==================== 사이트 관련 ====================
         siteSelect: "Please select a site",
         reddit: "Reddit",
         dcinside: "DCInside",
@@ -319,15 +380,32 @@ const languages = {
         bbc: "BBC",
         universal: "Universal",
         
+        // ==================== 입력 필드 ====================
         sitePlaceholder: "Enter site name or address...",
         boardPlaceholder: "Enter board name...",
+        boardPlaceholders: {
+            default: "Enter board name...",
+            reddit: "Subreddit name (e.g., askreddit)",
+            dcinside: "Gallery name (e.g., programming)",
+            blind: "Board name (e.g., developers)",
+            lemmy: "community@instance (e.g., technology@lemmy.world)",
+            bbc: "BBC section URL",
+            universal: "Enter website URL to crawl..."
+        },
         
+        // ==================== 검색 옵션 ====================
         minViews: "Minimum Views",
         minRecommend: "Minimum Likes",
         minComments: "Minimum Comments", 
         startRank: "Start Rank",
         endRank: "End Rank",
+        sortMethod: "Sort Method",
+        timePeriod: "Time Period",
+        startDate: "Start Date",
+        endDate: "End Date",
+        advancedSearch: "Advanced Search",
         
+        // ==================== 시간 필터 ====================
         timeFilterLabels: {
             hour: "1 Hour",
             day: "1 Day",
@@ -338,6 +416,16 @@ const languages = {
             custom: "Custom Range"
         },
         
+        // ==================== 결과 표시 ====================
+        views: "Views",
+        likes: "Likes",
+        comments: "Comments",
+        date: "Date",
+        original: "Original Link",
+        translation: "Translation",
+        fail: "(Translation Failed)",
+        
+        // ==================== 크롤링 진행 상태 ====================
         crawlingSteps: {
             initializing: "Preparing crawl...",
             detecting_site: "Analyzing site...",
@@ -361,52 +449,19 @@ const languages = {
             blind_processing: "Processing Blind...",
             bbc_fetching: "Fetching BBC news...",
             lemmy_connecting: "Connecting to Lemmy...",
-            universal_parsing: "Analyzing webpage structure..."
+            universal_parsing: "Analyzing webpage structure...",
+            
+            found: "found",
+            page: "page",
+            timeRemaining: "estimated time"
         },
         
+        // ==================== 완료 메시지 ====================
         crawling: {
             complete: "Collected {count} posts from {site} {board} (Rank {start}-{end})"
         },
         
-        errors: {
-            general: "An error occurred during crawling",
-            unknown: "Unknown error occurred",
-            connection_failed: "Failed to connect to server",
-            invalid_url: "Invalid URL",
-            site_not_found: "Site not found",
-            no_posts_found: "No posts found matching criteria",
-            timeout: "Request timeout",
-            rate_limited: "Rate limited. Please try again later"
-        },
-        
-        feedbackTitle: "Send Feedback to PickPost",
-        feedbackDescLabel: "Please describe your feedback. (Required)",
-        submit: "Submit",
-        
-        messages: {
-            feedback: {
-                success: "Feedback sent successfully. Thank you!",
-                required: "Please enter feedback content"
-            }
-        },
-        
-        notifications: {
-            connection_failed: "Failed to connect to server. Please try again later",
-            file_too_large: "File size is limited to 5MB or less",
-            no_data: "No data to download"
-        },
-        
-        boardPlaceholder: "Enter board name...",
-        boardPlaceholders: {
-            default: "Enter board name...",
-            reddit: "Subreddit name (e.g., askreddit)",
-            dcinside: "Gallery name (e.g., programming)",
-            blind: "Board name (e.g., developers)",
-            lemmy: "community@instance (e.g., technology@lemmy.world)",
-            bbc: "BBC section URL",
-            universal: "Enter website URL to crawl..."
-        },
-                
+        // ==================== 버튼 메시지 ====================
         crawlButtonMessages: {
             siteNotSelected: "Select a site",
             boardEmpty: "Enter board name",
@@ -416,11 +471,79 @@ const languages = {
             lemmyFormatError: "Enter valid Lemmy format",
             redditFormatError: "Enter valid Reddit format"
         },
-
+        
+        // ==================== 에러 메시지 ====================
+        errors: {
+            general: "An error occurred during crawling",
+            unknown: "Unknown error occurred",
+            connection_failed: "Failed to connect to server",
+            invalid_url: "Invalid URL",
+            site_not_found: "Site not found",
+            no_posts_found: "No posts found matching criteria",
+            timeout: "Request timeout",
+            rate_limited: "Rate limited. Please try again later",
+            invalid_bbc_url: "Please enter a valid BBC news URL",
+            crawling_error: "An error occurred during crawling process"
+        },
+        
+        // ==================== 피드백 시스템 ====================
+        feedbackTitle: "Send Feedback to PickPost",
+        feedbackDescLabel: "Please describe your feedback. (Required)",
+        warningTitle: "Do not include sensitive information",
+        warningDetail: "Do not include personal information, passwords, financial information, etc.",
+        submit: "Submit",
+        fileAttach: "Attach Photo",
+        fileAttached: "File Attached",
+        
+        messages: {
+            feedback: {
+                success: "Feedback sent successfully. Thank you!",
+                required: "Please enter feedback content",
+                sending: "Sending..."
+            }
+        },
+        
+        // ==================== 일반 알림 ====================
+        notifications: {
+            connection_failed: "Failed to connect to server. Please try again later",
+            file_too_large: "File size is limited to 5MB or less",
+            invalid_file_type: "Only image files can be uploaded",
+            no_data: "No data to download",
+            download_success: "File downloaded: {filename}"
+        },
+        
+        // ==================== 공지사항 ====================
+        announcementTitle: "Announcements",
+        announcementBtnText: "Announcements",
+        newBadge: "New",
+        categories: {
+            update: "Update",
+            maintenance: "Maintenance",
+            feature: "Feature",
+            notice: "Notice",
+            security: "Security"
+        },
+        priorities: {
+            high: "Important",
+            normal: "Normal",
+            low: "Reference"
+        },
+        
+        // ==================== 기타 ====================
+        shortcuts: "Shortcuts",
+        addShortcut: "Add",
+        shortcutName: "Shortcut Name",
+        shortcutUrl: "Board URL or Name",
+        save: "Save",
+        backBtn: "Back",
+        privacy: "Privacy Policy",
+        terms: "Terms of Service",
+        feedback: "Feedback",
+        business: "Business"
     }
 };
 
-// ==================== 정책 및 약관 (기존 유지) ====================
+// ==================== 정책 및 약관 ====================
 const policies = {
     ko: {
         privacy: {
@@ -486,6 +609,21 @@ const policies = {
                     <li>ユーザーお問い合わせ処理</li>
                     <li>サービス改善のための統計分析</li>
                 </ul>
+                
+                <h3>2. 個人情報の処理および保有期間</h3>
+                <p>PickPostは法令に基づく個人情報保有・利用期間または情報主体から個人情報を収集する際に同意を得た個人情報保有・利用期間内で個人情報を処理・保有します。</p>
+                
+                <h3>3. 個人情報の第三者提供</h3>
+                <p>PickPostは情報主体の個人情報を個人情報の処理目的で明示した範囲内でのみ処理し、情報主体の同意、法律の特別な規定など個人情報保護法第17条に該당する場合にのみ個人情報を第三者に提供します。</p>
+                
+                <h3>4. 情報主体の権利・義務およびその行使方法</h3>
+                <p>情報主体はPickPostに対していつでも以下の各号の個人情報保護関連権利を行使することができます：</p>
+                <ul>
+                    <li>個人情報処理停止要求</li>
+                    <li>個人情報閲覧要求</li>
+                    <li>個人情報訂正・削除要求</li>
+                    <li>個人情報処理停止要求</li>
+                </ul>
             `
         },
         terms: {
@@ -493,6 +631,23 @@ const policies = {
             content: `
                 <h3>第1条（目的）</h3>
                 <p>この規約は、PickPostサービスの利用条件および手続きに関する事項を規定することを目的とします。</p>
+                
+                <h3>第2条（定義）</h3>
+                <p>この規約で使用する用語の定義は以下の通りです：</p>
+                <ul>
+                    <li>「サービス」とは、PickPostが提供するすべてのサービスを意味します。</li>
+                    <li>「利用者」とは、この規約に従って会社が提供するサービスを受ける者を意味します。</li>
+                </ul>
+                
+                <h3>第3条（規約の効力および変更）</h3>
+                <p>この規約は、サービス画面に掲示またはその他の方法で利用者に告知することにより効力を発生します。</p>
+                
+                <h3>第4条（サービスの提供および変更）</h3>
+                <p>会社は以下の業務を行います：</p>
+                <ul>
+                    <li>オンライン投稿収集および整理サービス</li>
+                    <li>その他会社が定める業務</li>
+                </ul>
             `
         }
     },
@@ -507,6 +662,21 @@ const policies = {
                     <li>User inquiry processing</li>
                     <li>Statistical analysis for service improvement</li>
                 </ul>
+                
+                <h3>2. Personal Information Processing and Retention Period</h3>
+                <p>PickPost processes and retains personal information within the personal information retention and use period according to laws or the personal information retention and use period agreed upon when collecting personal information from data subjects.</p>
+                
+                <h3>3. Third Party Provision of Personal Information</h3>
+                <p>PickPost processes personal information of data subjects only within the scope specified in the purpose of personal information processing, and provides personal information to third parties only when it corresponds to Article 17 of the Personal Information Protection Act, such as consent of the data subject or special provisions of the law.</p>
+                
+                <h3>4. Rights and Obligations of Data Subjects and Methods of Exercise</h3>
+                <p>Data subjects can exercise the following personal information protection-related rights against PickPost at any time:</p>
+                <ul>
+                    <li>Request to stop personal information processing</li>
+                    <li>Request to view personal information</li>
+                    <li>Request to correct or delete personal information</li>
+                    <li>Request to stop personal information processing</li>
+                </ul>
             `
         },
         terms: {
@@ -514,6 +684,23 @@ const policies = {
             content: `
                 <h3>Article 1 (Purpose)</h3>
                 <p>These terms aim to define the conditions and procedures for using PickPost services.</p>
+                
+                <h3>Article 2 (Definitions)</h3>
+                <p>The definitions of terms used in these terms are as follows:</p>
+                <ul>
+                    <li>"Service" means all services provided by PickPost.</li>
+                    <li>"User" means a person who receives services provided by the company in accordance with these terms.</li>
+                </ul>
+                
+                <h3>Article 3 (Effect and Amendment of Terms)</h3>
+                <p>These terms take effect by posting them on the service screen or notifying users by other means.</p>
+                
+                <h3>Article 4 (Provision and Change of Services)</h3>
+                <p>The company performs the following tasks:</p>
+                <ul>
+                    <li>Online post collection and organization service</li>
+                    <li>Other tasks determined by the company</li>
+                </ul>
             `
         }
     }
