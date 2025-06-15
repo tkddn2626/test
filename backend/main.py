@@ -1,3 +1,5 @@
+# main.py - 자동 감지 기반 엔드포인트 시스템 적용
+
 from fastapi import FastAPI, WebSocket, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -31,12 +33,6 @@ import time
 from fastapi import HTTPException
 import logging
 
-import core.messages 
-import core.utils
-import core.auto_crawler
-import core.site_detector
-
-
 # ==================== 환경 설정 및 초기화 ====================
 load_dotenv()
 
@@ -69,6 +65,11 @@ if DEBUG:
     logger.debug(f"  DEEPL_API_KEY: {'설정됨' if DEEPL_API_KEY else '미설정'}")
 
 # ==================== 🔥 NEW: 통합 크롤링 시스템 ====================
+import core.messages 
+import core.utils
+import core.auto_crawler
+import core.site_detector
+
 from core.site_detector import SiteDetector
 from core.auto_crawler import AutoCrawler
 from core.utils import (
@@ -118,6 +119,7 @@ class CrawlManager:
         logger.info(f"🧹 오래된 크롤링 정리: {old_count}개")
         return old_count
 
+# 크롤링 매니저 인스턴스 생성
 crawl_manager = CrawlManager()
 
 # ==================== 번역 서비스 ====================
@@ -210,12 +212,41 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             logger.info("✅ 정리 작업 취소 완료")
 
-# FastAPI 앱 초기화
+# ==================== FastAPI 앱 초기화 ====================
 app = FastAPI(
     title="PickPost API",
     debug=DEBUG,
     lifespan=lifespan
 )
+
+# ==================== 🔥 자동 엔드포인트 시스템 초기화 ====================
+# 🚨 중요: app과 crawl_manager가 정의된 후에 호출
+try:
+    from core.endpoints import create_simple_endpoint_manager
+    
+    # 자동 엔드포인트 매니저 생성 - 모든 크롤러 자동 감지 및 엔드포인트 생성
+    endpoint_manager = create_simple_endpoint_manager(app, crawl_manager)
+    
+    logger.info("✅ 자동 엔드포인트 시스템 초기화 완료")
+    logger.info(f"📡 자동 생성된 엔드포인트: {len(endpoint_manager.crawlers)}개 크롤러")
+    
+    # 감지된 크롤러 정보 로깅
+    for site_type, crawler_info in endpoint_manager.crawlers.items():
+        logger.info(f"  🎯 {site_type}: /ws/{site_type}-crawl")
+    
+    # 통합 엔드포인트 확인
+    logger.info("🔥 통합 엔드포인트:")
+    logger.info("  📡 /ws/crawl - 자동 감지 + 통합 크롤링")
+    logger.info("  🔍 /ws/analyze - 사이트 분석 전용")
+    
+except ImportError as e:
+    logger.error(f"❌ core.simple_endpoints 모듈을 찾을 수 없습니다: {e}")
+    logger.warning("⚠️ 레거시 엔드포인트만 사용됩니다")
+    endpoint_manager = None
+except Exception as e:
+    logger.error(f"❌ 자동 엔드포인트 시스템 초기화 실패: {e}")
+    logger.warning("⚠️ 레거시 엔드포인트만 사용됩니다")
+    endpoint_manager = None
 
 # ==================== CORS 설정 ====================
 def get_cors_origins():
@@ -377,217 +408,6 @@ def search_topics_api(site: str, keyword: str = Query(...)):
         logger.error(f"Search API error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# ==================== 🔥 NEW: 통합 크롤링 엔드포인트 ====================
-@app.websocket("/ws/crawl")
-async def unified_crawl_endpoint(websocket: WebSocket):
-    """🔥 통합 크롤링 WebSocket 엔드포인트"""
-    origin = websocket.headers.get("origin", "")
-
-    # Origin 검증 (기존 로직과 동일)
-    if APP_ENV == "production":
-        allowed_patterns = ["netlify.app", "onrender.com"]
-        origin_allowed = any(pattern in origin for pattern in allowed_patterns)
-    else:
-        allowed_patterns = ["netlify.app", "localhost", "127.0.0.1", "onrender.com", "file://"]
-        origin_allowed = (
-            any(pattern in origin for pattern in allowed_patterns) or 
-            origin == "" or 
-            origin == "null" or
-            origin.startswith("http://localhost") or
-            origin.startswith("http://127.0.0.1")
-        )
-
-    if not origin_allowed:
-        logger.warning(f"❌ 통합 WebSocket Origin 거부 ({APP_ENV}): {origin}")
-        await websocket.close(code=1008, reason="Invalid origin")
-        return
-
-    await websocket.accept()
-    
-    crawl_id = f"unified_{id(websocket)}_{int(time.time())}"
-    logger.info(f"🔥 새 통합 크롤링 시작: {crawl_id}")
-    
-    try:
-        # 설정 데이터 수신
-        config = await websocket.receive_json()
-        user_lang = await get_user_language(config)
-        
-        input_data = config.get("input", "")
-        sort = config.get("sort", "recent")
-        start_index = config.get("start", 1)
-        end_index = config.get("end", 20)
-        min_views = config.get("min_views", 0)
-        min_likes = config.get("min_likes", 0)
-        min_comments = config.get("min_comments", 0)
-        time_filter = config.get("time_filter", "day")
-        start_date_input = config.get("start_date")
-        end_date_input = config.get("end_date")
-        
-        logger.info(f"통합 크롤링 요청: {input_data}, sort: {sort}, range: {start_index}-{end_index}")
-
-        # 취소 확인
-        def check_cancelled():
-            if crawl_manager.is_cancelled(crawl_id):
-                raise asyncio.CancelledError(f"크롤링 {crawl_id} 취소됨")
-
-        check_cancelled()
-
-        # 날짜 범위 계산
-        actual_start_date, actual_end_date = calculate_actual_dates(
-            time_filter, start_date_input, end_date_input
-        )
-        
-        # AutoCrawler 인스턴스 생성 및 설정
-        auto_crawler = AutoCrawler()
-        
-        # 크롤링 설정 구성
-        crawl_config = {
-            'websocket': websocket,
-            'sort': sort,
-            'start_index': start_index,
-            'end_index': end_index,
-            'min_views': min_views,
-            'min_likes': min_likes,
-            'min_comments': min_comments,
-            'time_filter': time_filter,
-            'start_date': actual_start_date,
-            'end_date': actual_end_date,
-            'crawl_id': crawl_id
-        }
-
-        # 사이트 감지 진행률 업데이트
-        await websocket.send_json(create_localized_message(
-            progress=5,
-            status_key="detecting_site",
-            lang=user_lang,
-            status_data={"input": input_data}
-        ))
-
-        check_cancelled()
-
-        # 통합 크롤링 실행
-        raw_posts = await auto_crawler.crawl(input_data, **crawl_config)
-        
-        if not raw_posts:
-            await websocket.send_json(create_error_message(
-                error_key="no_posts_found",
-                lang=user_lang
-            ))
-            return
-
-        # 번역 진행률 업데이트
-        await websocket.send_json(create_localized_message(
-            progress=85,
-            status_key="translating_posts",
-            lang=user_lang,
-            details_key="translating_details", 
-            details_data={"count": len(raw_posts)}
-        ))
-
-        # 번역 처리
-        results = []
-        for idx, post in enumerate(raw_posts):
-            check_cancelled()
-            
-            original_title = post['원제목']
-            # 한국어가 포함된 경우 번역하지 않음
-            if any(ord(char) > 127 for char in original_title):
-                post['번역제목'] = original_title
-            else:
-                post['번역제목'] = await deepl_translate(original_title, user_lang)
-                
-            results.append(post)
-            
-            if len(raw_posts) > 0:
-                translation_progress = 85 + int((idx + 1) / len(raw_posts) * 15)
-                await websocket.send_json({"progress": translation_progress})
-
-        # 최종 결과 전송
-        detected_site = await auto_crawler.site_detector.detect_site_type(input_data)
-        
-        await websocket.send_json({
-            "done": True, 
-            "data": results,
-            "detected_site": detected_site,
-            "total_found": len(results),
-            "unified_mode": True,  # 통합 모드임을 표시
-            "summary": create_message_response(
-                "unified_complete",
-                lang=user_lang,
-                site=detected_site,
-                count=len(results),
-                start=start_index,
-                end=start_index+len(results)-1,
-                input=input_data
-            )
-        })
-        
-        logger.info(f"🔥 통합 크롤링 완료: {len(results)}개 게시물 ({detected_site})")
-
-    except asyncio.CancelledError:
-        logger.info(f"❌ 통합 크롤링 취소됨: {crawl_id}")
-        await websocket.send_json({
-            "cancelled": True,
-            "message": "통합 크롤링이 사용자에 의해 취소되었습니다."
-        })
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        logger.error(f"❌ 통합 크롤링 오류: {e}")
-        logger.error(f"❌ Full traceback: {error_detail}")
-        
-        await websocket.send_json(create_error_message(
-            error_key="unified_crawling_error",
-            lang=user_lang,
-            error_data={"error": str(e)}
-        ))
-    finally:
-        crawl_manager.cleanup_crawl(crawl_id)
-        await websocket.close()
-
-# ==================== 🔍 NEW: 사이트 분석 전용 엔드포인트 ====================
-@app.websocket("/ws/analyze")
-async def analyze_site_endpoint(websocket: WebSocket):
-    """🔍 사이트 분석 전용 WebSocket 엔드포인트"""
-    await websocket.accept()
-    
-    try:
-        data = await websocket.receive_json()
-        input_data = data.get("input", "")
-        user_lang = data.get("language", "en")
-        
-        # 사이트 감지 및 분석
-        site_detector = SiteDetector()
-        detected_site = await site_detector.detect_site_type(input_data)
-        board_identifier = site_detector.extract_board_identifier(input_data, detected_site)
-        
-        # 분석 결과 전송
-        analysis_result = {
-            "input": input_data,
-            "detected_site": detected_site,
-            "board_identifier": board_identifier,
-            "is_url": input_data.startswith('http'),
-            "analysis_complete": True
-        }
-        
-        # BBC의 경우 추가 정보 제공
-        if detected_site == 'bbc':
-            bbc_info = detect_bbc_url_and_extract_info(input_data)
-            analysis_result.update({
-                "bbc_info": bbc_info,
-                "section": bbc_info.get("section"),
-                "description": bbc_info.get("description")
-            })
-        
-        await websocket.send_json(analysis_result)
-        
-    except Exception as e:
-        await websocket.send_json({
-            "error": "사이트 분석 중 오류가 발생했습니다.",
-            "error_detail": str(e)
-        })
-    finally:
-        await websocket.close()
-
 # ==================== 자동완성 API ====================
 @app.get("/autocomplete/{site}")
 async def autocomplete(site: str, keyword: str = Query(...)):
@@ -734,6 +554,227 @@ async def autocomplete(site: str, keyword: str = Query(...)):
     except Exception as e:
         logger.error(f"Autocomplete error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+# ==================== 🔥 NEW: 통합 크롤링 엔드포인트 ====================
+# 📝 주의: 자동 엔드포인트 시스템이 성공적으로 초기화된 경우 
+# 이 엔드포인트들은 자동 생성된 것으로 대체됩니다.
+
+if endpoint_manager is None:
+    # 자동 시스템이 실패한 경우에만 수동 엔드포인트 생성
+    logger.warning("⚠️ 자동 엔드포인트 시스템이 비활성화됨 - 수동 엔드포인트 생성")
+    
+    @app.websocket("/ws/crawl")
+    async def unified_crawl_endpoint(websocket: WebSocket):
+        """🔥 통합 크롤링 WebSocket 엔드포인트 (수동 버전)"""
+        origin = websocket.headers.get("origin", "")
+
+        # Origin 검증 (기존 로직과 동일)
+        if APP_ENV == "production":
+            allowed_patterns = ["netlify.app", "onrender.com"]
+            origin_allowed = any(pattern in origin for pattern in allowed_patterns)
+        else:
+            allowed_patterns = ["netlify.app", "localhost", "127.0.0.1", "onrender.com", "file://"]
+            origin_allowed = (
+                any(pattern in origin for pattern in allowed_patterns) or 
+                origin == "" or 
+                origin == "null" or
+                origin.startswith("http://localhost") or
+                origin.startswith("http://127.0.0.1")
+            )
+
+        if not origin_allowed:
+            logger.warning(f"❌ 통합 WebSocket Origin 거부 ({APP_ENV}): {origin}")
+            await websocket.close(code=1008, reason="Invalid origin")
+            return
+
+        await websocket.accept()
+        
+        crawl_id = f"unified_{id(websocket)}_{int(time.time())}"
+        logger.info(f"🔥 새 통합 크롤링 시작: {crawl_id}")
+        
+        try:
+            # 설정 데이터 수신
+            config = await websocket.receive_json()
+            user_lang = await get_user_language(config)
+            
+            input_data = config.get("input", "")
+            sort = config.get("sort", "recent")
+            start_index = config.get("start", 1)
+            end_index = config.get("end", 20)
+            min_views = config.get("min_views", 0)
+            min_likes = config.get("min_likes", 0)
+            min_comments = config.get("min_comments", 0)
+            time_filter = config.get("time_filter", "day")
+            start_date_input = config.get("start_date")
+            end_date_input = config.get("end_date")
+            
+            logger.info(f"통합 크롤링 요청: {input_data}, sort: {sort}, range: {start_index}-{end_index}")
+
+            # 취소 확인
+            def check_cancelled():
+                if crawl_manager.is_cancelled(crawl_id):
+                    raise asyncio.CancelledError(f"크롤링 {crawl_id} 취소됨")
+
+            check_cancelled()
+
+            # 날짜 범위 계산
+            actual_start_date, actual_end_date = calculate_actual_dates(
+                time_filter, start_date_input, end_date_input
+            )
+            
+            # AutoCrawler 인스턴스 생성 및 설정
+            auto_crawler = AutoCrawler()
+            
+            # 크롤링 설정 구성
+            crawl_config = {
+                'websocket': websocket,
+                'sort': sort,
+                'start_index': start_index,
+                'end_index': end_index,
+                'min_views': min_views,
+                'min_likes': min_likes,
+                'min_comments': min_comments,
+                'time_filter': time_filter,
+                'start_date': actual_start_date,
+                'end_date': actual_end_date,
+                'crawl_id': crawl_id
+            }
+
+            # 사이트 감지 진행률 업데이트
+            await websocket.send_json(create_localized_message(
+                progress=5,
+                status_key="detecting_site",
+                lang=user_lang,
+                status_data={"input": input_data}
+            ))
+
+            check_cancelled()
+
+            # 통합 크롤링 실행
+            raw_posts = await auto_crawler.crawl(input_data, **crawl_config)
+            
+            if not raw_posts:
+                await websocket.send_json(create_error_message(
+                    error_key="no_posts_found",
+                    lang=user_lang
+                ))
+                return
+
+            # 번역 진행률 업데이트
+            await websocket.send_json(create_localized_message(
+                progress=85,
+                status_key="translating_posts",
+                lang=user_lang,
+                details_key="translating_details", 
+                details_data={"count": len(raw_posts)}
+            ))
+
+            # 번역 처리
+            results = []
+            for idx, post in enumerate(raw_posts):
+                check_cancelled()
+                
+                original_title = post['원제목']
+                # 한국어가 포함된 경우 번역하지 않음
+                if any(ord(char) > 127 for char in original_title):
+                    post['번역제목'] = original_title
+                else:
+                    post['번역제목'] = await deepl_translate(original_title, user_lang)
+                    
+                results.append(post)
+                
+                if len(raw_posts) > 0:
+                    translation_progress = 85 + int((idx + 1) / len(raw_posts) * 15)
+                    await websocket.send_json({"progress": translation_progress})
+
+            # 최종 결과 전송
+            detected_site = await auto_crawler.site_detector.detect_site_type(input_data)
+            
+            await websocket.send_json({
+                "done": True, 
+                "data": results,
+                "detected_site": detected_site,
+                "total_found": len(results),
+                "unified_mode": True,  # 통합 모드임을 표시
+                "summary": create_message_response(
+                    "unified_complete",
+                    lang=user_lang,
+                    site=detected_site,
+                    count=len(results),
+                    start=start_index,
+                    end=start_index+len(results)-1,
+                    input=input_data
+                )
+            })
+            
+            logger.info(f"🔥 통합 크롤링 완료: {len(results)}개 게시물 ({detected_site})")
+
+        except asyncio.CancelledError:
+            logger.info(f"❌ 통합 크롤링 취소됨: {crawl_id}")
+            await websocket.send_json({
+                "cancelled": True,
+                "message": "통합 크롤링이 사용자에 의해 취소되었습니다."
+            })
+        except Exception as e:
+            error_detail = traceback.format_exc()
+            logger.error(f"❌ 통합 크롤링 오류: {e}")
+            logger.error(f"❌ Full traceback: {error_detail}")
+            
+            await websocket.send_json(create_error_message(
+                error_key="unified_crawling_error",
+                lang=user_lang,
+                error_data={"error": str(e)}
+            ))
+        finally:
+            crawl_manager.cleanup_crawl(crawl_id)
+            await websocket.close()
+
+    # ==================== 🔍 NEW: 사이트 분석 전용 엔드포인트 ====================
+    @app.websocket("/ws/analyze")
+    async def analyze_site_endpoint(websocket: WebSocket):
+        """🔍 사이트 분석 전용 WebSocket 엔드포인트"""
+        await websocket.accept()
+        
+        try:
+            data = await websocket.receive_json()
+            input_data = data.get("input", "")
+            user_lang = data.get("language", "en")
+            
+            # 사이트 감지 및 분석
+            site_detector = SiteDetector()
+            detected_site = await site_detector.detect_site_type(input_data)
+            board_identifier = site_detector.extract_board_identifier(input_data, detected_site)
+            
+            # 분석 결과 전송
+            analysis_result = {
+                "input": input_data,
+                "detected_site": detected_site,
+                "board_identifier": board_identifier,
+                "is_url": input_data.startswith('http'),
+                "analysis_complete": True
+            }
+            
+            # BBC의 경우 추가 정보 제공
+            if detected_site == 'bbc':
+                bbc_info = detect_bbc_url_and_extract_info(input_data)
+                analysis_result.update({
+                    "bbc_info": bbc_info,
+                    "section": bbc_info.get("section"),
+                    "description": bbc_info.get("description")
+                })
+            
+            await websocket.send_json(analysis_result)
+            
+        except Exception as e:
+            await websocket.send_json({
+                "error": "사이트 분석 중 오류가 발생했습니다.",
+                "error_detail": str(e)
+            })
+        finally:
+            await websocket.close()
+
+else:
+    logger.info("✅ 자동 엔드포인트 시스템 활성화됨 - 수동 엔드포인트 생략")
 
 # ==================== LEGACY WebSocket 엔드포인트들 (하위 호환성 유지) ====================
 
@@ -1056,10 +1097,6 @@ async def crawl_auto_socket(websocket: WebSocket):
         crawl_manager.cleanup_crawl(crawl_id)
         await websocket.close()
 
-# ==================== 기타 LEGACY 엔드포인트들 (필요시 추가) ====================
-# 여기에 reddit-crawl, dcinside-crawl 등 기존 엔드포인트들을 유지할 수 있습니다.
-# 하지만 통합 엔드포인트로 대체하는 것을 권장합니다.
-
 # ==================== 크롤링 취소 시스템 ====================
 @app.websocket("/ws/cancel")
 async def cancel_crawl_socket(websocket: WebSocket):
@@ -1170,13 +1207,14 @@ async def get_system_info():
     try:
         crawl_stats = crawl_manager.get_stats()
         
-        return {
+        system_info = {
             "system": {
                 "version": "2.0.0",
                 "environment": APP_ENV,
                 "debug_mode": DEBUG,
                 "unified_mode": True,  # 통합 크롤링 지원
-                "uptime_seconds": crawl_stats["uptime_seconds"]
+                "uptime_seconds": crawl_stats["uptime_seconds"],
+                "auto_endpoint_system": endpoint_manager is not None
             },
             "endpoints": {
                 "unified": "/ws/crawl",  # 새로운 통합 엔드포인트
@@ -1203,6 +1241,21 @@ async def get_system_info():
                 "progress_tracking": True
             }
         }
+        
+        # 자동 엔드포인트 시스템 정보 추가
+        if endpoint_manager:
+            system_info["auto_endpoints"] = {
+                "status": "active",
+                "crawlers_detected": len(endpoint_manager.crawlers),
+                "crawlers": list(endpoint_manager.crawlers.keys())
+            }
+        else:
+            system_info["auto_endpoints"] = {
+                "status": "inactive",
+                "reason": "자동 엔드포인트 시스템 초기화 실패"
+            }
+        
+        return system_info
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"시스템 정보 조회 중 오류: {str(e)}")
@@ -1256,7 +1309,8 @@ async def submit_feedback(request: Request):
                     "url": raw_data.get("url"),
                     "clientTimestamp": raw_data.get("timestamp"),
                     "systemInfo": raw_data.get("systemInfo", {}),
-                    "version": "2.0.0"  # 리팩토링 버전 기록
+                    "version": "2.0.0",  # 리팩토링 버전 기록
+                    "auto_endpoint_active": endpoint_manager is not None
                 }
             }
             
@@ -1274,7 +1328,10 @@ async def submit_feedback(request: Request):
                 "timestamp": timestamp,
                 "ip": client_ip,
                 "content": feedback_content,
-                "metadata": {"version": "2.0.0"}
+                "metadata": {
+                    "version": "2.0.0",
+                    "auto_endpoint_active": endpoint_manager is not None
+                }
             }
             
         else:
@@ -1357,6 +1414,7 @@ def root():
         "version": "2.0.0",  # 리팩토링된 버전
         "docs": "/docs",
         "unified_endpoint": "/ws/crawl",  # 새로운 통합 엔드포인트 안내
+        "auto_endpoint_system": endpoint_manager is not None,
         "legacy_endpoints": [
             "/ws/auto-crawl",
             "/ws/reddit-crawl", 
@@ -1368,13 +1426,21 @@ def root():
         ]
     }
 
-# ==================== 모듈화 완료 안내 ====================
-logger.info("✅ 리팩토링된 크롤링 시스템 설정 완료")
+# ==================== 시작 시 최종 로깅 ====================
+logger.info("✅ PickPost v2.0 크롤링 시스템 설정 완료")
 logger.info("📡 사용 가능한 엔드포인트:")
 logger.info("  🔥 NEW:")
 logger.info("    - /ws/crawl - 통합 크롤링 엔드포인트")  
 logger.info("    - /ws/analyze - 사이트 분석 전용")
 logger.info("    - GET /api/system-info - 시스템 정보")
+
+if endpoint_manager:
+    logger.info("  🤖 AUTO-GENERATED:")
+    for site_type in endpoint_manager.crawlers.keys():
+        logger.info(f"    - /ws/{site_type}-crawl - {site_type} 전용 (자동생성)")
+else:
+    logger.info("  ⚠️ AUTO-GENERATED: 비활성화됨")
+
 logger.info("  📜 LEGACY (하위 호환성):")
 logger.info("    - /ws/auto-crawl - 자동 크롤링")
 logger.info("  🛠️ MANAGEMENT:")
@@ -1384,3 +1450,8 @@ logger.info("    - POST /api/cleanup-crawls - 모든 크롤링 정리")
 logger.info("  📝 FEEDBACK:")
 logger.info("    - POST /api/feedback - 피드백 제출")
 logger.info("    - GET /api/feedback/{feedback_id} - 피드백 조회")
+
+if endpoint_manager:
+    logger.info("🎉 자동 엔드포인트 시스템 활성화: 새 크롤러 파일을 추가하면 자동으로 엔드포인트가 생성됩니다!")
+else:
+    logger.info("⚠️ 자동 엔드포인트 시스템 비활성화: core.simple_endpoints 모듈을 확인하세요")
