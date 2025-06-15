@@ -255,8 +255,8 @@ def get_cors_origins():
         base_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
         production_origins = [
             "https://pickpost.netlify.app",
-            "https://pickpost--*.netlify.app"
-            "https:testfdd.netlify.app"
+            "https://pickpost--*.netlify.app",
+            "https:testfdd.netlify.app",
             "https:testfdd--*.netlify.app"
         ]
         
@@ -272,7 +272,7 @@ def get_cors_origins():
             "http://localhost:8000", 
             "http://127.0.0.1:8000",
             "https://127.0.0.1:8000",
-            "https://pickpost.netlify.app"
+            "https://pickpost.netlify.app",
             "https://testfdd.netlify.app"
         ]
 
