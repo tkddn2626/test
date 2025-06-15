@@ -64,56 +64,58 @@
         
         for (let retry = 0; retry < maxRetries; retry++) {
             try {
-                console.log(`WebSocket 연결 시도 ${retry + 1}/${maxRetries}: ${WS_BASE_URL}`);
+                console.log(`WebSocket 연결 시도 ${retry + 1}/${maxRetries}: ${endpoint}`);
                 
                 const wsUrl = `${WS_BASE_URL}/ws/${endpoint}`;
                 const ws = new WebSocket(wsUrl);
                 
-                // Origin 헤더 명시적 설정 (브라우저가 자동으로 설정하지만 명확히)
-                console.log('연결 Origin:', window.location.origin);
-                
                 await new Promise((resolve, reject) => {
                     const timeout = setTimeout(() => {
                         ws.close();
-                        reject(new Error('Connection timeout after 10s'));
-                    }, 10000);  // 타임아웃 증가
-                    
+                        reject(new Error(`연결 타임아웃 (${endpoint})`));
+                    }, 10000);
+
                     ws.onopen = () => {
                         clearTimeout(timeout);
-                        console.log('✅ WebSocket 연결 성공');
+                        console.log(`✅ WebSocket 연결 성공: ${endpoint}`);
+                        
+                        // 🔥 설정 데이터 전송
+                        ws.send(JSON.stringify(config));
+                        console.log('📤 크롤링 설정 전송:', config);
+                        
                         resolve();
                     };
-                    
+
                     ws.onerror = (error) => {
                         clearTimeout(timeout);
-                        console.error('❌ WebSocket 연결 실패:', error);
-                        reject(error);
+                        console.error(`❌ WebSocket 연결 오류 (${endpoint}):`, error);
+                        reject(new Error(`연결 실패 (${endpoint}): ${error.message || 'Unknown error'}`));
                     };
-                    
+
                     ws.onclose = (event) => {
                         clearTimeout(timeout);
-                        console.log('WebSocket 연결 종료:', {
-                            code: event.code,
-                            reason: event.reason,
-                            wasClean: event.wasClean
-                        });
+                        if (event.code !== 1000) {
+                            reject(new Error(`연결 종료 (${endpoint}): ${event.code} - ${event.reason}`));
+                        }
                     };
                 });
+
+                // 🔥 통합 메시지 핸들러 설정
+                setupWebSocketMessageHandlers(ws, endpoint);
                 
                 return ws;
-                
+
             } catch (error) {
-                console.warn(`연결 시도 ${retry + 1} 실패:`, error.message);
+                console.warn(`연결 실패 ${retry + 1}/${maxRetries} (${endpoint}):`, error.message);
                 
-                if (retry < maxRetries - 1) {
-                    const delay = 2000 * (retry + 1); // 지수 백오프
-                    console.log(`${delay}ms 후 재시도...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                if (retry === maxRetries - 1) {
+                    throw error;
                 }
+                
+                // 재시도 전 대기
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
             }
         }
-        
-        throw new Error('모든 WebSocket 연결 시도 실패');
     }
 
 
@@ -2225,294 +2227,131 @@
     // ==================== 크롤링 시스템 ====================
     // 크롤링을 시작하는 메인 함수
     async function startCrawling() {
-        if (isLoading) return;
-        
-        isLoading = true;
-        crawlStartTime = Date.now();
-        
-        const lang = window.languages[currentLanguage];
-        const crawlBtn = document.getElementById('crawlBtn');
-            crawlBtn.textContent = lang.loadingTexts || lang.crawlingStatus?.crawling || '크롤링 중...';
-            crawlBtn.disabled = true;
-            
-        const board = document.getElementById('boardInput').value.trim();
-        const isAdvanced = document.getElementById('advancedSearch').checked;
-        
-        let start, end;
-        if (isAdvanced) {
-            start = parseInt(document.getElementById('startRankAdv').value) || 1;
-            end = parseInt(document.getElementById('endRankAdv').value) || 20;
-        } else {
-            start = parseInt(document.getElementById('startRank').value) || 1;
-            end = parseInt(document.getElementById('endRank').value) || 20;
-        }
-        
-        const limit = Math.max(end, 50);
-        
-        let minViews = 0, minLikes = 0, minComments = 0;
-        if (isAdvanced) {
-            minViews = parseInt(document.getElementById('minViews').value) || 0;
-            minLikes = parseInt(document.getElementById('minRecommend').value) || 0;
-            minComments = parseInt(document.getElementById('minComments').value) || 0;
+        if (isLoading) {
+            console.log('이미 크롤링이 진행 중입니다.');
+            return;
         }
 
-        currentCrawlId = `crawl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`크롤링 시작 ID: ${currentCrawlId}`);
-
-        const timePeriod = document.getElementById('timePeriod').value;
-        const startDateInput = document.getElementById('startDate').value;
-        const endDateInput = document.getElementById('endDate').value;
-        
-        let actualStartDate = null;
-        let actualEndDate = null;
-        let actualTimeFilter = timePeriod;
-
-        if (timePeriod === 'custom') {
-            actualStartDate = startDateInput;
-            actualEndDate = endDateInput;
-            actualTimeFilter = 'custom';
-        } else {
-            actualStartDate = null;
-            actualEndDate = null;
-            actualTimeFilter = timePeriod;
+        const boardInput = document.getElementById('boardInput').value.trim();
+        if (!boardInput) {
+            showTemporaryMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
+            return;
         }
-
-        const hasDateFilter = !!(actualStartDate && actualEndDate);
-        const hasMetricFilter = minViews > 0 || minLikes > 0 || minComments > 0;
-
-        const config = {
-            board,
-            limit,
-            language: currentLanguage,
-            start: start,
-            end: end,
-            sort: document.getElementById('sortMethod').value,
-            min_views: minViews,
-            min_likes: minLikes,
-            min_comments: minComments,
-            time_filter: actualTimeFilter,
-            crawl_id: currentCrawlId
-        };
-
-        if (hasDateFilter || hasMetricFilter) {
-            config.full_crawl_mode = true;
-            console.log(`전체 크롤링 모드 활성화`);
-        }
-
-        if (hasDateFilter) {
-            config.start_date = actualStartDate;
-            config.end_date = actualEndDate;
-            console.log(`사용자 지정 날짜: ${actualStartDate} ~ ${actualEndDate}`);
-        } else {
-            delete config.start_date;
-            delete config.end_date;
-            console.log(`시간 필터: ${actualTimeFilter}`);
-        }
-
-        console.log('크롤링 설정:', {
-            site: currentSite,
-            board: config.board,
-            time_filter: config.time_filter,
-            start_date: config.start_date,
-            end_date: config.end_date,
-            sort: config.sort,
-            range: `${config.start}-${config.end}`,
-            crawl_id: currentCrawlId
-        });
-
-        updateCrawlButton();
-        showProgress();
-        clearResults();
-
-        document.getElementById('progressFill').style.width = '0%';
 
         try {
-            let endpoint;
-            if (currentSite === 'lemmy') {
-                endpoint = 'lemmy-crawl';
-            } else if (currentSite === 'universal') {
-                endpoint = 'auto-crawl';
-            } else {
-                endpoint = `${currentSite}-crawl`;
-            }
+            isLoading = true;
+            searchInitiated = true;
+            crawlStartTime = Date.now();
             
-            console.log(`WebSocket 연결 시도: ${WS_BASE_URL}/ws/${endpoint}`);
+            // UI 상태 업데이트
+            updateUIForCrawlStart();
             
-            // Origin 헤더 로깅
-            console.log('Client Origin:', window.location.origin);
-            console.log('Target WebSocket URL:', `${WS_BASE_URL}/ws/${endpoint}`);
+            // 🚀 통합 엔드포인트로 크롤링 시작
+            await startUnifiedCrawling(boardInput);
             
-            currentSocket = await createWebSocketWithRetry(endpoint, config);
-            
-            if (currentSocket.readyState === 1) {
-                // 이미 연결된 상태면 바로 전송
-                console.log('즉시 전송:', config);
-                currentSocket.send(JSON.stringify(config));
-                showCancelButton();
-            } else {
-                // 연결 대기 중이면 이벤트 등록
-                currentSocket.onopen = () => {
-                    console.log('onopen 이벤트로 전송:', config);
-                    currentSocket.send(JSON.stringify(config));
-                    showCancelButton();
-                };
-            }
-            
-            currentSocket.onerror = (error) => {
-                console.error('WebSocket 오류:', error);
-                console.error('시도한 URL:', `${WS_BASE_URL}/ws/${endpoint}`);
-                console.error('Origin:', window.location.origin);
-                showTemporaryMessage('connection_failed', 'error');
-                hideProgress();
-                isLoading = false;
-                updateCrawlButton();
-                currentSocket = null;
-                hideCancelButton();
-            };
-
-            currentSocket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                
-                console.log('WebSocket 메시지 수신:', data);
-                
-                if (data.cancelled) {
-                    console.log('크롤링 취소됨:', data.message);
-                    showTemporaryMessage(data.message || '크롤링이 취소되었습니다.', 'info');
-                    hideProgress();
-                    isLoading = false;
-                    updateCrawlButton();
-                    currentSocket.close();
-                    currentSocket = null;
-                    currentCrawlId = null;
-                    hideCancelButton();
-                    return;
-                }
-
-                if (data.message_type) {
-                    switch(data.message_type) {
-                        case 'progress': handleProgressMessage(data); break;
-                        case 'status': handleStatusMessage(data); break;
-                        case 'error': handleErrorMessage(data); break;
-                        case 'complete': handleCompleteMessage(data); break;
-                    }
-                } else {
-                    // 하위 호환성 처리 (기존 방식)
-                    handleLegacyMessage(data);
-                }
-                
-                // 에러 메시지도 같은 방식으로 처리
-                if (data.error_key) {
-                    const translatedError = getTranslatedStatus(data.error_key, data.error_data);
-                    showTemporaryMessage(translatedError, 'error');
-                    return;
-                }
-                
-                // 기존 에러 처리 (하위 호환)
-                if (data.error) {
-                    showTemporaryMessage(data.error, 'error');
-                    return;
-                }
-                if (data.done) {
-                    console.log('크롤링 완료, 데이터 확인:', data);
-                    
-                    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-                        crawlResults = data.data;
-                        console.log('결과 저장 완료:', crawlResults.length, '개 항목');
-                        
-                        updateProgress(100, 'complete', data.data.length, 1);
-                        
-                        // 🔥 displayResults 호출 시 성공 메시지 비활성화 (WebSocket에서 처리)
-                        displayResults(data.data, start, false);
-                        
-                        setTimeout(() => {
-                            hideProgress();
-                            isLoading = false;
-                            updateCrawlButton();
-                            hideCancelButton();
-                            showDownloadButton();
-                            ensureSearchInterfaceVisible();
-                        }, 500);
-                        
-                    } else {
-                        console.warn('빈 결과 또는 잘못된 데이터 형식:', data.data);
-                        updateProgress(100, 'No results found', 0, 1);
-                        showTemporaryMessage('검색 결과가 없습니다.', 'info');
-                        
-                        setTimeout(() => {
-                            hideProgress();
-                            isLoading = false;
-                            updateCrawlButton();
-                            hideCancelButton();
-                        }, 1000);
-                    }
-                    
-                    if (currentSocket) {
-                        currentSocket.close();
-                        currentSocket = null;
-                    }
-                    
-                    // 🔥 summary 메시지 처리 (백엔드에서 오는 완료 메시지만 표시)
-                    if (data.summary) {
-                        setTimeout(() => {
-                            let message;
-                            if (typeof data.summary === 'object' && data.summary.message_key) {
-                                // 백엔드에서 구조화된 메시지가 온 경우
-                                message = formatCrawlMessage(data.summary.message_key, data.summary.message_data,lang);
-                            } else {
-                                // 백엔드에서 직접 문자열이 온 경우
-                                message = data.summary;
-                            }
-                            showTemporaryMessage(message, 'success');
-                        }, 800);
-                    } else if (data.data && data.data.length > 0) {
-                        // 🔥 백엔드에서 summary가 없으면 프론트엔드에서 기본 메시지 생성
-                        setTimeout(() => {
-                            const messageData = {
-                                site: currentSite?.toUpperCase() || 'SITE',
-                                count: data.data.length,
-                                start: start || 1,
-                                end: (start || 1) + data.data.length - 1
-                            };
-                            
-                            const message = formatCrawlMessage('complete', messageData);
-                            showTemporaryMessage(message, 'success');
-                        }, 800);
-                    }
-                }
-            };
-
-            currentSocket.onclose = () => {
-                console.log('WebSocket 연결 종료');
-                
-                // 연결 종료 시 상태 정리
-                if (isLoading && crawlResults.length > 0) {
-                    // 결과가 있는데 로딩 중이면 완료 처리
-                    isLoading = false;
-                    hideProgress();
-                    showDownloadButton();
-                    hideCancelButton();
-                    updateCrawlButton();
-                }
-                
-                currentSocket = null;
-            };
-
         } catch (error) {
-            console.error('WebSocket 연결 완전 실패:', error);
-            
-            // 상세한 오류 정보 표시
-            showEnhancedError(
-                '서버 연결에 실패했습니다.',
-                `오류: ${error.message}\n현재 환경: ${window.location.hostname}\n대상 서버: ${WS_BASE_URL}`
-            );
-            
-            hideProgress();
-            isLoading = false;
-            updateCrawlButton();
-            currentSocket = null;
-            hideCancelButton();
+            console.error('크롤링 시작 오류:', error);
+            showTemporaryMessage(`크롤링 시작 중 오류가 발생했습니다: ${error.message}`, 'error');
+            resetCrawlingState();
         }
     }
+
+    async function startUnifiedCrawling(boardInput) {
+        try {
+            // 1. 통합 엔드포인트 시도 (우선순위)
+            console.log('🔥 통합 엔드포인트 시도...');
+            const config = buildCrawlConfig(boardInput);
+            currentSocket = await createWebSocketWithRetry('crawl', config);
+            
+            console.log('✅ 통합 엔드포인트 연결 성공');
+            
+        } catch (unifiedError) {
+            console.warn('⚠️ 통합 엔드포인트 실패, 레거시 방식으로 폴백:', unifiedError);
+            
+            // 2. 레거시 자동 크롤링으로 폴백
+            try {
+                const config = buildLegacyCrawlConfig(boardInput);
+                currentSocket = await createWebSocketWithRetry('auto-crawl', config);
+                console.log('✅ 레거시 auto-crawl 연결 성공');
+                
+            } catch (legacyError) {
+                console.error('❌ 모든 크롤링 방식 실패');
+                throw new Error(`통합 크롤링과 레거시 크롤링 모두 실패: ${legacyError.message}`);
+            }
+        }
+    }
+
+    // 🔥 통합 엔드포인트용 설정 생성
+    function buildCrawlConfig(boardInput) {
+        const selectedLangs = getSelectedLanguages();
+        const sort = document.getElementById('sortSelect')?.value || 'recent';
+        const range = getSelectedRange();
+        
+        return {
+            // 핵심 입력
+            input: boardInput,  // 🔥 'input' 필드 사용 (endpoints.py와 호환)
+            
+            // 사이트 선택 (선택사항 - 자동 감지 우선)
+            site: currentSite || 'auto',  // 사용자가 선택한 사이트 또는 자동
+            
+            // 크롤링 옵션
+            sort: sort,
+            start: range.start,
+            end: range.end,
+            min_views: parseInt(document.getElementById('minViews')?.value || '0'),
+            min_likes: parseInt(document.getElementById('minLikes')?.value || '0'),
+            time_filter: document.getElementById('timeFilter')?.value || 'day',
+            start_date: document.getElementById('startDate')?.value || null,
+            end_date: document.getElementById('endDate')?.value || null,
+            
+            // 번역 옵션
+            translate: selectedLangs.length > 0,
+            target_languages: selectedLangs,
+            
+            // 메타데이터
+            user_agent: navigator.userAgent,
+            timestamp: new Date().toISOString(),
+            
+            // 디버그 정보
+            debug: {
+                frontend_version: '2.0.0',
+                endpoint_type: 'unified',
+                user_selected_site: currentSite,
+                detected_site: null  // 백엔드에서 감지 후 업데이트
+            }
+        };
+    }
+
+    // 레거시 auto-crawl용 설정 생성 
+    function buildLegacyCrawlConfig(boardInput) {
+        const selectedLangs = getSelectedLanguages();
+        const sort = document.getElementById('sortSelect')?.value || 'recent';
+        const range = getSelectedRange();
+        
+        return {
+            // 기존 필드명 유지
+            board: boardInput,  // 🔄 레거시는 'board' 필드 사용
+            
+            sort: sort,
+            start: range.start,
+            end: range.end,
+            min_views: parseInt(document.getElementById('minViews')?.value || '0'),
+            min_likes: parseInt(document.getElementById('minLikes')?.value || '0'),
+            time_filter: document.getElementById('timeFilter')?.value || 'day',
+            start_date: document.getElementById('startDate')?.value || null,
+            end_date: document.getElementById('endDate')?.value || null,
+            
+            translate: selectedLangs.length > 0,
+            target_languages: selectedLangs,
+            
+            debug: {
+                frontend_version: '2.0.0',
+                endpoint_type: 'legacy_auto',
+                fallback: true
+            }
+        };
+    }
+
 
     // 임시 메시지를 표시하는 함수
     function showTemporaryMessage(message, type = 'info', variables = {}) {
@@ -2635,6 +2474,241 @@
         }
         
         return status;
+    }
+        
+    // 🔥 통합 WebSocket 메시지 핸들러
+    function setupWebSocketMessageHandlers(ws, endpoint) {
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log(`📨 메시지 수신 (${endpoint}):`, data);
+
+                // 🔥 통합 엔드포인트와 레거시 엔드포인트 모두 지원
+                if (data.error) {
+                    handleCrawlError(data.error, endpoint);
+                } else if (data.done) {
+                    handleCrawlComplete(data, endpoint);
+                } else if (data.progress !== undefined) {
+                    handleCrawlProgress(data, endpoint);
+                } else if (data.status) {
+                    handleCrawlStatus(data, endpoint);
+                } else if (data.data) {
+                    // 점진적 데이터 수신 처리
+                    handlePartialResults(data, endpoint);
+                } else {
+                    console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
+                }
+
+            } catch (error) {
+                console.error('메시지 파싱 오류:', error, event.data);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
+            showTemporaryMessage(`연결 오류가 발생했습니다 (${endpoint})`, 'error');
+        };
+
+        ws.onclose = (event) => {
+            console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
+            
+            if (isLoading && event.code !== 1000) {
+                showTemporaryMessage(`연결이 예기치 않게 종료되었습니다 (${endpoint})`, 'error');
+                resetCrawlingState();
+            }
+        };
+    }
+
+    // 크롤링 완료 처리 (통합)
+    function handleCrawlComplete(data, endpoint) {
+        console.log(`✅ 크롤링 완료 (${endpoint}):`, data);
+        
+        // 결과 데이터 추출 (엔드포인트별 호환성)
+        let results = data.data || data.results || [];
+        let summary = data.summary || `크롤링 완료: ${results.length}개 게시물`;
+        
+        // 🔥 통합 엔드포인트에서 사이트 감지 정보 확인
+        if (data.detected_site) {
+            console.log(`🎯 자동 감지된 사이트: ${data.detected_site}`);
+            summary += ` (감지된 사이트: ${data.detected_site})`;
+        }
+        
+        // 결과 표시
+        if (results.length > 0) {
+            crawlResults = results;
+            displayResults(results);
+            
+            const elapsed = crawlStartTime ? ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
+            showTemporaryMessage(`${summary} (${elapsed}초)`, 'success');
+            
+            // 다운로드 버튼 활성화
+            enableDownloadButtons();
+            
+        } else {
+            showTemporaryMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
+        }
+        
+        resetCrawlingState();
+    }
+
+    // 크롤링 에러 처리 (통합)
+    function handleCrawlError(error, endpoint) {
+        console.error(`❌ 크롤링 오류 (${endpoint}):`, error);
+        
+        let errorMessage = `크롤링 중 오류가 발생했습니다 (${endpoint})`;
+        
+        if (typeof error === 'string') {
+            errorMessage += `: ${error}`;
+        } else if (error.message) {
+            errorMessage += `: ${error.message}`;
+        }
+        
+        showTemporaryMessage(errorMessage, 'error');
+        resetCrawlingState();
+    }
+
+    // 진행률 처리 (통합)
+    function handleCrawlProgress(data, endpoint) {
+        const progress = data.progress || 0;
+        const status = data.status || data.message || '처리 중...';
+        
+        console.log(`📊 진행률 (${endpoint}): ${progress}% - ${status}`);
+        
+        // 진행률 바 업데이트
+        updateProgressBar(progress, status);
+        
+        // 부분 결과가 있다면 실시간 표시
+        if (data.partial_results && data.partial_results.length > 0) {
+            displayPartialResults(data.partial_results);
+        }
+    }
+
+    // 상태 메시지 처리 (통합)
+    function handleCrawlStatus(data, endpoint) {
+        const status = data.status || data.message || '상태 업데이트';
+        console.log(`ℹ️ 상태 (${endpoint}): ${status}`);
+        
+        // 상태 표시 영역 업데이트
+        updateStatusDisplay(status);
+    }
+
+    // 부분 결과 처리 (실시간 업데이트)
+    function handlePartialResults(data, endpoint) {
+        if (data.data && Array.isArray(data.data)) {
+            console.log(`📊 부분 결과 수신 (${endpoint}): ${data.data.length}개`);
+            
+            // 기존 결과에 추가
+            crawlResults = crawlResults.concat(data.data);
+            
+            // 실시간으로 결과 표시 업데이트
+            displayResults(crawlResults, true); // true = 부분 업데이트
+        }
+    }
+
+    // UI 업데이트 함수들...
+
+    function updateProgressBar(progress, status) {
+        const progressBar = document.querySelector('.progress-bar');
+        const progressText = document.querySelector('.progress-text');
+        
+        if (progressBar) {
+            progressBar.style.width = `${Math.min(progress, 100)}%`;
+        }
+        
+        if (progressText) {
+            progressText.textContent = `${Math.round(progress)}% - ${status}`;
+        }
+    }
+
+    function updateStatusDisplay(status) {
+        const statusElement = document.querySelector('.crawl-status');
+        if (statusElement) {
+            statusElement.textContent = status;
+            statusElement.style.display = 'block';
+        }
+    }
+
+    function updateUIForCrawlStart() {
+        // 기존 결과 클리어
+        crawlResults = [];
+        document.getElementById('results').innerHTML = '';
+        
+        // 로딩 상태 표시
+        const searchButton = document.getElementById('searchButton');
+        if (searchButton) {
+            searchButton.disabled = true;
+            searchButton.textContent = '크롤링 중...';
+        }
+        
+        // 진행률 바 표시
+        showProgressBar(true);
+        
+        // 취소 버튼 활성화
+        const cancelButton = document.getElementById('cancelButton');
+        if (cancelButton) {
+            cancelButton.style.display = 'inline-block';
+            cancelButton.disabled = false;
+        }
+    }
+
+    function resetCrawlingState() {
+        isLoading = false;
+        
+        // 검색 버튼 복원
+        const searchButton = document.getElementById('searchButton');
+        if (searchButton) {
+            searchButton.disabled = false;
+            searchButton.textContent = '검색 시작';
+        }
+        
+        // 진행률 바 숨김
+        showProgressBar(false);
+        
+        // 취소 버튼 숨김
+        const cancelButton = document.getElementById('cancelButton');
+        if (cancelButton) {
+            cancelButton.style.display = 'none';
+        }
+        
+        // WebSocket 연결 정리
+        if (currentSocket) {
+            currentSocket.close();
+            currentSocket = null;
+        }
+    }
+
+    // 🔥 사이트별 엔드포인트 지원 (레거시 호환성)
+    // 필요시 기존 사이트별 함수들도 통합 엔드포인트를 우선 사용하도록 업데이트
+
+    function startRedditCrawling() {
+        // 통합 엔드포인트 우선, 실패시 기존 방식
+        currentSite = 'reddit';
+        return startCrawling();
+    }
+
+    function startDCInsideCrawling() {
+        currentSite = 'dcinside';
+        return startCrawling();
+    }
+
+    function startBlindCrawling() {
+        currentSite = 'blind';
+        return startCrawling();
+    }
+
+    function startBBCCrawling() {
+        currentSite = 'bbc';
+        return startCrawling();
+    }
+
+    function startLemmyCrawling() {
+        currentSite = 'lemmy';
+        return startCrawling();
+    }
+
+    function startUniversalCrawling() {
+        currentSite = 'universal';
+        return startCrawling();
     }
 
     // 1. 진행률 메시지 처리
@@ -3377,6 +3451,37 @@
         // 포커스를 보드 입력창에 다시 설정
         boardInput.focus();
     }
+
+    function enableDownloadButtons() {
+    const downloadButtons = document.querySelectorAll('.download-button');
+    downloadButtons.forEach(button => {
+        button.disabled = false;
+        button.style.opacity = '1';
+    });
+    }
+
+    function showProgressBar(show) {
+        const progressContainer = document.querySelector('.progress-container');
+        if (progressContainer) {
+            progressContainer.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    // 선택된 언어 가져오기
+    function getSelectedLanguages() {
+        const checkboxes = document.querySelectorAll('input[name="languages"]:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    // 선택된 범위 가져오기
+    function getSelectedRange() {
+        return {
+            start: parseInt(document.getElementById('startPost')?.value || '1'),
+            end: parseInt(document.getElementById('endPost')?.value || '20')
+        };
+    }
+
+    console.log('✅ 통합 엔드포인트 지원 main.js 로드 완료');
 
     // ========================================
     // HTML onclick 함수들을 전역으로 노출
