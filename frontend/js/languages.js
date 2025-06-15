@@ -452,29 +452,16 @@
                             asklemmy: "Questions and answers"
                         }
                     },
-                    crawlingStatus: {
-                        connecting: "Connecting to server...",
-                        initializing: "Preparing crawl...",
-                        crawling: "Collecting posts...",
+                    crawlingSteps: {
+                        initializing: "Initializing crawl...",
+                        detecting_site: "Detecting {site} site...",
+                        connecting: "Connecting to {site}...",
+                        collecting: "Collecting posts from {site}... (Page {current_page}/{max_pages})",
+                        filtering: "Filtering posts by conditions...",
                         processing: "Processing data...",
-                        filtering: "Filtering posts by criteria...",
-                        translating: "Translating titles...",
-                        finalizing: "Finalizing results...",
-                        complete: "Collection complete!",
-                        found: " posts found",
-                        page: "Exploring page",
-                        timeRemaining: "Est. time remaining",
-                        cancelled: "Crawling cancelled",
-
-                        period_filter: "🔧 Period: {timeFilter}{dateRange}",
-                        reddit_collecting: "🔍 Reddit r/{boardName} - {sort} sorting...",
-                        dcinside_collecting: "🔍 DCInside {boardName} gallery... ({sort})",
-                        blind_collecting: "🔍 Blind {boardName} topic... ({sort})",
-                        bbc_starting: "🛡️ BBC stable crawler starting...",
-                        lemmy_starting: "🌐 Lemmy crawling starting...",
-                        universal_starting: "🔍 Universal crawler starting...",
-                        translating_posts: "🌐 Translating...",
-                        translating_details: "Translating {count} posts",
+                        translating: "Translating...",
+                        finalizing: "Finalizing...",
+                        complete: "Complete"
                     },
                     // 진행 단계별 메시지
                     progressSteps: {
