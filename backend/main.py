@@ -31,6 +31,12 @@ import time
 from fastapi import HTTPException
 import logging
 
+import core.messages 
+import core.utils
+import core.auto_crawler
+import core.site_detector
+
+
 # ==================== 환경 설정 및 초기화 ====================
 load_dotenv()
 
