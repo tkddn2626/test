@@ -2409,14 +2409,18 @@
         
         if (!template) {
             console.warn(`메시지 템플릿을 찾을 수 없음: ${messageKey} (언어: ${currentLanguage})`);
-            return `Message not found: ${messageKey}`;
+            // 키의 마지막 부분을 기본값으로 사용
+            return keyParts[keyParts.length - 1] || messageKey;
         }
         
         // 템플릿 변수 치환
         if (typeof template === 'string' && messageData) {
             Object.keys(messageData).forEach(key => {
-                const placeholder = new RegExp(`\\{${key}\\}`, 'g');
-                template = template.replace(placeholder, messageData[key]);
+                const value = messageData[key];
+                if (value !== null && value !== undefined && value !== '') {
+                    const placeholder = new RegExp(`\\{${key}\\}`, 'g');
+                    template = template.replace(placeholder, value);
+                }
             });
         }
         
@@ -2437,25 +2441,23 @@
     }
 
     // WebSocket 메시지에서 번역된 상태 메시지 생성
-    function getTranslatedStatus(status_Key, status_Data = {}) {
+    function getTranslatedStatus(statusKey, statusData = {}) {
         const lang = window.languages[currentLanguage];
-        const template = lang.crawlingStatus?.[status_Key];
-        const data_templete = lang.crawlingStatus?.[status_Data]
+        const template = lang.crawlingStatus?.[statusKey];
 
         if (!template) {
-            console.warn(`Missing translation for status key: ${status_Key}`);
+            console.warn(`Missing translation for status key: ${statusKey}`);
             return statusKey; // 키가 없으면 키 자체를 반환
         }
         
-        return formatMessage(template, data_templete);
+        return formatMessage(template, statusData);
     }
 
-    // 기존 하드코딩된 메시지들을 번역하는 함수 (하위 호환용)
-    // 현재 translateLegacyStatus 함수에 패턴 추가
+    // 레거시 상태 메시지 번역 (패턴 매칭)
     function translateLegacyStatus(status) {
         const lang = window.languages[currentLanguage];
         
-        // 🔥 패턴 매칭 규칙 확장
+        // 패턴 매칭 규칙
         const statusPatterns = [
             { pattern: /메타데이터 보강/, key: 'metadata_processing' },
             { pattern: /게시물 수집/, key: 'collecting_posts' },
@@ -2486,26 +2488,44 @@
                 const data = JSON.parse(event.data);
                 console.log(`📨 메시지 수신 (${endpoint}):`, data);
 
-                // 🔥 메시지 타입별 처리 (백엔드 messages.py와 호환)
-                if (data.message_type === 'progress') {
-                    handleProgressMessage(data);
-                } else if (data.message_type === 'status') {
-                    handleStatusMessage(data);
-                } else if (data.message_type === 'error') {
-                    handleErrorMessage(data);
-                } else if (data.message_type === 'complete') {
-                    handleCompleteMessage(data);
+                // 중단 처리 (최우선)
+                if (data.cancelled) {
+                    showTemporaryMessage('크롤링이 취소되었습니다.', 'info');
+                    resetCrawlingState();
+                    return;
                 }
-                // 레거시 형태 지원
-                else if (data.error) {
-                    handleCrawlError(data.error, endpoint);
+
+                // 신규 메시지 시스템 처리
+                if (data.message_type) {
+                    switch (data.message_type) {
+                        case 'progress':
+                            handleProgressMessage(data);
+                            break;
+                        case 'status':
+                            handleStatusMessage(data);
+                            break;
+                        case 'error':
+                            handleErrorMessage(data);
+                            break;
+                        case 'complete':
+                            handleCompleteMessage(data);
+                            break;
+                        default:
+                            console.log(`🔸 알 수 없는 메시지 타입: ${data.message_type}`);
+                            break;
+                    }
+                    return;
+                }
+
+                // 레거시 시스템 처리 (하위 호환성)
+                if (data.error) {
+                    handleLegacyError(data.error, endpoint);
                 } else if (data.done) {
-                    handleCrawlComplete(data, endpoint);
+                    handleLegacyComplete(data, endpoint);
                 } else if (data.progress !== undefined) {
-                    // 🔥 레거시 진행률 메시지 처리
                     handleLegacyProgress(data, endpoint);
                 } else if (data.status) {
-                    handleCrawlStatus(data, endpoint);
+                    handleLegacyStatus(data, endpoint);
                 } else if (data.data) {
                     handlePartialResults(data, endpoint);
                 } else {
@@ -2514,19 +2534,20 @@
 
             } catch (error) {
                 console.error('메시지 파싱 오류:', error, event.data);
+                showTemporaryMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
             }
         };
 
         ws.onerror = (error) => {
             console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
-            showTemporaryMessage(`연결 오류가 발생했습니다 (${endpoint})`, 'error');
+            showTemporaryMessage('연결 오류가 발생했습니다', 'error');
         };
 
         ws.onclose = (event) => {
             console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
             
             if (isLoading && event.code !== 1000) {
-                showTemporaryMessage(`연결이 예기치 않게 종료되었습니다 (${endpoint})`, 'error');
+                showTemporaryMessage('연결이 예기치 않게 종료되었습니다', 'error');
                 resetCrawlingState();
             }
         };
@@ -2713,7 +2734,7 @@
 
     // 레거시 진행률 메시지 처리 
     function handleLegacyProgress(data, endpoint) {
-        const progress = data.progress || 0;
+        const progress = Math.min(Math.max(data.progress || 0, 0), 100);
         let status = data.status || data.message || '처리 중...';
         
         // 레거시 상태 메시지 번역
@@ -2721,27 +2742,128 @@
         
         console.log(`📊 레거시 진행률 (${endpoint}): ${progress}% - ${status}`);
         
-        updateProgress(progress, status, data.details || {});
+        updateProgress(progress, status);
         
         // 부분 결과 실시간 표시
         if (data.partial_results && data.partial_results.length > 0) {
             displayPartialResults(data.partial_results);
         }
     }
+    // 레거시 메시지 처리 (하위 호환성)
+    function handleLegacyMessage(data, endpoint) {
+        // 중단 메시지 처리
+        if (data.cancelled) {
+            showTemporaryMessage('크롤링이 취소되었습니다.', 'info');
+            resetCrawlingState();
+            return;
+        }
+
+        // 에러 처리
+        if (data.error) {
+            handleLegacyError(data.error, endpoint);
+            return;
+        }
+
+        // 완료 처리
+        if (data.done) {
+            handleLegacyComplete(data, endpoint);
+            return;
+        }
+
+        // 진행률 처리
+        if (data.progress !== undefined) {
+            handleLegacyProgress(data, endpoint);
+            return;
+        }
+
+        // 상태 처리
+        if (data.status) {
+            handleLegacyStatus(data, endpoint);
+            return;
+        }
+
+        // 부분 결과 처리
+        if (data.data) {
+            handlePartialResults(data, endpoint);
+            return;
+        }
+
+        console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
+    }
+    // 레거시 에러 처리
+    function handleLegacyError(error, endpoint) {
+        console.error(`❌ 레거시 오류 (${endpoint}):`, error);
+        
+        const lang = window.languages[currentLanguage];
+        let errorMessage;
+        
+        if (typeof error === 'string') {
+            errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error}`;
+        } else if (error.message) {
+            errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error.message}`;
+        } else {
+            errorMessage = lang?.errors?.unknown || '알 수 없는 오류가 발생했습니다';
+        }
+        
+        showTemporaryMessage(errorMessage, 'error');
+        resetCrawlingState();
+    }
+    // 레거시 완료 처리
+    function handleLegacyComplete(data, endpoint) {
+        console.log(`✅ 레거시 완료 (${endpoint}):`, data);
+        
+        let results = data.data || data.results || [];
+        let summary = data.summary || `크롤링 완료: ${results.length}개 게시물`;
+        
+        // 자동 감지 정보 표시
+        if (data.detected_site) {
+            console.log(`🎯 자동 감지된 사이트: ${data.detected_site}`);
+            summary += ` (감지: ${data.detected_site})`;
+        }
+        
+        if (results.length > 0) {
+            crawlResults = results;
+            displayResults(results);
+            enableDownloadButtons();
+            
+            const elapsed = crawlStartTime ?
+                ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
+            showTemporaryMessage(`${summary} (${elapsed}초)`, 'success');
+        } else {
+            showTemporaryMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
+        }
+        
+        resetCrawlingState();
+    }
+
+    // 레거시 상태 처리
+    function handleLegacyStatus(data, endpoint) {
+        let status = data.status || '상태 업데이트';
+        status = translateLegacyStatus(status);
+        
+        console.log(`ℹ️ 레거시 상태 (${endpoint}): ${status}`);
+        showTemporaryMessage(status, 'info');
+    }
+
 
     // 부분 결과 처리 (실시간 업데이트)
     function handlePartialResults(data, endpoint) {
-        if (data.data && Array.isArray(data.data)) {
-            console.log(`📊 부분 결과 수신 (${endpoint}): ${data.data.length}개`);
+        if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+            console.log(`📥 부분 결과 수신 (${endpoint}): ${data.data.length}개`);
             
-            // 기존 결과에 추가
-            crawlResults = crawlResults.concat(data.data);
+            // 기존 결과와 병합
+            if (!crawlResults) crawlResults = [];
             
-            // 실시간으로 결과 표시 업데이트
-            displayResults(crawlResults, true); // true = 부분 업데이트
+            // 중복 제거 (ID 기준)
+            const existingIds = new Set(crawlResults.map(item => item.id || item.url));
+            const newResults = data.data.filter(item => !existingIds.has(item.id || item.url));
+            
+            if (newResults.length > 0) {
+                crawlResults = crawlResults.concat(newResults);
+                displayPartialResults(newResults);
+            }
         }
     }
-
     // UI 업데이트 함수들...
 
     function updateProgressBar(progress, status) {
@@ -2790,31 +2912,24 @@
         
         console.log('🚀 크롤링 UI 준비 완료');
     }
-    
+
     function resetCrawlingState() {
-        isLoading = false;
-        
-        // 크롤링 버튼 복원
-        const crawlBtn = document.getElementById('crawlBtn');
-        if (crawlBtn) {
-            crawlBtn.disabled = false;
-            const lang = window.languages[currentLanguage];
-            crawlBtn.textContent = lang?.start || '크롤링 시작';
-        }
-        
-        // 진행률 바 숨김
         hideProgress();
-        
-        // 취소 버튼 숨김
+        isLoading = false;
+        updateCrawlButton();
         hideCancelButton();
         
-        // WebSocket 연결 정리
         if (currentSocket) {
-            currentSocket.close();
+            try {
+                currentSocket.close();
+            } catch (e) {
+                console.warn('WebSocket 종료 중 오류:', e);
+            }
             currentSocket = null;
         }
         
-        console.log('🔄 크롤링 상태 초기화 완료');
+        currentCrawlId = null;
+        crawlStartTime = null;
     }
    
     function debugCrawlConfig() {
@@ -2872,76 +2987,98 @@
         return startCrawling();
     }
 
-    // 1. 진행률 메시지 처리
+    // 진행률 메시지 처리
     function handleProgressMessage(data) {
-        const progress = data.progress || 0;
+        const progress = Math.min(Math.max(data.progress || 0, 0), 100);
         const step = data.step || 'unknown';
-        const site = data.site || '';
+        const site = (data.site || '').toUpperCase();
         const board = data.board || '';
         const details = data.details || {};
         
-        // 언어팩에서 적절한 메시지 가져오기
+        console.log(`📊 진행률: ${progress}% - ${step}`);
+        
+        // 언어팩에서 메시지 가져오기
         const messageKey = `crawlingSteps.${step}`;
         const translatedMessage = getLocalizedMessage(messageKey, {
-            site: site.toUpperCase(),
+            site: site,
             board: board,
+            page: details.page || details.current_page || '',
+            matched: details.matched_posts || details.matched || '',
+            total: details.total_posts || details.total_checked || '',
+            current: details.current_post || details.current || '',
             ...details
         });
         
         updateProgress(progress, translatedMessage);
     }
-
-    // 2. 상태 메시지 처리
+    // 상태 메시지 처리
     function handleStatusMessage(data) {
         const step = data.step || 'unknown';
-        const site = data.site || '';
+        const site = (data.site || '').toUpperCase();
         const details = data.details || {};
+        
+        console.log(`ℹ️ 상태: ${step}`);
         
         const messageKey = `crawlingStatus.${step}`;
         const translatedMessage = getLocalizedMessage(messageKey, {
-            site: site.toUpperCase(),
+            site: site,
             ...details
         });
         
         showTemporaryMessage(translatedMessage, 'info');
     }
 
-    // 3. 에러 메시지 처리
+    // 에러 메시지 처리
     function handleErrorMessage(data) {
         const errorCode = data.error_code || 'unknown_error';
         const errorDetail = data.error_detail || '';
-        const site = data.site || '';
+        const site = (data.site || '').toUpperCase();
+        
+        console.error(`❌ 오류: ${errorCode}`);
         
         const messageKey = `errors.${errorCode}`;
         const translatedMessage = getLocalizedMessage(messageKey, {
-            site: site.toUpperCase(),
+            site: site,
             detail: errorDetail
         });
         
         showTemporaryMessage(translatedMessage, 'error');
-        handleCrawlingEnd();
+        resetCrawlingState();
     }
 
-    // 4. 완료 메시지 처리
+    // 완료 메시지 처리
     function handleCompleteMessage(data) {
         const totalCount = data.total_count || 0;
-        const site = data.site || '';
+        const site = (data.site || '').toUpperCase();
         const board = data.board || '';
         const startRank = data.start_rank || 1;
         const endRank = data.end_rank || totalCount;
         
+        console.log(`✅ 완료: ${totalCount}개 게시물`);
+        
+        // 결과 데이터 저장 및 표시
+        if (data.data && data.data.length > 0) {
+            crawlResults = data.data;
+            displayResults(data.data);
+            enableDownloadButtons();
+        }
+        
         const messageKey = 'crawling.complete';
         const translatedMessage = getLocalizedMessage(messageKey, {
-            site: site.toUpperCase(),
+            site: site,
             board: board,
             count: totalCount,
             start: startRank,
             end: endRank
         });
         
-        showTemporaryMessage(translatedMessage, 'success');
-        handleCrawlingSuccess(data);
+        const elapsed = crawlStartTime ? 
+            ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
+        
+        showTemporaryMessage(`${translatedMessage} (${elapsed}초)`, 'success');
+        resetCrawlingState();
     }
+
 
     function handleCrawlingEnd() {
         hideProgress();
