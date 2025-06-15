@@ -1,4 +1,4 @@
-# bbc.py - 안정성 극대화 버전
+# bbc.py - 통합 메시지 시스템 적용 (안정성 극대화 버전)
 
 import requests
 from bs4 import BeautifulSoup
@@ -13,12 +13,20 @@ import hashlib
 from dataclasses import dataclass, field
 import aiohttp
 
+# 🔥 통합 메시지 시스템 import
+from core.messages import (
+    create_progress_message, create_error_message, create_complete_message,
+    create_collecting_message, create_filtering_message, create_translation_message,
+    CrawlStep, SiteType, ErrorCode, SuccessType, quick_progress, quick_error,
+    validate_progress_range, sanitize_board_name, format_elapsed_time
+)
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ================================
-# 🎯 BBC URL 자동 감지 시스템 (새로 추가)
+# 🎯 BBC URL 자동 감지 시스템
 # ================================
 
 def detect_bbc_url_and_extract_info(input_text: str) -> dict:
@@ -180,7 +188,7 @@ def analyze_bbc_url_section(url: str, path_parts: list) -> dict:
             "description": f"BBC {main_section} 섹션" if main_section else "BBC 콘텐츠"
         }
 
-def parse_relative_time(self, relative_str: str) -> str:
+def parse_relative_time(relative_str: str) -> str:
     """상대 시간 파싱 ('2 hours ago' 등)"""
     try:
         import re
@@ -424,7 +432,6 @@ def is_bbc_domain(url: str) -> bool:
     url_lower = url.lower()
     return 'bbc.com' in url_lower or 'bbc.co.uk' in url_lower
 
-
 # ================================
 # 🛡️ 안정성 우선 BBC 설정
 # ================================
@@ -566,17 +573,20 @@ class StableBBCCrawler:
                                          websocket=None) -> List[Dict]:
         """최대 안정성 보장 크롤링"""
         
+        start_time = time.time()
         all_articles = []
         
         try:
             logger.info(f"🛡️ 안정성 우선 BBC 크롤링 시작: {board_url}")
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 10,
-                    "status": "🛡️ 5단계 Fallback 크롤러 시작",
-                    "details": "안정성 최우선 모드"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=10,
+                    step=CrawlStep.INITIALIZING,
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    details={"stability_mode": True, "fallback_levels": 5}
+                ))
             
             # 🔥 1단계: 메인 페이지 크롤링
             main_articles = await self._crawl_with_fallback_levels(board_url, websocket)
@@ -585,11 +595,13 @@ class StableBBCCrawler:
             # 🔥 2단계: 세부 섹션 자동 탐지 및 크롤링
             if len(all_articles) < (end_index - start_index + 1) * 2:  # 부족하면 세부 섹션 탐색
                 if websocket:
-                    await websocket.send_json({
-                        "progress": 40,
-                        "status": "🔍 세부 섹션 자동 탐지",
-                        "details": "더 많은 콘텐츠 수집 중..."
-                    })
+                    await websocket.send_json(create_progress_message(
+                        progress=40,
+                        step=CrawlStep.COLLECTING,
+                        site=SiteType.BBC,
+                        board=sanitize_board_name(board_url),
+                        details={"sub_sections": True, "reason": "더 많은 콘텐츠 수집"}
+                    ))
                 
                 sub_articles = await self._auto_discover_and_crawl_subsections(board_url, websocket)
                 all_articles.extend(sub_articles)
@@ -606,12 +618,38 @@ class StableBBCCrawler:
             # 📊 통계 로깅
             await self._log_stability_stats(websocket)
             
+            # 완료 메시지
+            elapsed_time = format_elapsed_time(start_time)
+            if websocket:
+                await websocket.send_json(create_complete_message(
+                    total_count=len(final_articles),
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    start_rank=start_index,
+                    end_rank=start_index + len(final_articles) - 1,
+                    elapsed_time=elapsed_time,
+                    metadata={
+                        "stability_mode": True,
+                        "fallback_stats": self.fallback_stats,
+                        "total_collected": len(all_articles),
+                        "filtered": len(filtered_articles)
+                    }
+                ))
+            
             logger.info(f"✅ 안정성 우선 크롤링 완료: {len(final_articles)}개")
             return final_articles
             
         except Exception as e:
             logger.error(f"안정성 크롤링 오류: {e}")
             # 🚨 최후의 응급 크롤링
+            if websocket:
+                await websocket.send_json(create_progress_message(
+                    progress=50,
+                    step=CrawlStep.COLLECTING,
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    details={"emergency_mode": True}
+                ))
             return await self._emergency_crawl(board_url, start_index, end_index)
     
     async def _crawl_with_fallback_levels(self, url: str, websocket=None) -> List[Dict]:
@@ -815,66 +853,65 @@ class StableBBCCrawler:
         
         return None
     
-    def extract_bbc_datetime(self, container, base_url: str) -> str:
-            """BBC 특화 날짜/시간 추출 함수"""
-            try:
-                # BBC 날짜 선택자들 (우선순위 순)
-                date_selectors = [
-                    '[data-testid="timestamp"]',
-                    'time[datetime]',
-                    '.date',
-                    '.timestamp',
-                    '[datetime]',
-                    '.gel-body-copy time'
-                ]
-                
-                for selector in date_selectors:
-                    date_elem = container.select_one(selector)
-                    if date_elem:
-                        # datetime 속성 우선 확인
-                        if date_elem.get('datetime'):
-                            return self.parse_bbc_datetime(date_elem.get('datetime'))
-                        # 텍스트 내용 파싱
-                        elif date_elem.get_text(strip=True):
-                            return self.parse_bbc_datetime(date_elem.get_text(strip=True))
-                
-                # 기본값: 현재 시간
-                return datetime.now().strftime('%Y.%m.%d %H:%M')
+    def _extract_bbc_datetime(self, container, base_url: str) -> str:
+        """BBC 특화 날짜/시간 추출 함수"""
+        try:
+            # BBC 날짜 선택자들 (우선순위 순)
+            date_selectors = [
+                '[data-testid="timestamp"]',
+                'time[datetime]',
+                '.date',
+                '.timestamp',
+                '[datetime]',
+                '.gel-body-copy time'
+            ]
             
-            except Exception as e:
-                logger.debug(f"BBC 날짜 추출 실패: {e}")
-                return datetime.now().strftime('%Y.%m.%d %H:%M')
-
-    def parse_bbc_datetime(self, date_str: str) -> str:
-            """BBC 날짜 형식 파싱"""
-            try:
-                # BBC 일반적인 형식들
-                formats = [
-                    '%Y-%m-%dT%H:%M:%S.%fZ',  # ISO format
-                    '%Y-%m-%dT%H:%M:%SZ',     # ISO without microseconds
-                    '%d %B %Y',               # "11 June 2025"
-                    '%B %d, %Y',              # "June 11, 2025"
-                    '%d %b %Y',               # "11 Jun 2025"
-                    '%Y-%m-%d',               # "2025-06-11"
-                ]
-                
-                for fmt in formats:
-                    try:
-                        dt = datetime.strptime(date_str.strip(), fmt)
-                        return dt.strftime('%Y.%m.%d %H:%M')
-                    except ValueError:
-                        continue
-                
-                # 상대 시간 처리 ("2 hours ago", "1 day ago" 등)
-                if 'ago' in date_str.lower():
-                    return self.parse_relative_time(date_str)
-                
-                # 파싱 실패시 현재 시간
-                return datetime.now().strftime('%Y.%m.%d %H:%M')
+            for selector in date_selectors:
+                date_elem = container.select_one(selector)
+                if date_elem:
+                    # datetime 속성 우선 확인
+                    if date_elem.get('datetime'):
+                        return self._parse_bbc_datetime(date_elem.get('datetime'))
+                    # 텍스트 내용 파싱
+                    elif date_elem.get_text(strip=True):
+                        return self._parse_bbc_datetime(date_elem.get_text(strip=True))
             
-            except Exception:
-                return datetime.now().strftime('%Y.%m.%d %H:%M')
+            # 기본값: 현재 시간
+            return datetime.now().strftime('%Y.%m.%d %H:%M')
+        
+        except Exception as e:
+            logger.debug(f"BBC 날짜 추출 실패: {e}")
+            return datetime.now().strftime('%Y.%m.%d %H:%M')
 
+    def _parse_bbc_datetime(self, date_str: str) -> str:
+        """BBC 날짜 형식 파싱"""
+        try:
+            # BBC 일반적인 형식들
+            formats = [
+                '%Y-%m-%dT%H:%M:%S.%fZ',  # ISO format
+                '%Y-%m-%dT%H:%M:%SZ',     # ISO without microseconds
+                '%d %B %Y',               # "11 June 2025"
+                '%B %d, %Y',              # "June 11, 2025"
+                '%d %b %Y',               # "11 Jun 2025"
+                '%Y-%m-%d',               # "2025-06-11"
+            ]
+            
+            for fmt in formats:
+                try:
+                    dt = datetime.strptime(date_str.strip(), fmt)
+                    return dt.strftime('%Y.%m.%d %H:%M')
+                except ValueError:
+                    continue
+            
+            # 상대 시간 처리 ("2 hours ago", "1 day ago" 등)
+            if 'ago' in date_str.lower():
+                return parse_relative_time(date_str)
+            
+            # 파싱 실패시 현재 시간
+            return datetime.now().strftime('%Y.%m.%d %H:%M')
+        
+        except Exception:
+            return datetime.now().strftime('%Y.%m.%d %H:%M')
 
     def _create_article_safe(self, title: str, url: str, base_url: str, method: str, container = None) -> Optional[Dict]:
         """안전한 기사 객체 생성"""
@@ -907,8 +944,8 @@ class StableBBCCrawler:
                 search_query = title.replace(' ', '+')
                 url = f"https://www.bbc.com/search?q={search_query}"
             
-
-            date_info = self.extract_bbc_datetime(container, base_url) if container else datetime.now().strftime('%Y.%m.%d %H:%M')
+            date_info = self._extract_bbc_datetime(container, base_url) if container else datetime.now().strftime('%Y.%m.%d %H:%M')
+            
             # 기사 객체 생성
             article = {
                 "번호": 0,  # 나중에 부여
@@ -952,11 +989,13 @@ class StableBBCCrawler:
             sub_sections = section_config.get('sub_sections', [])
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 50,
-                    "status": f"🔍 {section} 세부섹션 탐색",
-                    "details": f"{len(sub_sections)}개 하위 섹션 확인"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=50,
+                    step=CrawlStep.COLLECTING,
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(main_url),
+                    details={"sub_sections": len(sub_sections), "section": section}
+                ))
             
             # 각 세부 섹션 크롤링 시도
             for idx, sub_section in enumerate(sub_sections[:3]):  # 최대 3개까지만
@@ -974,11 +1013,13 @@ class StableBBCCrawler:
                     subsection_articles.extend(sub_articles[:5])  # 각 섹션에서 최대 5개
                     
                     if websocket:
-                        await websocket.send_json({
-                            "progress": 50 + (idx + 1) * 5,
-                            "status": f"📖 {sub_section}: {len(sub_articles)}개 발견",
-                            "details": f"세부섹션 크롤링 진행 중..."
-                        })
+                        await websocket.send_json(create_progress_message(
+                            progress=50 + (idx + 1) * 5,
+                            step=CrawlStep.COLLECTING,
+                            site=SiteType.BBC,
+                            board=sub_section,
+                            details={"articles_found": len(sub_articles)}
+                        ))
                     
                     # 너무 많이 수집했으면 중단
                     if len(subsection_articles) >= 15:
@@ -1236,11 +1277,13 @@ class StableBBCCrawler:
         logger.info(stats_msg + f"| 총합: {total_extracted}")
         
         if websocket:
-            await websocket.send_json({
-                "progress": 95,
-                "status": "📊 안정성 통계 완료",
-                "details": f"총 {total_extracted}개 추출, 다단계 fallback 성공"
-            })
+            await websocket.send_json(create_progress_message(
+                progress=95,
+                step=CrawlStep.PROCESSING,
+                site=SiteType.BBC,
+                board="",
+                details={"fallback_stats": self.fallback_stats, "total": total_extracted}
+            ))
     
     async def __aenter__(self):
         return self
@@ -1260,16 +1303,20 @@ async def crawl_bbc_board(board_url: str, limit: int = 50, sort: str = "recent",
                          end_index: int = 20) -> List[Dict]:
     """안정성 극대화 BBC 크롤링 메인 함수"""
     
+    start_time = time.time()
+    
     async with StableBBCCrawler() as crawler:
         try:
             logger.info(f"🛡️ 안정성 우선 BBC 크롤링 시작: {board_url}")
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 5,
-                    "status": "🛡️ BBC 안정성 크롤러 초기화",
-                    "details": "5단계 Fallback 시스템 준비"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=5,
+                    step=CrawlStep.INITIALIZING,
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    details={"stability_mode": True, "range": f"{start_index}-{end_index}"}
+                ))
             
             # BBC 사이트 확인 (관대하게)
             if 'bbc' not in board_url.lower():
@@ -1287,22 +1334,28 @@ async def crawl_bbc_board(board_url: str, limit: int = 50, sort: str = "recent",
                     articles = filter_bbc_by_date_safe(articles, start_date, end_date)
                     
                     if websocket:
-                        await websocket.send_json({
-                            "progress": 85,
-                            "status": "📅 안전한 날짜 필터링",
-                            "details": f"{original_count}개 → {len(articles)}개"
-                        })
+                        await websocket.send_json(create_filtering_message(
+                            progress=85,
+                            matched_posts=len(articles),
+                            total_checked=original_count,
+                            site=SiteType.BBC
+                        ))
                         
                 except Exception as e:
                     logger.warning(f"날짜 필터링 실패하지만 계속 진행: {e}")
                     # 날짜 필터링 실패해도 원본 articles 유지
             
+            elapsed_time = format_elapsed_time(start_time)
             if websocket:
-                await websocket.send_json({
-                    "progress": 100,
-                    "status": "✅ BBC 안정성 크롤링 완료!",
-                    "details": f"{len(articles)}개 기사 수집 성공"
-                })
+                await websocket.send_json(create_complete_message(
+                    total_count=len(articles),
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    start_rank=start_index,
+                    end_rank=start_index + len(articles) - 1,
+                    elapsed_time=elapsed_time,
+                    metadata={"stability_mode": True}
+                ))
             
             logger.info(f"✅ BBC 안정성 크롤링 성공: {len(articles)}개")
             return articles
@@ -1312,20 +1365,26 @@ async def crawl_bbc_board(board_url: str, limit: int = 50, sort: str = "recent",
             
             # 🚨 오류 발생시에도 최소한의 결과 제공
             if websocket:
-                await websocket.send_json({
-                    "progress": 50,
-                    "status": "🚨 응급 모드 활성화",
-                    "details": "최소한의 결과라도 제공 시도"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=50,
+                    step=CrawlStep.COLLECTING,
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    details={"emergency_mode": True}
+                ))
             
             emergency_result = await crawler._emergency_crawl(board_url, start_index, end_index)
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 100,
-                    "status": "🚨 응급 크롤링 완료",
-                    "details": f"최소 {len(emergency_result)}개 결과 확보"
-                })
+                await websocket.send_json(create_complete_message(
+                    total_count=len(emergency_result),
+                    site=SiteType.BBC,
+                    board=sanitize_board_name(board_url),
+                    start_rank=start_index,
+                    end_rank=start_index + len(emergency_result) - 1,
+                    elapsed_time=format_elapsed_time(start_time),
+                    metadata={"emergency_mode": True}
+                ))
             
             return emergency_result
 
@@ -1449,7 +1508,6 @@ def is_bbc_url(url: str) -> bool:
     
     return False
 
-
 # ================================
 # 🧪 테스트 함수
 # ================================
@@ -1482,4 +1540,3 @@ if __name__ == "__main__":
     import asyncio
     print("🛡️ BBC 안정성 크롤러 테스트 시작")
     asyncio.run(test_stable_bbc_crawler())
-
