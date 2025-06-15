@@ -15,6 +15,14 @@ import time
 from functools import lru_cache
 import hashlib
 
+# 🔥 통합 메시지 시스템 import
+from core.utils import (
+    create_progress_message, create_error_message, create_complete_message,
+    create_collecting_message, create_filtering_message, create_translation_message,
+    CrawlStep, SiteType, ErrorCode, SuccessType, quick_progress, quick_error,
+    validate_progress_range, sanitize_board_name, format_elapsed_time
+)
+
 # 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +34,7 @@ logger = logging.getLogger(__name__)
 # 🔥 확장된 Lemmy 설정 및 상수
 # ================================
 
-#안정적인 인스턴스 우선순위
+# 안정적인 인스턴스 우선순위
 STABILITY_TIER = {
     # Tier 1: 가장 안정적 (우선 시도)
     'tier1': ['lemmy.ml', 'lemmy.world', 'beehaw.org'],
@@ -94,8 +102,6 @@ LEMMY_CONFIG = {
     'cache_ttl': 240,
 }
 
-# API 엔드포인트 우선순위
-
 # 🔥 Lemmy API 엔드포인트 매핑
 LEMMY_API_ENDPOINTS = {
     'posts': '/api/v3/post/list',
@@ -109,13 +115,6 @@ LEMMY_API_ENDPOINTS = {
         'community': '/feeds/c/{community}.xml'
     }
 }
-LEMMY_API_ENDPOINTS['priorities'] = [
-    '/api/v3/post/list',   # 1순위: 메인 API
-    '/feeds/all.xml',      # 2순위: RSS 전체
-    '/feeds/local.xml',    # 3순위: RSS 로컬
-    '/api/v3/community/list', # 4순위: 커뮤니티 API
-    '/'                    # 5순위: HTML 파싱
-]
 
 # 🚀 Lemmy 시간 필터 매핑 추가
 LEMMY_TIME_FILTER_MAPPING = {
@@ -243,7 +242,6 @@ class LemmyCache:
         self.failed_instances = set()  # 실패한 인스턴스 추적
         self.instance_success_time = {}  # 마지막 성공 시간
     
-    
     def _generate_key(self, *args, **kwargs) -> str:
         """캐시 키 생성"""
         key_data = str(args) + str(sorted(kwargs.items()))
@@ -363,8 +361,8 @@ class EnhancedLemmyInstanceManager:
         except Exception:
             return []
     
-    #커뮤니티에 가장 적합한 안정적인 인스턴스 선택
     async def get_best_instance_for_community(self, community_name: str) -> str:
+        """커뮤니티에 가장 적합한 안정적인 인스턴스 선택"""
         # 1. 커뮤니티별 권장 인스턴스 확인
         community_preferences = {
             'asklemmy': ['lemmy.ml', 'lemmy.world'],
@@ -391,8 +389,8 @@ class EnhancedLemmyInstanceManager:
         # 3. 기본값
         return 'lemmy.ml'
     
-    #빠른 헬스체크 (5초 이내)
     async def _quick_health_check(self, domain: str) -> bool:
+        """빠른 헬스체크 (5초 이내)"""
         try:
             # 🔥 타임아웃 단축 및 재시도 로직
             timeout = aiohttp.ClientTimeout(total=5, connect=2)
@@ -420,8 +418,8 @@ class EnhancedLemmyInstanceManager:
             logger.debug(f"헬스체크 예외 {domain}: {e}")
             return True  # 🔥 예외 발생해도 시도
     
-    #향상된 인스턴스 정보 수집
     async def get_instance_info(self, domain: str) -> Optional[LemmyInstance]:
+        """향상된 인스턴스 정보 수집"""
         # 신뢰할 수 없는 인스턴스는 건너뛰기
         if not self.cache.is_instance_reliable(domain):
             logger.debug(f"신뢰할 수 없는 인스턴스 건너뛰기: {domain}")
@@ -456,6 +454,32 @@ class EnhancedLemmyInstanceManager:
         except Exception as e:
             logger.debug(f"인스턴스 정보 수집 실패 ({domain}): {e}")
             self.cache.mark_instance_failed(domain)
+        
+        return None
+    
+    async def _get_nodeinfo(self, domain: str) -> Optional[LemmyInstance]:
+        """NodeInfo 2.0으로 정보 수집"""
+        try:
+            url = f"https://{domain}/.well-known/nodeinfo"
+            async with self.session.get(url) as response:
+                if response.status == 200:
+                    nodeinfo_data = await response.json()
+                    links = nodeinfo_data.get('links', [])
+                    
+                    # NodeInfo 2.0 링크 찾기
+                    nodeinfo_url = None
+                    for link in links:
+                        if link.get('rel') == 'http://nodeinfo.diaspora.software/ns/schema/2.0':
+                            nodeinfo_url = link.get('href')
+                            break
+                    
+                    if nodeinfo_url:
+                        async with self.session.get(nodeinfo_url) as ni_response:
+                            if ni_response.status == 200:
+                                data = await ni_response.json()
+                                return self._parse_nodeinfo(domain, data)
+        except Exception as e:
+            logger.debug(f"NodeInfo 조회 실패 ({domain}): {e}")
         
         return None
     
@@ -613,11 +637,9 @@ class LemmyConditionChecker:
                 continue
         return None
 
-
 # ================================
 # 🔥 고급 커뮤니티 검색기
 # ================================
-
 
 class AdvancedLemmyCommunitySearcher:
     """고급 Lemmy 커뮤니티 검색기"""
@@ -815,176 +837,6 @@ class AdvancedLemmyCommunitySearcher:
         
         # 기본값
         return community_input, "", ""
-    
-    async def crawl_with_smart_pagination(self, community_url: str, limit: int = 50,
-                                        sort: str = "Hot", min_views: int = 0,
-                                        min_likes: int = 0, start_date: str = None,
-                                        end_date: str = None, websocket=None,
-                                        start_index: int = 1, end_index: int = 20) -> List[Dict]:
-        """🔥 새로운 메서드: 지능적 페이지네이션 크롤링"""
-        
-        try:
-            logger.info(f"지능적 Lemmy 크롤링 시작: {community_url}")
-            
-            # URL 파싱
-            url, community_name, instance = self.community_searcher.resolve_community_url(community_url)
-            
-            if websocket:
-                await websocket.send_json({
-                    "progress": 10,
-                    "status": f"🧠 지능적 크롤링 모드",
-                    "details": f"목표: {start_index}-{end_index}위, 커뮤니티: {community_name}@{instance}"
-                })
-            
-            # 🔥 1단계: 페이지 범위 최적화
-            optimal_pages = await self._calculate_optimal_page_range(
-                url, community_name, instance, start_index, end_index, 
-                start_date, end_date, websocket
-            )
-            
-            # 🔥 2단계: 조건 기반 크롤링
-            condition_checker = LemmyConditionChecker(
-                min_views=min_views,
-                min_likes=min_likes,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            all_posts = []
-            matched_posts = []
-            consecutive_fails = 0
-            
-            for page in range(1, optimal_pages + 1):
-                try:
-                    if websocket:
-                        await websocket.send_json({
-                            "progress": 20 + int((page / optimal_pages) * 50),
-                            "status": f"📄 {page}/{optimal_pages} 페이지 크롤링",
-                            "details": f"조건 만족: {len(matched_posts)}개"
-                        })
-                    
-                    # 페이지별 크롤링
-                    page_posts = await self._crawl_single_page(
-                        url, community_name, instance, page, sort, websocket
-                    )
-                    
-                    if not page_posts:
-                        consecutive_fails += 1
-                        if consecutive_fails >= 3:  # 연속 3페이지 실패시 중단
-                            logger.info("연속 페이지 실패로 크롤링 중단")
-                            break
-                        continue
-                    
-                    consecutive_fails = 0
-                    page_matched = 0
-                    
-                    # 게시물별 조건 검사
-                    for post in page_posts:
-                        all_posts.append(post)
-                        
-                        if condition_checker.check_conditions(post):
-                            matched_posts.append(post)
-                            page_matched += 1
-                            
-                            # 목표 달성시 조기 종료
-                            if len(matched_posts) >= (end_index - start_index + 1):
-                                logger.info(f"목표 달성으로 조기 종료: {len(matched_posts)}개")
-                                break
-                    
-                    # 🔥 지능적 중단 조건
-                    if page_matched == 0 and len(page_posts) > 5:
-                        # 페이지 전체가 조건 불만족인 경우
-                        if start_date and end_date:
-                            logger.info("날짜 범위 초과로 크롤링 중단")
-                            break
-                    
-                    if len(matched_posts) >= (end_index - start_index + 1):
-                        break
-                        
-                    await asyncio.sleep(0.5)  # 레이트 리미팅
-                    
-                except Exception as e:
-                    logger.warning(f"페이지 {page} 크롤링 실패: {e}")
-                    continue
-            
-            # 🔥 3단계: 정확한 범위 적용
-            final_posts = matched_posts[start_index-1:end_index] if start_index <= len(matched_posts) else matched_posts
-            
-            # 번호 재부여
-            for idx, post in enumerate(final_posts):
-                post['번호'] = start_index + idx
-            
-            if websocket:
-                await websocket.send_json({
-                    "progress": 85,
-                    "status": f"✅ {len(final_posts)}개 게시물 최종 선별",
-                    "details": f"전체 {len(all_posts)}개 → 조건만족 {len(matched_posts)}개 → 범위적용 {len(final_posts)}개"
-                })
-            
-            return final_posts
-            
-        except Exception as e:
-            logger.error(f"지능적 Lemmy 크롤링 오류: {e}")
-            raise
-    
-
-    async def _calculate_optimal_page_range(self, url: str, community_name: str, instance: str,
-                                          start_index: int, end_index: int, 
-                                          start_date: str, end_date: str, websocket=None) -> int:
-        """🔥 최적 페이지 범위 계산"""
-        
-        # 기본값
-        base_pages = max(3, (end_index // 20) + 2)
-        
-        # 날짜 필터가 있으면 더 많이
-        if start_date and end_date:
-            base_pages *= 3
-            
-        # 커뮤니티 활성도 체크
-        try:
-            instance_info = await self.instance_manager.get_instance_info(instance)
-            if instance_info and instance_info.users > 10000:
-                base_pages = min(base_pages, 8)  # 대형 인스턴스는 제한
-            else:
-                base_pages = min(base_pages, 15)  # 소형 인스턴스는 더 탐색
-                
-        except Exception:
-            pass
-        
-        if websocket:
-            await websocket.send_json({
-                "progress": 15,
-                "status": f"📊 최적 페이지 범위: {base_pages}페이지",
-                "details": f"날짜필터: {'있음' if start_date and end_date else '없음'}"
-            })
-        
-        return base_pages
-    
-    async def _crawl_single_page(self, url: str, community_name: str, instance: str,
-                               page: int, sort: str, websocket=None) -> List[Dict]:
-        """🔥 단일 페이지 크롤링"""
-        
-        try:
-            api_url = f"https://{instance}{LEMMY_API_ENDPOINTS['posts']}"
-            params = {
-                'limit': 50,
-                'sort': LEMMY_SORT_MAPPING.get(sort.lower(), sort),
-                'type_': 'All',
-                'page': page
-            }
-            
-            if community_name:
-                params['community_name'] = community_name
-            
-            async with self.instance_manager.session.get(api_url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_enhanced_api_response(data, instance)
-                    
-        except Exception as e:
-            logger.debug(f"페이지 {page} 크롤링 실패: {e}")
-        
-        return []
 
 # ================================
 # 🔥 향상된 Lemmy 크롤러
@@ -999,7 +851,6 @@ class AdvancedLemmyCrawler:
         self.cache = LemmyCache(ttl=LEMMY_CONFIG['cache_ttl'])
         self.rate_limiter = {}  # 인스턴스별 레이트 리미터
     
-
     async def crawl_lemmy_community(self, community_url: str, limit: int = 50, 
                                 sort: str = "Hot", min_views: int = 0, 
                                 min_likes: int = 0, start_date: str = None, 
@@ -1007,6 +858,8 @@ class AdvancedLemmyCrawler:
                                 enforce_date_limit: bool = False,
                                 time_filter: str = "day") -> List[Dict]:
         """향상된 에러 처리가 포함된 Lemmy 크롤링"""
+        start_time = time.time()
+        
         try:
             logger.info(f"향상된 Lemmy 크롤링 시작: {community_url}")
             
@@ -1024,20 +877,24 @@ class AdvancedLemmyCrawler:
                     url, community_name, instance = self.community_searcher.resolve_community_url(corrected_url)
                     
                     if websocket:
-                        await websocket.send_json({
-                            "progress": 5,
-                            "status": f"🔄 자동 보정: {corrected_url}",
-                            "details": "기본 인스턴스(lemmy.world)를 사용합니다"
-                        })
+                        await websocket.send_json(create_progress_message(
+                            progress=5,
+                            step=CrawlStep.INITIALIZING,
+                            site=SiteType.LEMMY,
+                            board=corrected_url,
+                            details={"auto_correction": True, "original": community_url}
+                        ))
                 else:
                     raise Exception(f"올바르지 않은 Lemmy 커뮤니티 형식입니다: {community_url}\n예시: technology@lemmy.world")
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 10,
-                    "status": f"🌐 Lemmy 인스턴스 분석: {instance}",
-                    "details": f"커뮤니티: {community_name}"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=10,
+                    step=CrawlStep.DETECTING_SITE,
+                    site=SiteType.LEMMY,
+                    board=community_name,
+                    details={"instance": instance}
+                ))
             
             # 🔥 더 유연한 인스턴스 상태 확인
             instance_info = await self.instance_manager.get_instance_info(instance)
@@ -1059,11 +916,13 @@ class AdvancedLemmyCrawler:
             try:
                 # 방법 1: 향상된 API 크롤링
                 if websocket:
-                    await websocket.send_json({
-                        "progress": 30,
-                        "status": "🔍 API 크롤링 시도 중...",
-                        "details": f"인스턴스: {instance}"
-                    })
+                    await websocket.send_json(create_progress_message(
+                        progress=30,
+                        step=CrawlStep.CONNECTING,
+                        site=SiteType.LEMMY,
+                        board=community_name,
+                        details={"method": "API", "instance": instance}
+                    ))
                 
                 posts = await self._try_api_crawling_with_fallback(
                     url, community_name, instance, limit, sort, time_filter, websocket
@@ -1078,11 +937,13 @@ class AdvancedLemmyCrawler:
                 try:
                     # 방법 2: RSS 크롤링
                     if websocket:
-                        await websocket.send_json({
-                            "progress": 50,
-                            "status": "📡 RSS 크롤링 시도 중...",
-                            "details": "API 실패로 RSS 시도"
-                        })
+                        await websocket.send_json(create_progress_message(
+                            progress=50,
+                            step=CrawlStep.COLLECTING,
+                            site=SiteType.LEMMY,
+                            board=community_name,
+                            details={"method": "RSS", "reason": "API 실패"}
+                        ))
                     
                     posts = await self._crawl_via_enhanced_rss(url, community_name, instance, limit)
                     attempted_methods.append("RSS")
@@ -1095,11 +956,13 @@ class AdvancedLemmyCrawler:
                 try:
                     # 방법 3: HTML 크롤링
                     if websocket:
-                        await websocket.send_json({
-                            "progress": 70,
-                            "status": "📄 HTML 크롤링 시도 중...",
-                            "details": "RSS 실패로 HTML 시도"
-                        })
+                        await websocket.send_json(create_progress_message(
+                            progress=70,
+                            step=CrawlStep.COLLECTING,
+                            site=SiteType.LEMMY,
+                            board=community_name,
+                            details={"method": "HTML", "reason": "RSS 실패"}
+                        ))
                     
                     posts = await self._crawl_via_enhanced_html(url, instance, limit)
                     attempted_methods.append("HTML")
@@ -1111,29 +974,47 @@ class AdvancedLemmyCrawler:
             # 🔥 더 자세한 에러 메시지 제공
             if not posts:
                 error_details = f"""
-    Lemmy 커뮤니티 '{community_name}@{instance}'에서 데이터를 가져올 수 없습니다.
+Lemmy 커뮤니티 '{community_name}@{instance}'에서 데이터를 가져올 수 없습니다.
 
-    시도한 방법들: {', '.join(attempted_methods)}
+시도한 방법들: {', '.join(attempted_methods)}
 
-    가능한 해결책:
-    1. 커뮤니티 이름 확인:
-    • technology@lemmy.world ✓
-    • asklemmy@lemmy.ml ✓
-    • programming@programming.dev ✓
+가능한 해결책:
+1. 커뮤니티 이름 확인:
+• technology@lemmy.world ✓
+• asklemmy@lemmy.ml ✓
+• programming@programming.dev ✓
 
-    2. 다른 인스턴스 시도:
-    • {community_name}@lemmy.ml
-    • {community_name}@beehaw.org
-    • {community_name}@sh.itjust.works
+2. 다른 인스턴스 시도:
+• {community_name}@lemmy.ml
+• {community_name}@beehaw.org
+• {community_name}@sh.itjust.works
 
-    3. 잠시 후 다시 시도 (인스턴스가 일시적으로 불안정할 수 있음)
+3. 잠시 후 다시 시도 (인스턴스가 일시적으로 불안정할 수 있음)
 
-    4. 전체 URL 형태로 시도:
-    • https://{instance}/c/{community_name}
+4. 전체 URL 형태로 시도:
+• https://{instance}/c/{community_name}
                 """
+                
+                if websocket:
+                    await websocket.send_json(create_error_message(
+                        error_code=ErrorCode.NO_POSTS_FOUND,
+                        error_detail=error_details.strip(),
+                        site=SiteType.LEMMY
+                    ))
+                
                 raise Exception(error_details.strip())
             
             # 필터링 적용
+            if websocket:
+                await websocket.send_json(create_filtering_message(
+                    progress=75,
+                    matched_posts=len(posts),
+                    total_checked=len(posts),
+                    site=SiteType.LEMMY,
+                    min_views=min_views,
+                    min_likes=min_likes
+                ))
+            
             if min_views > 0 or min_likes > 0:
                 posts = await self._apply_metric_filters(posts, min_views, min_likes)
             
@@ -1141,22 +1022,44 @@ class AdvancedLemmyCrawler:
                 posts = await self._apply_exact_date_filter(posts, start_date, end_date)
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 95,
-                    "status": f"✅ 성공: {len(posts)}개 게시물 수집",
-                    "details": f"방법: {attempted_methods[-1] if attempted_methods else 'Unknown'}"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=95,
+                    step=CrawlStep.PROCESSING,
+                    site=SiteType.LEMMY,
+                    board=community_name,
+                    details={"final_posts": len(posts), "method": attempted_methods[-1] if attempted_methods else 'Unknown'}
+                ))
             
             # 메타데이터 보강
             enhanced_posts = await self._enhance_post_metadata(posts, instance_info)
+            
+            # 완료 메시지
+            elapsed_time = format_elapsed_time(start_time)
+            if websocket:
+                await websocket.send_json(create_complete_message(
+                    total_count=len(enhanced_posts),
+                    site=SiteType.LEMMY,
+                    board=community_name,
+                    elapsed_time=elapsed_time,
+                    metadata={
+                        "instance": instance,
+                        "attempted_methods": attempted_methods,
+                        "final_method": attempted_methods[-1] if attempted_methods else 'Unknown'
+                    }
+                ))
             
             logger.info(f"Lemmy 크롤링 완료: {len(enhanced_posts)}개 게시물")
             return enhanced_posts
             
         except Exception as e:
             logger.error(f"Lemmy 크롤링 오류: {e}")
+            if websocket:
+                await websocket.send_json(quick_error(
+                    ErrorCode.CRAWLING_ERROR,
+                    SiteType.LEMMY,
+                    str(e)
+                ))
             raise
-
 
     async def _try_api_crawling_with_fallback(self, url: str, community_name: str, 
                                             instance: str, limit: int, sort: str,
@@ -1199,11 +1102,13 @@ class AdvancedLemmyCrawler:
         for attempt_idx, attempt in enumerate(api_attempts):
             try:
                 if websocket:
-                    await websocket.send_json({
-                        "progress": 30 + attempt_idx * 5,
-                        "status": f"🔍 API 시도 {attempt_idx + 1}/3",
-                        "details": f"엔드포인트: {attempt['url'].split('/')[-1]}"
-                    })
+                    await websocket.send_json(create_progress_message(
+                        progress=30 + attempt_idx * 5,
+                        step=CrawlStep.COLLECTING,
+                        site=SiteType.LEMMY,
+                        board=community_name,
+                        details={"api_attempt": attempt_idx + 1, "total_attempts": len(api_attempts)}
+                    ))
                 
                 async with self.instance_manager.session.get(
                     attempt['url'], 
@@ -1227,8 +1132,8 @@ class AdvancedLemmyCrawler:
                         
                         if posts:
                             logger.info(f"API 시도 {attempt_idx + 1} 성공: {len(posts)}개 게시물")
-                            return posts
-                            
+                            return posts[:limit]
+                        
                     else:
                         logger.debug(f"API 시도 {attempt_idx + 1} 실패: HTTP {response.status}")
                         
@@ -1236,388 +1141,6 @@ class AdvancedLemmyCrawler:
                 logger.debug(f"API 시도 {attempt_idx + 1} 타임아웃")
             except Exception as e:
                 logger.debug(f"API 시도 {attempt_idx + 1} 오류: {e}")
-        
-        return []
-
-
-    def _parse_search_api_response(self, data: Dict, instance: str, community_name: str) -> List[Dict]:
-        """검색 API 응답 파싱"""
-        posts = []
-        
-        try:
-            post_list = data.get('posts', [])
-            
-            for idx, item in enumerate(post_list):
-                try:
-                    post_data = item.get('post', {})
-                    counts = item.get('counts', {})
-                    creator = item.get('creator', {})
-                    community = item.get('community', {})
-                    
-                    # 커뮤니티 이름 확인
-                    if community_name.lower() not in community.get('name', '').lower():
-                        continue
-                    
-                    # 기본 정보
-                    title = post_data.get('name', f'Search Result {idx + 1}')
-                    body = post_data.get('body', '')
-                    url = post_data.get('ap_id', post_data.get('url', ''))
-                    
-                    posts.append({
-                        "번호": idx + 1,
-                        "원제목": title,
-                        "번역제목": None,
-                        "링크": url,
-                        "원문URL": url,
-                        "본문": body[:200] + "..." if len(body) > 200 else body,
-                        "조회수": counts.get('comments', 0),
-                        "추천수": counts.get('score', 0),
-                        "댓글수": counts.get('comments', 0),
-                        "작성일": self._format_lemmy_date(post_data.get('published', '')),
-                        "작성자": creator.get('name', '익명'),
-                        "커뮤니티": community.get('name', ''),
-                        "인스턴스": instance,
-                        "크롤링방식": "Lemmy-Search-API"
-                    })
-                    
-                except Exception as e:
-                    logger.debug(f"검색 결과 파싱 오류: {e}")
-                    continue
-            
-            return posts
-            
-        except Exception as e:
-            logger.error(f"검색 API 응답 파싱 오류: {e}")
-            return []
-    
-    async def _crawl_with_date_filtering(self, url: str, community_name: str, 
-                                       instance: str, limit: int, sort: str,
-                                       start_date: str, end_date: str, 
-                                       time_filter: str, websocket=None) -> List[Dict]:
-        """날짜 필터링이 있는 경우: 사이트 레벨 + 클라이언트 레벨 조합"""
-        
-        # 🚀 1단계: 사이트 자체 시간 필터를 활용해서 범위 좁히기
-        if websocket:
-            await websocket.send_json({
-                "progress": 40,
-                "status": f"📅 1단계: 사이트 시간 필터 적용 ({time_filter})",
-                "details": "서버 레벨에서 시간 범위 좁히기"
-            })
-        
-        # 시간 필터에 맞는 Lemmy 정렬 방식 선택
-        if time_filter in LEMMY_TIME_FILTER_MAPPING:
-            time_based_sort = LEMMY_TIME_FILTER_MAPPING[time_filter]
-        else:
-            time_based_sort = sort
-            
-        # 사이트 레벨 필터링으로 1차 수집
-        posts = await self._crawl_via_enhanced_api_with_time_filter(
-            url, community_name, instance, limit * 3, time_based_sort, time_filter, websocket
-        )
-        
-        if not posts:
-            # API 실패시 RSS 시도
-            posts = await self._crawl_via_enhanced_rss(url, community_name, instance, limit * 3)
-        
-        if not posts:
-            # RSS 실패시 HTML 시도
-            posts = await self._crawl_via_enhanced_html(url, instance, limit * 3)
-        
-        # 🚀 2단계: 클라이언트 레벨에서 정확한 날짜 필터링
-        if posts:
-            if websocket:
-                await websocket.send_json({
-                    "progress": 70,
-                    "status": f"📅 2단계: 정확한 날짜 필터링",
-                    "details": f"{len(posts)}개 중에서 {start_date}~{end_date} 범위 추출"
-                })
-            
-            filtered_posts = await self._apply_exact_date_filter(posts, start_date, end_date)
-            return filtered_posts
-        
-        return []
-
-    async def _crawl_with_site_sorting(self, url: str, community_name: str,
-                                     instance: str, limit: int, sort: str,
-                                     time_filter: str, websocket=None) -> List[Dict]:
-        """일반 모드: 사이트 자체 정렬만 사용"""
-        
-        # 🚀 사이트 자체 정렬 우선 사용
-        if websocket:
-            await websocket.send_json({
-                "progress": 40,
-                "status": f"🎯 사이트 정렬 활용: {sort}",
-                "details": "Lemmy 자체 정렬 시스템 활용"
-            })
-        
-        # 1. API 크롤링 (사이트 정렬 활용)
-        posts = await self._crawl_via_enhanced_api_with_pagination(
-            url, community_name, instance, limit, sort, websocket
-        )
-        
-        if not posts:
-            # 2. RSS 크롤링 (API 실패시)
-            if websocket:
-                await websocket.send_json({
-                    "progress": 60,
-                    "status": "📡 RSS 피드 크롤링...",
-                    "details": "API 실패로 RSS 시도"
-                })
-            posts = await self._crawl_via_enhanced_rss(url, community_name, instance, limit)
-        
-        if not posts:
-            # 3. HTML 크롤링 (최후 수단)
-            if websocket:
-                await websocket.send_json({
-                    "progress": 80,
-                    "status": "📄 HTML 파싱 크롤링...",
-                    "details": "RSS 실패로 HTML 시도"
-                })
-            posts = await self._crawl_via_enhanced_html(url, instance, limit)
-        
-        return posts
-
-    async def _crawl_via_enhanced_api_with_time_filter(self, url: str, community_name: str, 
-                                                     instance: str, limit: int, sort: str,
-                                                     time_filter: str, websocket=None) -> List[Dict]:
-        """시간 필터를 활용한 API 크롤링"""
-        try:
-            api_url = f"https://{instance}{LEMMY_API_ENDPOINTS['posts']}"
-            
-            # 🚀 Lemmy API 파라미터에 시간 필터 추가
-            params = {
-                'limit': min(limit, 50),
-                'sort': LEMMY_SORT_MAPPING.get(sort.lower(), sort),
-                'type_': 'All'
-            }
-            
-            # 커뮤니티 특정
-            if community_name:
-                params['community_name'] = community_name
-            
-            # 🔥 핵심: 시간 필터 적용 (Lemmy API 레벨)
-            if time_filter and time_filter != 'all':
-                if time_filter in LEMMY_TIME_FILTER_MAPPING:
-                    params['sort'] = LEMMY_TIME_FILTER_MAPPING[time_filter]
-                    logger.info(f"📅 Lemmy API 시간 필터 적용: {params['sort']}")
-            
-            async with self.instance_manager.session.get(api_url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    posts = self._parse_enhanced_api_response(data, instance)
-                    
-                    if posts:
-                        logger.info(f"시간 필터 API 크롤링 성공: {len(posts)}개 게시물")
-                        return posts
-            
-        except Exception as e:
-            logger.debug(f"시간 필터 API 크롤링 실패: {e}")
-        
-        return []
-
-    #정확한 날짜 필터링
-    async def _apply_exact_date_filter(self, posts: List[Dict], start_date: str, end_date: str) -> List[Dict]:
-        if not start_date or not end_date:
-            return posts
-            
-        try:
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-            
-            filtered_posts = []
-            for post in posts:
-                post_date_str = post.get('작성일', '')
-                post_date = self._parse_post_date_flexible(post_date_str)  # 🔥 유연한 파싱
-                
-                if post_date:
-                    if start_dt <= post_date <= end_dt:
-                        filtered_posts.append(post)
-                    else:
-                        # 🔥 디버깅을 위한 로그
-                        logger.debug(f"날짜 필터 제외: {post_date_str} ({post_date}) not in {start_date}~{end_date}")
-                else:
-                    # 🔥 날짜 파싱 실패한 게시물도 포함 (너무 엄격하지 않게)
-                    logger.debug(f"날짜 파싱 실패로 포함: {post_date_str}")
-                    filtered_posts.append(post)
-            
-            logger.info(f"날짜 필터링: {len(posts)} -> {len(filtered_posts)}개 (제외된 이유 확인 필요)")
-            return filtered_posts
-            
-        except Exception as e:
-            logger.error(f"날짜 필터링 오류: {e}")
-            return posts  # 🔥 오류시 원본 반환
-    
-    """유연한 게시물 날짜 파싱"""
-    def _parse_post_date_flexible(self, date_str: str) -> Optional[datetime]:
-        if not date_str:
-            return None
-        
-        # 🔥 Lemmy 특화 날짜 형식들 시도
-        formats = [
-            '%Y.%m.%d %H:%M',          # 한국 형식
-            '%Y-%m-%d %H:%M',          # 일반 형식
-            '%Y.%m.%d',                # 날짜만
-            '%Y-%m-%d',                # 날짜만
-            '%Y-%m-%dT%H:%M:%SZ',      # ISO with Z
-            '%Y-%m-%dT%H:%M:%S.%fZ',   # ISO with microseconds
-        ]
-        
-        for fmt in formats:
-            try:
-                return datetime.strptime(date_str.strip(), fmt)
-            except ValueError:
-                continue
-        
-        # 🔥 ISO 형식 특별 처리
-        if 'T' in date_str:
-            try:
-                cleaned = date_str.replace('Z', '+00:00')
-                return datetime.fromisoformat(cleaned)
-            except Exception:
-                pass
-        
-        logger.debug(f"날짜 파싱 실패: {date_str}")
-        return None
-
-    async def _apply_metric_filters(self, posts: List[Dict], min_views: int, min_likes: int) -> List[Dict]:
-        """메트릭 필터링 (최소 조회수, 추천수)"""
-        if min_views <= 0 and min_likes <= 0:
-            return posts
-        
-        filtered_posts = [
-            post for post in posts
-            if post.get('조회수', 0) >= min_views and post.get('추천수', 0) >= min_likes
-        ]
-        
-        logger.info(f"메트릭 필터링: {len(posts)} -> {len(filtered_posts)}개")
-        return filtered_posts
-
-    async def _crawl_via_enhanced_api_with_pagination(self, url: str, community_name: str, 
-                                                    instance: str, limit: int, sort: str, websocket=None) -> List[Dict]:
-        """페이지네이션을 지원하는 향상된 API 크롤링"""
-        try:
-            all_posts = []
-            page = 1
-            max_pages = min(10, (limit // 20) + 2)  # 최대 10페이지까지
-            
-            while len(all_posts) < limit and page <= max_pages:
-                try:
-                    api_url = f"https://{instance}{LEMMY_API_ENDPOINTS['posts']}"
-                    
-                    params = {
-                        'limit': min(50, limit - len(all_posts)),  # 남은 만큼만 요청
-                        'sort': LEMMY_SORT_MAPPING.get(sort.lower(), 'Hot'),
-                        'type_': 'All',
-                        'page': page
-                    }
-                    
-                    # 커뮤니티 특정 검색
-                    if community_name:
-                        params['community_name'] = community_name
-                    
-                    if websocket:
-                        await websocket.send_json({
-                            "progress": 30 + (page - 1) * 10,
-                            "status": f"📖 {page}페이지 수집 중...",
-                            "details": f"현재까지: {len(all_posts)}개"
-                        })
-                    
-                    async with self.instance_manager.session.get(api_url, params=params) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            page_posts = self._parse_enhanced_api_response(data, instance)
-                            
-                            if not page_posts:
-                                logger.info(f"페이지 {page}에서 더 이상 게시물이 없음")
-                                break
-                            
-                            all_posts.extend(page_posts)
-                            logger.info(f"페이지 {page}: {len(page_posts)}개 게시물 수집 (총 {len(all_posts)}개)")
-                            
-                            page += 1
-                            
-                            # 레이트 리미팅
-                            await asyncio.sleep(0.5)
-                        else:
-                            logger.warning(f"API 요청 실패 (페이지 {page}): {response.status}")
-                            break
-                            
-                except Exception as e:
-                    logger.warning(f"페이지 {page} 크롤링 실패: {e}")
-                    break
-            
-            if all_posts:
-                logger.info(f"API 페이지네이션 크롤링 성공: {len(all_posts)}개 게시물 ({page-1}페이지)")
-                return all_posts[:limit]
-                
-        except Exception as e:
-            logger.debug(f"API 페이지네이션 크롤링 실패: {e}")
-        
-        return []
-   
-    async def _apply_rate_limit(self, instance: str):
-        """인스턴스별 레이트 리미터 적용"""
-        now = time.time()
-        if instance in self.rate_limiter:
-            last_request = self.rate_limiter[instance]
-            elapsed = now - last_request
-            if elapsed < LEMMY_CONFIG['rate_limit_delay']:
-                await asyncio.sleep(LEMMY_CONFIG['rate_limit_delay'] - elapsed)
-        
-        self.rate_limiter[instance] = now
-    
-    async def _crawl_via_enhanced_rss(self, url: str, community_name: str, 
-                                    instance: str, limit: int) -> List[Dict]:
-        """향상된 RSS 크롤링"""
-        try:
-            rss_urls = []
-            
-            # 커뮤니티별 RSS
-            if community_name:
-                rss_urls.append(f"https://{instance}/feeds/c/{community_name}.xml")
-            
-            # 전체 RSS
-            rss_urls.extend([
-                f"https://{instance}/feeds/all.xml",
-                f"https://{instance}/feeds/local.xml"
-            ])
-            
-            for rss_url in rss_urls:
-                try:
-                    async with self.instance_manager.session.get(rss_url) as response:
-                        if response.status == 200:
-                            content = await response.text()
-                            posts = self._parse_enhanced_rss(content, instance)
-                            
-                            if posts:
-                                logger.info(f"RSS 크롤링 성공: {len(posts)}개 게시물")
-                                return posts[:limit]
-                                
-                except Exception as e:
-                    logger.debug(f"RSS URL 실패 ({rss_url}): {e}")
-                    continue
-                    
-        except Exception as e:
-            logger.debug(f"RSS 크롤링 실패: {e}")
-        
-        return []
-    
-    async def _crawl_via_enhanced_html(self, url: str, instance: str, limit: int) -> List[Dict]:
-        """향상된 HTML 크롤링"""
-        try:
-            async with self.instance_manager.session.get(url) as response:
-                if response.status == 200:
-                    content = await response.text()
-                    soup = BeautifulSoup(content, 'html.parser')
-                    posts = self._parse_enhanced_html(soup, url, instance)
-                    
-                    if posts:
-                        logger.info(f"HTML 크롤링 성공: {len(posts)}개 게시물")
-                        return posts[:limit]
-                        
-        except Exception as e:
-            logger.debug(f"HTML 크롤링 실패: {e}")
         
         return []
     
@@ -1695,6 +1218,188 @@ class AdvancedLemmyCrawler:
         except Exception as e:
             logger.error(f"API 응답 파싱 오류: {e}")
             return []
+    
+    def _parse_search_api_response(self, data: Dict, instance: str, community_name: str) -> List[Dict]:
+        """검색 API 응답 파싱"""
+        posts = []
+        
+        try:
+            post_list = data.get('posts', [])
+            
+            for idx, item in enumerate(post_list):
+                try:
+                    post_data = item.get('post', {})
+                    counts = item.get('counts', {})
+                    creator = item.get('creator', {})
+                    community = item.get('community', {})
+                    
+                    # 커뮤니티 이름 확인
+                    if community_name.lower() not in community.get('name', '').lower():
+                        continue
+                    
+                    # 기본 정보
+                    title = post_data.get('name', f'Search Result {idx + 1}')
+                    body = post_data.get('body', '')
+                    url = post_data.get('ap_id', post_data.get('url', ''))
+                    
+                    posts.append({
+                        "번호": idx + 1,
+                        "원제목": title,
+                        "번역제목": None,
+                        "링크": url,
+                        "원문URL": url,
+                        "본문": body[:200] + "..." if len(body) > 200 else body,
+                        "조회수": counts.get('comments', 0),
+                        "추천수": counts.get('score', 0),
+                        "댓글수": counts.get('comments', 0),
+                        "작성일": self._format_lemmy_date(post_data.get('published', '')),
+                        "작성자": creator.get('name', '익명'),
+                        "커뮤니티": community.get('name', ''),
+                        "인스턴스": instance,
+                        "크롤링방식": "Lemmy-Search-API"
+                    })
+                    
+                except Exception as e:
+                    logger.debug(f"검색 결과 파싱 오류: {e}")
+                    continue
+            
+            return posts
+            
+        except Exception as e:
+            logger.error(f"검색 API 응답 파싱 오류: {e}")
+            return []
+    
+    async def _apply_exact_date_filter(self, posts: List[Dict], start_date: str, end_date: str) -> List[Dict]:
+        """정확한 날짜 필터링"""
+        if not start_date or not end_date:
+            return posts
+            
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            end_dt = end_dt.replace(hour=23, minute=59, second=59)
+            
+            filtered_posts = []
+            for post in posts:
+                post_date_str = post.get('작성일', '')
+                post_date = self._parse_post_date_flexible(post_date_str)  # 🔥 유연한 파싱
+                
+                if post_date:
+                    if start_dt <= post_date <= end_dt:
+                        filtered_posts.append(post)
+                    else:
+                        # 🔥 디버깅을 위한 로그
+                        logger.debug(f"날짜 필터 제외: {post_date_str} ({post_date}) not in {start_date}~{end_date}")
+                else:
+                    # 🔥 날짜 파싱 실패한 게시물도 포함 (너무 엄격하지 않게)
+                    logger.debug(f"날짜 파싱 실패로 포함: {post_date_str}")
+                    filtered_posts.append(post)
+            
+            logger.info(f"날짜 필터링: {len(posts)} -> {len(filtered_posts)}개 (제외된 이유 확인 필요)")
+            return filtered_posts
+            
+        except Exception as e:
+            logger.error(f"날짜 필터링 오류: {e}")
+            return posts  # 🔥 오류시 원본 반환
+    
+    def _parse_post_date_flexible(self, date_str: str) -> Optional[datetime]:
+        """유연한 게시물 날짜 파싱"""
+        if not date_str:
+            return None
+        
+        # 🔥 Lemmy 특화 날짜 형식들 시도
+        formats = [
+            '%Y.%m.%d %H:%M',          # 한국 형식
+            '%Y-%m-%d %H:%M',          # 일반 형식
+            '%Y.%m.%d',                # 날짜만
+            '%Y-%m-%d',                # 날짜만
+            '%Y-%m-%dT%H:%M:%SZ',      # ISO with Z
+            '%Y-%m-%dT%H:%M:%S.%fZ',   # ISO with microseconds
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str.strip(), fmt)
+            except ValueError:
+                continue
+        
+        # 🔥 ISO 형식 특별 처리
+        if 'T' in date_str:
+            try:
+                cleaned = date_str.replace('Z', '+00:00')
+                return datetime.fromisoformat(cleaned)
+            except Exception:
+                pass
+        
+        logger.debug(f"날짜 파싱 실패: {date_str}")
+        return None
+
+    async def _apply_metric_filters(self, posts: List[Dict], min_views: int, min_likes: int) -> List[Dict]:
+        """메트릭 필터링 (최소 조회수, 추천수)"""
+        if min_views <= 0 and min_likes <= 0:
+            return posts
+        
+        filtered_posts = [
+            post for post in posts
+            if post.get('조회수', 0) >= min_views and post.get('추천수', 0) >= min_likes
+        ]
+        
+        logger.info(f"메트릭 필터링: {len(posts)} -> {len(filtered_posts)}개")
+        return filtered_posts
+
+    async def _crawl_via_enhanced_rss(self, url: str, community_name: str, 
+                                    instance: str, limit: int) -> List[Dict]:
+        """향상된 RSS 크롤링"""
+        try:
+            rss_urls = []
+            
+            # 커뮤니티별 RSS
+            if community_name:
+                rss_urls.append(f"https://{instance}/feeds/c/{community_name}.xml")
+            
+            # 전체 RSS
+            rss_urls.extend([
+                f"https://{instance}/feeds/all.xml",
+                f"https://{instance}/feeds/local.xml"
+            ])
+            
+            for rss_url in rss_urls:
+                try:
+                    async with self.instance_manager.session.get(rss_url) as response:
+                        if response.status == 200:
+                            content = await response.text()
+                            posts = self._parse_enhanced_rss(content, instance)
+                            
+                            if posts:
+                                logger.info(f"RSS 크롤링 성공: {len(posts)}개 게시물")
+                                return posts[:limit]
+                                
+                except Exception as e:
+                    logger.debug(f"RSS URL 실패 ({rss_url}): {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.debug(f"RSS 크롤링 실패: {e}")
+        
+        return []
+    
+    async def _crawl_via_enhanced_html(self, url: str, instance: str, limit: int) -> List[Dict]:
+        """향상된 HTML 크롤링"""
+        try:
+            async with self.instance_manager.session.get(url) as response:
+                if response.status == 200:
+                    content = await response.text()
+                    soup = BeautifulSoup(content, 'html.parser')
+                    posts = self._parse_enhanced_html(soup, url, instance)
+                    
+                    if posts:
+                        logger.info(f"HTML 크롤링 성공: {len(posts)}개 게시물")
+                        return posts[:limit]
+                        
+        except Exception as e:
+            logger.debug(f"HTML 크롤링 실패: {e}")
+        
+        return []
     
     def _parse_enhanced_rss(self, content: str, instance: str) -> List[Dict]:
         """향상된 RSS 파싱"""
@@ -2030,39 +1735,16 @@ class AdvancedLemmyCrawler:
         
         return False
     
-    async def _apply_advanced_filters(self, posts: List[Dict], min_views: int, min_likes: int,
-                                    start_date: str, end_date: str, enforce_date_limit: bool) -> List[Dict]:
-        """고급 필터링 적용"""
-        filtered_posts = posts
+    async def _apply_rate_limit(self, instance: str):
+        """인스턴스별 레이트 리미터 적용"""
+        now = time.time()
+        if instance in self.rate_limiter:
+            last_request = self.rate_limiter[instance]
+            elapsed = now - last_request
+            if elapsed < LEMMY_CONFIG['rate_limit_delay']:
+                await asyncio.sleep(LEMMY_CONFIG['rate_limit_delay'] - elapsed)
         
-        # 메트릭 필터링
-        if min_views > 0 or min_likes > 0:
-            filtered_posts = [
-                post for post in filtered_posts
-                if post.get('조회수', 0) >= min_views and post.get('추천수', 0) >= min_likes
-            ]
-            logger.info(f"메트릭 필터링: {len(posts)} -> {len(filtered_posts)}")
-        
-        # 날짜 필터링
-        if start_date and end_date:
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                end_dt = end_dt.replace(hour=23, minute=59, second=59)
-                
-                date_filtered = []
-                for post in filtered_posts:
-                    post_date = self._parse_post_date(post.get('작성일', ''))
-                    if post_date and start_dt <= post_date <= end_dt:
-                        date_filtered.append(post)
-                
-                filtered_posts = date_filtered
-                logger.info(f"날짜 필터링: {len(posts)} -> {len(filtered_posts)}")
-                
-            except Exception as e:
-                logger.error(f"날짜 필터링 오류: {e}")
-        
-        return filtered_posts
+        self.rate_limiter[instance] = now
     
     def _apply_lemmy_sorting(self, posts: List[Dict], sort: str) -> List[Dict]:
         """Lemmy 특화 정렬 적용"""
@@ -2178,8 +1860,8 @@ class AdvancedLemmyCrawler:
         
         return min(10.0, score)
     
-    """Lemmy 날짜 형식 변환 (향상됨)"""    
     def _format_lemmy_date(self, date_str: str) -> str:
+        """Lemmy 날짜 형식 변환 (향상됨)"""
         if not date_str:
             return datetime.now().strftime('%Y.%m.%d')
         
@@ -2242,34 +1924,6 @@ class AdvancedLemmyCrawler:
         except Exception:
             return datetime.now().strftime('%Y.%m.%d')
     
-    def _parse_relative_time(self, time_str: str) -> str:
-        """상대적 시간 파싱"""
-        now = datetime.now()
-        
-        # 숫자 추출
-        numbers = re.findall(r'\d+', time_str)
-        if not numbers:
-            return now.strftime('%Y.%m.%d %H:%M')
-        
-        amount = int(numbers[0])
-        
-        if 'minute' in time_str or '분' in time_str:
-            dt = now - timedelta(minutes=amount)
-        elif 'hour' in time_str or '시간' in time_str:
-            dt = now - timedelta(hours=amount)
-        elif 'day' in time_str or '일' in time_str:
-            dt = now - timedelta(days=amount)
-        elif 'week' in time_str or '주' in time_str:
-            dt = now - timedelta(weeks=amount)
-        elif 'month' in time_str or '달' in time_str:
-            dt = now - timedelta(days=amount * 30)
-        elif 'year' in time_str or '년' in time_str:
-            dt = now - timedelta(days=amount * 365)
-        else:
-            dt = now
-        
-        return dt.strftime('%Y.%m.%d %H:%M')
-    
     def _parse_post_date(self, date_str: str) -> Optional[datetime]:
         """게시물 날짜 파싱 (향상됨)"""
         if not date_str:
@@ -2324,11 +1978,13 @@ async def crawl_lemmy_board(community_input: str, limit: int = 50, sort: str = "
             logger.info(f"Lemmy 크롤링 시작: {community_input} (범위: {start_index}-{end_index})")
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 5,
-                    "status": f"🌐 Lemmy 커뮤니티 분석: {community_input}",
-                    "details": f"범위: {start_index}-{end_index}위"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=5,
+                    step=CrawlStep.INITIALIZING,
+                    site=SiteType.LEMMY,
+                    board=sanitize_board_name(community_input),
+                    details={"range": f"{start_index}-{end_index}"}
+                ))
             
             # URL 파싱 및 정규화
             url, community_name, instance = crawler.community_searcher.resolve_community_url(community_input)
@@ -2339,11 +1995,13 @@ async def crawl_lemmy_board(community_input: str, limit: int = 50, sort: str = "
                     url, community_name, instance = crawler.community_searcher.resolve_community_url(corrected_url)
                     
                     if websocket:
-                        await websocket.send_json({
-                            "progress": 5,
-                            "status": f"🔄 자동 보정: {corrected_url}",
-                            "details": "기본 인스턴스(lemmy.world)를 사용합니다"
-                        })
+                        await websocket.send_json(create_progress_message(
+                            progress=5,
+                            step=CrawlStep.INITIALIZING,
+                            site=SiteType.LEMMY,
+                            board=corrected_url,
+                            details={"auto_correction": True}
+                        ))
                 else:
                     raise Exception(f"올바르지 않은 Lemmy 커뮤니티 형식: {community_input}")
             
@@ -2361,11 +2019,13 @@ async def crawl_lemmy_board(community_input: str, limit: int = 50, sort: str = "
                 })()
             
             if websocket:
-                await websocket.send_json({
-                    "progress": 20,
-                    "status": f"✅ 인스턴스 확인: {instance_info.name}",
-                    "details": f"목표: {start_index}-{end_index}위 게시물"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=20,
+                    step=CrawlStep.CONNECTING,
+                    site=SiteType.LEMMY,
+                    board=community_name,
+                    details={"instance": instance_info.name, "target_range": f"{start_index}-{end_index}"}
+                ))
             
             await crawler._apply_rate_limit(instance)
             
@@ -2373,15 +2033,17 @@ async def crawl_lemmy_board(community_input: str, limit: int = 50, sort: str = "
             if start_date and end_date:
                 # 날짜 필터링 모드: 충분한 양 수집 후 필터링
                 if websocket:
-                    await websocket.send_json({
-                        "progress": 30,
-                        "status": f"📅 날짜 필터링: {start_date} ~ {end_date}",
-                        "details": "충분한 양을 수집한 후 날짜로 필터링"
-                    })
+                    await websocket.send_json(create_progress_message(
+                        progress=30,
+                        step=CrawlStep.FILTERING,
+                        site=SiteType.LEMMY,
+                        board=community_name,
+                        details={"date_range": f"{start_date} ~ {end_date}"}
+                    ))
                 
-                posts = await crawler._crawl_with_date_filtering(
-                    url, community_name, instance, limit * 2, sort, 
-                    start_date, end_date, time_filter, websocket
+                posts = await crawler.crawl_lemmy_community(
+                    community_input, limit * 2, sort, min_views, min_likes,
+                    start_date, end_date, websocket, enforce_date_limit, time_filter
                 )
                 
                 # 날짜 필터링 후 범위 적용
@@ -2391,17 +2053,20 @@ async def crawl_lemmy_board(community_input: str, limit: int = 50, sort: str = "
             else:
                 # 🔥 일반 모드: 정확한 범위만 크롤링
                 if websocket:
-                    await websocket.send_json({
-                        "progress": 30,
-                        "status": f"🎯 정확한 범위 크롤링: {sort} 정렬",
-                        "details": f"목표: {end_index}개 게시물"
-                    })
+                    await websocket.send_json(create_progress_message(
+                        progress=30,
+                        step=CrawlStep.COLLECTING,
+                        site=SiteType.LEMMY,
+                        board=community_name,
+                        details={"sort": sort, "target": f"{end_index}개"}
+                    ))
                 
                 # 약간의 여유를 두고 크롤링 (API 페이지네이션 고려)
                 actual_limit = min(end_index + 10, 100)
                 
-                posts = await crawler._crawl_with_site_sorting(
-                    url, community_name, instance, actual_limit, sort, time_filter, websocket
+                posts = await crawler.crawl_lemmy_community(
+                    community_input, actual_limit, sort, min_views, min_likes,
+                    start_date, end_date, websocket, enforce_date_limit, time_filter
                 )
                 
                 # 🔥 정확한 범위로 자르기
@@ -2417,18 +2082,25 @@ Lemmy 커뮤니티 '{community_name}@{instance}'에서 {start_index}-{end_index}
 2. 설정한 정렬 기준에 맞는 게시물이 부족
 3. 인스턴스가 일시적으로 불안정
                 """
+                
+                if websocket:
+                    await websocket.send_json(create_error_message(
+                        error_code=ErrorCode.NO_POSTS_FOUND,
+                        error_detail=error_details.strip(),
+                        site=SiteType.LEMMY
+                    ))
+                
                 raise Exception(error_details.strip())
             
-            # 🔥 메트릭 필터링 (범위 자르기 전에 적용)
-            if min_views > 0 or min_likes > 0:
-                posts = await crawler._apply_metric_filters(posts, min_views, min_likes)
-            
+            # 🔥 메타데이터 보강
             if websocket:
-                await websocket.send_json({
-                    "progress": 95,
-                    "status": "🎯 메타데이터 보강 중...",
-                    "details": f"{len(posts)}개 게시물 처리 완료"
-                })
+                await websocket.send_json(create_progress_message(
+                    progress=95,
+                    step=CrawlStep.PROCESSING,
+                    site=SiteType.LEMMY,
+                    board=community_name,
+                    details={"final_posts": len(posts)}
+                ))
             
             # 메타데이터 보강
             enhanced_posts = await crawler._enhance_post_metadata(posts, instance_info)
@@ -2442,6 +2114,12 @@ Lemmy 커뮤니티 '{community_name}@{instance}'에서 {start_index}-{end_index}
             
         except Exception as e:
             logger.error(f"Lemmy 크롤링 오류: {e}")
+            if websocket:
+                await websocket.send_json(quick_error(
+                    ErrorCode.CRAWLING_ERROR,
+                    SiteType.LEMMY,
+                    str(e)
+                ))
             raise
        
 # ================================
@@ -2564,8 +2242,8 @@ def filter_by_date_range(posts: List[Dict], start_date: str, end_date: str) -> L
     finally:
         loop.close()
 
-
 def filter_posts_by_date(posts: List[dict], start_date: Optional[str], end_date: Optional[str]) -> List[dict]:
+    """날짜별 게시물 필터링 (레거시 호환성)"""
     if not start_date or not end_date:
         return posts
 
@@ -2584,5 +2262,168 @@ def filter_posts_by_date(posts: List[dict], start_date: Optional[str], end_date:
                 continue
         if start_dt <= post_time <= end_dt:
             filtered.append(post)
+    
     return filtered
 
+# ================================
+# 🔥 품질 보증 및 테스트 함수들
+# ================================
+
+async def test_lemmy_instance_connectivity(domain: str) -> Dict[str, any]:
+    """Lemmy 인스턴스 연결성 테스트"""
+    async with EnhancedLemmyInstanceManager() as manager:
+        start_time = time.time()
+        
+        # 기본 연결 테스트
+        health_check = await manager._quick_health_check(domain)
+        
+        # 상세 정보 수집
+        instance_info = await manager.get_instance_info(domain)
+        
+        # API 테스트
+        api_working = False
+        try:
+            url = f"https://{domain}/api/v3/site"
+            async with manager.session.get(url) as response:
+                api_working = response.status == 200
+        except:
+            pass
+        
+        elapsed_time = time.time() - start_time
+        
+        return {
+            "domain": domain,
+            "is_healthy": health_check,
+            "api_working": api_working,
+            "response_time": elapsed_time,
+            "instance_info": instance_info.__dict__ if instance_info else None,
+            "test_timestamp": datetime.now().isoformat()
+        }
+
+async def validate_lemmy_community_exists(community_input: str) -> Dict[str, any]:
+    """Lemmy 커뮤니티 존재 여부 검증"""
+    async with AdvancedLemmyCrawler() as crawler:
+        try:
+            # URL 파싱
+            url, community_name, instance = crawler.community_searcher.resolve_community_url(community_input)
+            
+            if not community_name or not instance:
+                return {
+                    "exists": False,
+                    "error": "올바르지 않은 커뮤니티 형식",
+                    "suggestions": ["technology@lemmy.world", "asklemmy@lemmy.ml"]
+                }
+            
+            # 인스턴스 확인
+            instance_info = await crawler.instance_manager.get_instance_info(instance)
+            if not instance_info:
+                return {
+                    "exists": False,
+                    "error": f"인스턴스 '{instance}'에 접근할 수 없습니다",
+                    "instance": instance,
+                    "community": community_name
+                }
+            
+            # 커뮤니티 검색
+            communities = await crawler.community_searcher.search_communities(
+                community_name, instance, limit=5
+            )
+            
+            matching_community = None
+            for community in communities:
+                if community.name.lower() == community_name.lower():
+                    matching_community = community
+                    break
+            
+            if matching_community:
+                return {
+                    "exists": True,
+                    "community": {
+                        "name": matching_community.name,
+                        "display_name": matching_community.display_name,
+                        "subscribers": matching_community.subscribers,
+                        "posts": matching_community.posts,
+                        "url": matching_community.url,
+                        "instance": matching_community.instance
+                    },
+                    "instance_info": {
+                        "name": instance_info.name,
+                        "users": instance_info.users,
+                        "status": instance_info.status
+                    }
+                }
+            else:
+                return {
+                    "exists": False,
+                    "error": f"커뮤니티 '{community_name}'을 '{instance}'에서 찾을 수 없습니다",
+                    "similar_communities": [
+                        {"name": c.name, "subscribers": c.subscribers} 
+                        for c in communities[:3]
+                    ] if communities else []
+                }
+                
+        except Exception as e:
+            return {
+                "exists": False,
+                "error": f"검증 중 오류 발생: {str(e)}",
+                "input": community_input
+            }
+
+# ================================
+# 🔥 모니터링 및 통계 함수들
+# ================================
+
+def get_lemmy_crawler_stats() -> Dict[str, any]:
+    """Lemmy 크롤러 통계 정보"""
+    return {
+        "version": "2.0.0",
+        "supported_instances": len(KNOWN_LEMMY_INSTANCES),
+        "stability_tiers": {
+            tier: len(instances) 
+            for tier, instances in STABILITY_TIER.items()
+        },
+        "sort_options": len(LEMMY_SORT_MAPPING),
+        "popular_categories": len(POPULAR_COMMUNITIES),
+        "config": {
+            "api_timeout": LEMMY_CONFIG['api_timeout'],
+            "cache_ttl": LEMMY_CONFIG['cache_ttl'],
+            "max_pages": LEMMY_CONFIG['max_pages'],
+            "rate_limit_delay": LEMMY_CONFIG['rate_limit_delay']
+        },
+        "features": [
+            "Multi-instance fallback",
+            "API + RSS + HTML crawling",
+            "Intelligent caching",
+            "Rate limiting",
+            "Date filtering",
+            "Quality scoring",
+            "Auto-correction"
+        ]
+    }
+
+# ================================
+# 🔥 최종 export 및 초기화
+# ================================
+
+# 모듈 로드 시 초기화
+logger.info("🔥 향상된 Lemmy 크롤러 v2.0 로드 완료")
+logger.info(f"📊 지원 인스턴스: {len(KNOWN_LEMMY_INSTANCES)}개")
+logger.info(f"🎯 안정성 티어: {sum(len(v) for v in STABILITY_TIER.values())}개")
+logger.info(f"⚙️ 설정: {LEMMY_CONFIG['api_timeout']}s timeout, {LEMMY_CONFIG['cache_ttl']}s cache")
+
+# 모듈이 import될 때 실행되는 헬스체크 (선택사항)
+async def _module_health_check():
+    """모듈 로드 시 기본 헬스체크"""
+    try:
+        async with EnhancedLemmyInstanceManager() as manager:
+            # 주요 인스턴스 중 하나 테스트
+            test_result = await manager._quick_health_check('lemmy.world')
+            if test_result:
+                logger.info("✅ Lemmy 모듈 헬스체크 통과")
+            else:
+                logger.warning("⚠️ Lemmy 모듈 헬스체크 실패 (네트워크 문제일 수 있음)")
+    except Exception as e:
+        logger.debug(f"헬스체크 실패: {e}")
+
+# 비동기 헬스체크는 필요시에만 실행
+# asyncio.create_task(_module_health_check()) # 주석 처리: 모듈 로드 시 자동 실행 방지
