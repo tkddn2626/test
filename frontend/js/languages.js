@@ -173,6 +173,15 @@ const languages = {
             universal: "크롤링할 웹사이트 URL을 입력하세요..."
         },
 
+        crawlButtonMessages: {
+            siteNotSelected: "사이트를 선택하세요",
+            boardEmpty: "게시판을 입력하세요", 
+            universalEmpty: "URL을 입력하세요",
+            universalUrlError: "올바른 URL을 입력하세요",
+            lemmyEmpty: "커뮤니티를 입력하세요",
+            lemmyFormatError: "올바른 Lemmy 형식을 입력하세요",
+            redditFormatError: "올바른 Reddit 형식을 입력하세요"
+        },
     
     },
 
@@ -281,6 +290,16 @@ const languages = {
             bbc: "BBC セクション URL",
             universal: "クロールするウェブサイトのURLを入力してください..."
         },
+        
+        crawlButtonMessages: {
+            siteNotSelected: "サイトを選択してください",
+            boardEmpty: "掲示板を入力してください",
+            universalEmpty: "URLを入力してください",
+            universalUrlError: "正しいURLを入力してください", 
+            lemmyEmpty: "コミュニティを入力してください",
+            lemmyFormatError: "正しいLemmy形式を入力してください",
+            redditFormatError: "正しいReddit形式を入力してください"
+        },
     },
     
     // ==================== 영어 (핵심 메시지만) ====================
@@ -387,6 +406,17 @@ const languages = {
             bbc: "BBC section URL",
             universal: "Enter website URL to crawl..."
         },
+                
+        crawlButtonMessages: {
+            siteNotSelected: "Select a site",
+            boardEmpty: "Enter board name",
+            universalEmpty: "Enter URL", 
+            universalUrlError: "Enter valid URL",
+            lemmyEmpty: "Enter community",
+            lemmyFormatError: "Enter valid Lemmy format",
+            redditFormatError: "Enter valid Reddit format"
+        },
+
     }
 };
 
