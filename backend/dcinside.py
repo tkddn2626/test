@@ -1,172 +1,504 @@
-import os
-import json
+# dcinside.py - DCInside 크롤링 및 필터링 완전 구현
+
 import requests
 from bs4 import BeautifulSoup
+import json
+import os
 import re
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
+from typing import Tuple, List, Dict, Optional
 
-# ✅ id_data 폴더 내 모든 JSON 파일 로드 (galleries.json, mgalleries.json 등)
+# 메시지 시스템 임포트
+from core.messages import (
+    create_progress_message, create_status_message, create_error_message,
+    create_success_message, create_complete_message, create_localized_message,
+    CrawlStep, SiteType, ErrorCode, SuccessType,
+    quick_progress, quick_error, quick_complete
+)
+
+# JSON 파일 경로
+DCINSIDE_JSON_PATH = os.path.join("id_data", "galleries.json")
+
 def load_gallery_map() -> dict:
-    base_dir = os.path.dirname(os.path.abspath(__file__))  # 현재 파일 기준
-    gallery_dir = os.path.join(base_dir, "id_data")       # id_data 폴더 절대 경로
-    gallery_map = {}
-
-    if not os.path.isdir(gallery_dir):
-        print(f"❌ 폴더 없음: {gallery_dir}")
+    """갤러리 맵핑 데이터 로드"""
+    if not os.path.exists(DCINSIDE_JSON_PATH):
+        print(f"Error: {DCINSIDE_JSON_PATH} not found")
         return {}
 
-    for filename in os.listdir(gallery_dir):
-        if filename == "galleries.json":
-            gtype = "gallery"
-        elif filename == "mgalleries.json":
-            gtype = "mgallery"
-        else:
-            continue  # 기타 JSON은 무시
+    try:
+        with open(DCINSIDE_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            print(f"Loaded galleries.json ({len(data)} entries)")
+            return data
+    except Exception as e:
+        print(f"Error parsing galleries.json: {e}")
+        return {}
 
-        file_path = os.path.join(gallery_dir, filename)
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                for name, gid in data.items():
-                    gallery_map[name] = {"id": gid, "type": gtype}
-                print(f"✅ {filename} 로드됨 ({len(data)}개)")
-        except Exception as e:
-            print(f"❌ {filename} 파싱 실패: {e}")
-
-    if not gallery_map:
-        print("❌ id_data 폴더 내 JSON 파일을 로드할 수 없습니다.")
-
-    return gallery_map
-
-# ✅ 키워드 기반 갤러리 ID + 타입 매핑
-def resolve_dc_board_id(keyword: str) -> tuple[str, str]:
-    keyword = keyword.strip().lower()
-    print("🔍 입력된 키워드:", keyword)
-
+def resolve_dc_board_id(board_name: str) -> Tuple[str, str]:
+    """갤러리 이름을 ID와 타입으로 변환"""
+    board_name = board_name.strip().lower()
     gallery_map = load_gallery_map()
+    
     if not gallery_map:
-        raise Exception("❌ id_data 폴더 내 JSON 파일이 비었거나 없음.")
-
-    matches = [(name, info) for name, info in gallery_map.items() if keyword in name.lower() or keyword == info["id"]]
+        raise Exception("Error: galleries.json not found or empty. Run the builder script first.")
+    
+    # 직접 매치 시도
+    for name, info in gallery_map.items():
+        if board_name == name.lower() or board_name == info['id']:
+            return info['id'], info['type']
+    
+    # 부분 매치 시도
+    matches = [(name, info) for name, info in gallery_map.items() 
+               if board_name in name.lower()]
+    
     if not matches:
-        raise Exception(f"❌ '{keyword}'과(와) 일치하는 갤러리를 찾을 수 없습니다.")
-
+        raise Exception(f"No matching gallery for '{board_name}'.")
+    
     name, info = matches[0]
-    board_id = info["id"]
-    board_type = info["type"]
-    print(f"✅ '{keyword}' → '{name}' 매핑됨 → ID: {board_id} ({board_type})")
-    return board_id, board_type
+    print(f"📋 Found gallery: {name} (ID: {info['id']}, TYPE: {info['type']})")
+    return info['id'], info['type']
 
-def extract_post_metrics(row):
-    """게시물에서 조회수와 추천수 추출 (개선된 버전)"""
+def extract_post_metrics(item) -> Tuple[int, int, int]:
+    """게시물에서 조회수, 추천수, 댓글수 추출 (강화버전)"""
     views = 0
     likes = 0
-    
-    try:
-        # 조회수 추출 - DC 갤러리 구조에 맞게 개선
-        view_element = row.select_one('td.gall_count')
-        if view_element:
-            view_text = view_element.text.strip()
-            view_numbers = re.findall(r'\d+', view_text)
-            if view_numbers:
-                views = int(view_numbers[0])
-    
-        # 추천수 추출 - DC는 추천 수가 별도로 표시되지 않으므로 댓글수로 대체
-        reply_element = row.select_one('td.gall_reply')
-        if reply_element:
-            reply_text = reply_element.text.strip()
-            # [숫자] 형태로 댓글수가 표시됨
-            reply_numbers = re.findall(r'\[(\d+)\]', reply_text)
-            if reply_numbers:
-                likes = int(reply_numbers[0])  # 댓글수를 추천수로 사용
-            else:
-                # 일반 숫자 추출
-                reply_numbers = re.findall(r'\d+', reply_text)
-                if reply_numbers:
-                    likes = int(reply_numbers[0])
-                
-    except Exception as e:
-        print(f"메트릭 추출 오류: {e}")
-    
-    return views, likes
+    comments = 0
 
-def extract_post_date(row):
-    """게시물 작성일 추출 (개선된 버전)"""
     try:
-        # DC 갤러리의 날짜 컬럼
-        date_element = row.select_one('td.gall_date')
-        if date_element:
-            date_text = date_element.text.strip()
-            # DC 갤러리는 보통 MM.DD 또는 HH:MM 형태로 표시
-            if ':' in date_text:  # 오늘 작성된 글 (HH:MM)
-                return f"{datetime.now().strftime('%Y.%m.%d')} {date_text}"
-            elif '.' in date_text and len(date_text.split('.')) == 2:  # MM.DD 형태
-                month, day = date_text.split('.')
-                return f"{datetime.now().year}.{month.zfill(2)}.{day.zfill(2)}"
-            else:
-                return date_text
-        
-        return datetime.now().strftime('%Y.%m.%d')
-        
-    except Exception as e:
-        print(f"날짜 추출 오류: {e}")
-        return ""
+        # 조회수 추출
+        view_selectors = [
+            '.gall_count', '.view_count', '.hit', 
+            '[class*="hit"]', '[class*="view"]'
+        ]
+        for selector in view_selectors:
+            elements = item.select(selector)
+            for element in elements:
+                text = element.text.strip()
+                numbers = re.findall(r'\d+', text)
+                if numbers:
+                    views = int(numbers[0])
+                    break
+            if views > 0:
+                break
 
-def extract_post_author(row):
+        # 추천수 추출
+        like_selectors = [
+            '.gall_recommend', '.recommend_count', '.up_num',
+            '[class*="recommend"]', '[class*="up"]'
+        ]
+        for selector in like_selectors:
+            elements = item.select(selector)
+            for element in elements:
+                text = element.text.strip()
+                numbers = re.findall(r'\d+', text)
+                if numbers:
+                    likes = int(numbers[0])
+                    break
+            if likes > 0:
+                break
+
+        # 댓글수 추출
+        comment_selectors = [
+            '.gall_reply_num', '.reply_num', '.comment_count',
+            '[class*="reply"]', '[class*="comment"]'
+        ]
+        for selector in comment_selectors:
+            elements = item.select(selector)
+            for element in elements:
+                text = element.text.strip()
+                numbers = re.findall(r'\d+', text)
+                if numbers:
+                    comments = int(numbers[0])
+                    break
+            if comments > 0:
+                break
+
+    except Exception as e:
+        print(f"Error extracting metrics: {e}")
+
+    return views, likes, comments
+
+def extract_post_date(item) -> str:
+    """게시물 작성일 추출"""
+    date_selectors = [
+        '.gall_date', '.date', '.posting_time', 
+        '[class*="date"]', '[class*="time"]'
+    ]
+    
+    for selector in date_selectors:
+        element = item.select_one(selector)
+        if element:
+            return element.text.strip()
+    
+    return "날짜 정보 없음"
+
+def extract_post_author(item) -> str:
     """게시물 작성자 추출"""
-    try:
-        author_element = row.select_one('td.gall_writer')
-        if author_element:
-            # 작성자 정보는 복잡한 구조일 수 있으므로 텍스트만 추출
-            author_text = author_element.get_text(strip=True)
-            # 불필요한 부분 제거
-            author = re.sub(r'\(.*?\)', '', author_text).strip()
-            return author if author else "익명"
-        return "익명"
-    except Exception as e:
-        print(f"작성자 추출 오류: {e}")
-        return "익명"
+    author_selectors = [
+        '.gall_writer', '.writer', '.nickname',
+        '[class*="writer"]', '[class*="nick"]'
+    ]
+    
+    for selector in author_selectors:
+        element = item.select_one(selector)
+        if element:
+            return element.text.strip()
+    
+    return "익명"
 
-def extract_comments_count(row):
-    """댓글 수 추출 (댓글순 정렬용)"""
-    try:
-        reply_element = row.select_one('td.gall_reply')
-        if reply_element:
-            reply_text = reply_element.text.strip()
-            # [숫자] 형태로 댓글수가 표시됨
-            reply_numbers = re.findall(r'\[(\d+)\]', reply_text)
-            if reply_numbers:
-                return int(reply_numbers[0])
-            else:
-                # 일반 숫자 추출
-                reply_numbers = re.findall(r'\d+', reply_text)
-                if reply_numbers:
-                    return int(reply_numbers[0])
-        return 0
-    except Exception as e:
-        print(f"댓글수 추출 오류: {e}")
-        return 0
+def extract_comments_count(item) -> int:
+    """댓글수만 별도로 추출"""
+    _, _, comments = extract_post_metrics(item)
+    return comments
 
-def filter_by_date_range(posts, start_date_str, end_date_str):
-    """날짜 범위로 게시물 필터링"""
-    if not start_date_str or not end_date_str:
+def _parse_dc_date(date_text: str) -> Optional[datetime]:
+    """DCInside 날짜 파싱 (상대적/절대적 날짜 모두 지원)"""
+    if not date_text:
+        return None
+    
+    try:
+        now = datetime.now()
+        
+        # 상대적 시간 파싱
+        if '분전' in date_text or '분 전' in date_text:
+            minutes = int(re.findall(r'\d+', date_text)[0])
+            return now - timedelta(minutes=minutes)
+        elif '시간전' in date_text or '시간 전' in date_text:
+            hours = int(re.findall(r'\d+', date_text)[0])
+            return now - timedelta(hours=hours)
+        elif '일전' in date_text or '일 전' in date_text:
+            days = int(re.findall(r'\d+', date_text)[0])
+            return now - timedelta(days=days)
+        
+        # 절대적 날짜 파싱 (MM.DD, YYYY.MM.DD 등)
+        date_patterns = [
+            r'(\d{4})\.(\d{1,2})\.(\d{1,2})',  # YYYY.MM.DD
+            r'(\d{1,2})\.(\d{1,2})',          # MM.DD (올해)
+            r'(\d{4})-(\d{1,2})-(\d{1,2})',   # YYYY-MM-DD
+            r'(\d{1,2})-(\d{1,2})'            # MM-DD (올해)
+        ]
+        
+        for pattern in date_patterns:
+            match = re.search(pattern, date_text)
+            if match:
+                groups = match.groups()
+                if len(groups) == 3:  # YYYY.MM.DD
+                    year, month, day = map(int, groups)
+                elif len(groups) == 2:  # MM.DD
+                    year = now.year
+                    month, day = map(int, groups)
+                else:
+                    continue
+                
+                return datetime(year, month, day)
+    
+    except Exception as e:
+        print(f"Date parsing error: {e}")
+    
+    return None
+
+class DCInsideConditionChecker:
+    """DCInside 게시물 조건 체크 클래스"""
+    
+    def __init__(self, min_views: int = 0, min_likes: int = 0, min_comments: int = 0,
+                 start_date: str = None, end_date: str = None):
+        self.min_views = min_views
+        self.min_likes = min_likes  
+        self.min_comments = min_comments
+        
+        # 날짜 범위 파싱
+        self.start_dt = None
+        self.end_dt = None
+        if start_date and end_date:
+            try:
+                self.start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                self.end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                self.end_dt = self.end_dt.replace(hour=23, minute=59, second=59)
+            except Exception as e:
+                print(f"날짜 파싱 오류: {e}")
+
+    def check_post_conditions(self, post: Dict) -> Tuple[bool, str]:
+        """게시물이 조건을 만족하는지 확인"""
+        try:
+            # 조회수 체크
+            if post.get('조회수', 0) < self.min_views:
+                return False, f"조회수 부족: {post.get('조회수', 0)} < {self.min_views}"
+            
+            # 추천수 체크
+            if post.get('추천수', 0) < self.min_likes:
+                return False, f"추천수 부족: {post.get('추천수', 0)} < {self.min_likes}"
+            
+            # 댓글수 체크
+            if post.get('댓글수', 0) < self.min_comments:
+                return False, f"댓글수 부족: {post.get('댓글수', 0)} < {self.min_comments}"
+            
+            # 날짜 범위 체크
+            if self.start_dt and self.end_dt:
+                post_date = _parse_dc_date(post.get('작성일', ''))
+                if not post_date:
+                    return False, "날짜 파싱 실패"
+                
+                if not (self.start_dt <= post_date <= self.end_dt):
+                    return False, "날짜 범위 벗어남"
+            
+            return True, "조건 만족"
+        
+        except Exception as e:
+            return False, f"조건 체크 오류: {e}"
+
+    def should_stop_crawling(self, consecutive_fails: int, has_date_filter: bool) -> Tuple[bool, str]:
+        """크롤링 중단 여부 결정"""
+        fail_threshold = 10 if has_date_filter else 20
+        if consecutive_fails >= fail_threshold:
+            return True, "조건 불만족으로 중단"
+        return False, "계속 진행"
+
+def _extract_dcinside_post_data(item) -> Optional[Dict]:
+    """개별 DCInside 게시물 데이터 추출"""
+    try:
+        # 제목 추출
+        title_selectors = [
+            '.gall_tit a', '.ub-word a', 'td.gall_tit a',
+            '.title a', '.subject a'
+        ]
+        title_element = None
+        for selector in title_selectors:
+            title_element = item.select_one(selector)
+            if title_element:
+                break
+        
+        if not title_element:
+            return None
+        
+        title = title_element.text.strip()
+        link = title_element.get('href', '')
+        
+        # 절대 URL로 변환
+        if link.startswith('/'):
+            link = f"https://gall.dcinside.com{link}"
+        elif not link.startswith('http'):
+            link = f"https://gall.dcinside.com/{link}"
+        
+        # 메트릭 추출
+        views, likes, comments = extract_post_metrics(item)
+        
+        # 날짜 및 작성자 추출
+        date_str = extract_post_date(item)
+        author = extract_post_author(item)
+        
+        return {
+            "원제목": title,
+            "번역제목": None,
+            "링크": link,
+            "본문": "",  # DCInside는 목록에서 본문 미제공
+            "썸네일 URL": None,
+            "조회수": views,
+            "추천수": likes,
+            "댓글수": comments,
+            "작성일": date_str,
+            "작성자": author,
+            "크롤링방식": "DCInside-Enhanced"
+        }
+    
+    except Exception as e:
+        print(f"Error extracting post data: {e}")
+        return None
+
+async def _crawl_dcinside_page(base_url: str, page: int, websocket=None) -> List[Dict]:
+    """DCInside 단일 페이지 크롤링"""
+    page_url = f"{base_url}{'&' if '?' in base_url else '?'}page={page}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    
+    try:
+        response = requests.get(page_url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return []
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 다양한 게시물 리스트 셀렉터 시도
+        item_selectors = [
+            'tr.ub-content',  # 일반 갤러리
+            'tr.us-post',     # 마이너 갤러리  
+            '.gall_list tr',  # 기본 갤러리 리스트
+            'tbody tr'        # 일반적인 테이블 행
+        ]
+        
+        items = []
+        for selector in item_selectors:
+            items = soup.select(selector)
+            if items:
+                break
+        
+        posts = []
+        for item in items:
+            try:
+                post_data = _extract_dcinside_post_data(item)
+                if post_data:
+                    posts.append(post_data)
+            except Exception as e:
+                print(f"Error extracting post: {e}")
+                continue
+        
+        return posts
+    
+    except Exception as e:
+        print(f"Error crawling page {page}: {e}")
+        return []
+
+async def _execute_intelligent_dcinside_crawling(
+    board_name: str, condition_checker, required_limit: int, sort: str,
+    start_index: int, end_index: int, websocket=None, enforce_date_limit=False
+) -> List[Dict]:
+    """지능형 DCInside 크롤링 실행"""
+    
+    board_id, board_type = resolve_dc_board_id(board_name)
+    
+    # URL 구성
+    if board_type == "mgallery":
+        base_url = f"https://gall.dcinside.com/mgallery/board/lists/?id={board_id}"
+    else:
+        base_url = f"https://gall.dcinside.com/board/lists/?id={board_id}"
+    
+    # 정렬 파라미터 추가
+    sort_params = get_dcinside_sort_params(sort)
+    if sort_params:
+        base_url += f"&{sort_params}"
+        
+        if websocket:
+            await websocket.send_json(
+                create_progress_message(
+                    progress=15,
+                    step=CrawlStep.CONNECTING,
+                    site=SiteType.DCINSIDE,
+                    board=board_name,
+                    details={"sort_applied": sort}
+                )
+            )
+
+    all_posts = []
+    matched_posts = []
+    consecutive_fails = 0
+    page = 1
+    max_pages = 200 if enforce_date_limit else min(20, (end_index // 20) + 3)
+    
+    if websocket:
+        await websocket.send_json(
+            create_progress_message(
+                progress=25,
+                step=CrawlStep.COLLECTING,
+                site=SiteType.DCINSIDE,
+                board=board_name,
+                details={"max_pages": max_pages}
+            )
+        )
+    
+    while page <= max_pages:
+        try:
+            if websocket:
+                progress = min(25 + (page / max_pages) * 50, 75)
+                await websocket.send_json(
+                    create_progress_message(
+                        progress=int(progress),
+                        step=CrawlStep.COLLECTING,
+                        site=SiteType.DCINSIDE,
+                        board=board_name,
+                        details={
+                            "current_page": page,
+                            "matched_posts": len(matched_posts),
+                            "target_range": f"{start_index}-{end_index}"
+                        }
+                    )
+                )
+            
+            page_posts = await _crawl_dcinside_page(base_url, page, websocket)
+            
+            if not page_posts:
+                consecutive_fails += 1
+                if consecutive_fails >= 3:
+                    break
+                page += 1
+                continue
+            
+            consecutive_fails = 0
+            
+            for post in page_posts:
+                all_posts.append(post)
+                
+                # 조건 체크
+                is_valid, reason = condition_checker.check_post_conditions(post)
+                if is_valid:
+                    matched_posts.append(post)
+                    
+                    # 목표 개수 달성시 중단
+                    if len(matched_posts) >= (end_index - start_index + 1):
+                        break
+            
+            # 중단 조건 체크
+            should_stop, stop_reason = condition_checker.should_stop_crawling(
+                consecutive_fails, bool(condition_checker.start_dt and condition_checker.end_dt)
+            )
+            if should_stop:
+                break
+            
+            # 목표 개수 달성시 중단
+            if len(matched_posts) >= (end_index - start_index + 1):
+                break
+            
+            page += 1
+            
+        except Exception as e:
+            print(f"Error on page {page}: {e}")
+            page += 1
+            if consecutive_fails > 5:
+                break
+    
+    # 최종 결과 슬라이싱
+    final_posts = matched_posts[start_index-1:end_index] if start_index <= len(matched_posts) else matched_posts
+    
+    # 번호 부여
+    for idx, post in enumerate(final_posts):
+        post['번호'] = start_index + idx
+    
+    return final_posts
+
+def get_dcinside_sort_params(sort_method: str) -> str:
+    """DCInside 정렬 파라미터 생성"""
+    dc_sort_map = {
+        "recommend": "sort_type=recommend&order=desc",     # 추천순
+        "popular": "sort_type=hit&order=desc",             # 조회수순  
+        "comments": "sort_type=reply&order=desc",          # 댓글순
+        "recent": "",  # 기본 정렬 (최신순)
+    }
+    
+    return dc_sort_map.get(sort_method, "")
+
+def sort_posts(posts, sort_method):
+    """게시물 정렬 함수"""
+    if not posts:
         return posts
     
     try:
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
-        end_date = end_date.replace(hour=23, minute=59, second=59)  # 하루 끝까지 포함
-        
-        filtered_posts = []
-        for post in posts:
-            # DC의 경우 날짜 정보가 제한적이므로 현재는 모든 게시물 반환
-            # 실제 구현시 게시물의 작성일 정보를 파싱해야 함
-            filtered_posts.append(post)
-        
-        print(f"Date filtering: {len(posts)} -> {len(filtered_posts)} posts")
-        return filtered_posts
+        if sort_method == "popular":
+            # 조회수 기준 내림차순 정렬
+            return sorted(posts, key=lambda x: x.get('조회수', 0), reverse=True)
+        elif sort_method == "recommend":
+            # 추천수 기준 내림차순 정렬
+            return sorted(posts, key=lambda x: x.get('추천수', 0), reverse=True)
+        elif sort_method == "comments":
+            # 댓글수 기준 내림차순 정렬
+            return sorted(posts, key=lambda x: x.get('댓글수', 0), reverse=True)
+        elif sort_method == "recent":
+            # 최신순 정렬 (기본 순서 유지)
+            return posts
+        else:
+            return posts
     except Exception as e:
-        print(f"Date filtering error: {e}")
+        print(f"정렬 오류: {e}")
         return posts
 
 def filter_by_time_period(posts, time_filter):
@@ -179,256 +511,104 @@ def filter_by_time_period(posts, time_filter):
     print(f"Time filtering ({time_filter}): {len(posts)} posts (no filtering applied for DCInside)")
     return posts
 
-def sort_posts(posts, sort_method):
-    """게시물 정렬 함수 (댓글순 추가)"""
-    if not posts:
-        return posts
+# ==================== 메인 크롤링 함수 ====================
+
+async def crawl_dcinside_board(
+    board_name: str, limit: int = 50, sort: str = "recent", 
+    min_views: int = 0, min_likes: int = 0, min_comments: int = 0,
+    time_filter: str = "all", start_date: str = None, 
+    end_date: str = None, websocket=None, enforce_date_limit=False,
+    start_index: int = 1, end_index: int = 20
+) -> List[Dict]:
+    """강화된 조건 기반 지능형 DCInside 크롤링"""
     
     try:
-        if sort_method == "popular":
-            # 조회수 기준 내림차순 정렬
-            return sorted(posts, key=lambda x: x.get('조회수', 0), reverse=True)
-        elif sort_method == "recommend":
-            # 추천수 기준 내림차순 정렬 (댓글수로 대체)
-            return sorted(posts, key=lambda x: x.get('추천수', 0), reverse=True)
-        elif sort_method == "comments":
-            # 댓글수 기준 내림차순 정렬
-            return sorted(posts, key=lambda x: x.get('댓글수', 0), reverse=True)
-        elif sort_method == "recent":
-            # 최신순 정렬 (기본 순서 유지 - 크롤링 순서가 최신순)
-            return posts
+        if websocket:
+            await websocket.send_json(
+                create_progress_message(
+                    progress=5,
+                    step=CrawlStep.INITIALIZING,
+                    site=SiteType.DCINSIDE,
+                    board=board_name,
+                    details={
+                        "sort": sort,
+                        "range": f"{start_index}-{end_index}",
+                        "filters": {
+                            "min_views": min_views,
+                            "min_likes": min_likes,
+                            "min_comments": min_comments
+                        }
+                    }
+                )
+            )
+        
+        # 조건 체커 초기화
+        condition_checker = DCInsideConditionChecker(
+            min_views=min_views,
+            min_likes=min_likes, 
+            min_comments=min_comments,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        # 필터 적용 여부 확인
+        has_filters = (min_views > 0 or min_likes > 0 or min_comments > 0 or 
+                      (start_date and end_date))
+        
+        if has_filters:
+            required_limit = min(end_index * 5, 500)
+            enforce_date_limit = True
         else:
-            return posts
-    except Exception as e:
-        print(f"정렬 오류: {e}")
-        return posts
-
-# ✅ 게시판 단위 크롤링
-# crawl_dcinside_board 함수 시그니처 및 로직 수정
-async def crawl_dcinside_board(board_name: str, limit: int = 50, sort: str = "recent", 
-                              min_views: int = 0, min_likes: int = 0, 
-                              time_filter: str = "all", start_date: str = None, 
-                              end_date: str = None, websocket=None, enforce_date_limit=False,
-                              start_index: int = 1, end_index: int = 20) -> list:
-    """강화된 DCInside 크롤링 - 정확한 범위 지원"""
-    from dcinside import resolve_dc_board_id, extract_post_metrics, extract_post_date, extract_post_author, extract_comments_count
-    from datetime import datetime
-    import requests
-    from bs4 import BeautifulSoup
-    import asyncio
-
-    board_id, board_type = resolve_dc_board_id(board_name)
-    
-    # 🚀 DCInside 자체 정렬 시스템 활용
-    dc_sort_params = get_dcinside_sort_params(sort)
-    
-    if board_type == "mgallery":
-        base_url = f"https://gall.dcinside.com/mgallery/board/lists/?id={board_id}"
-    else:
-        base_url = f"https://gall.dcinside.com/board/lists/?id={board_id}"
-    
-    # 정렬 파라미터 추가
-    if dc_sort_params:
-        base_url += f"&{dc_sort_params}"
+            required_limit = end_index + 10
+            enforce_date_limit = False
         
         if websocket:
-            await websocket.send_json({
-                "status": f"🔍 DCInside 자체 정렬 적용: {sort} (목표: {start_index}-{end_index}위)",
-                "progress": 15
-            })
+            await websocket.send_json(
+                create_progress_message(
+                    progress=10,
+                    step=CrawlStep.DETECTING_SITE,
+                    site=SiteType.DCINSIDE,
+                    board=board_name,
+                    details={"filters_applied": has_filters}
+                )
+            )
+        
+        # 지능형 크롤링 실행
+        final_posts = await _execute_intelligent_dcinside_crawling(
+            board_name, condition_checker, required_limit, sort,
+            start_index, end_index, websocket, enforce_date_limit
+        )
+        
+        if websocket:
+            await websocket.send_json(
+                create_complete_message(
+                    total_count=len(final_posts),
+                    site=SiteType.DCINSIDE,
+                    board=board_name,
+                    start_rank=start_index,
+                    end_rank=start_index + len(final_posts) - 1 if final_posts else start_index
+                )
+            )
+        
+        print(f"DCInside 크롤링 완료: {len(final_posts)}개 게시물 ({start_index}-{start_index+len(final_posts)-1}위)")
+        return final_posts
+    
+    except Exception as e:
+        error_msg = f"DCInside 크롤링 오류: {str(e)}"
+        print(error_msg)
+        
+        if websocket:
+            await websocket.send_json(
+                create_error_message(
+                    error_code=ErrorCode.CRAWLING_ERROR,
+                    error_detail=error_msg,
+                    site=SiteType.DCINSIDE
+                )
+            )
+        
+        return []
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-
-    posts = []
-    page = 1
-    consecutive_no_match = 0
-    max_consecutive_no_match = 3
-    
-    # 날짜 범위 파싱
-    start_dt = None
-    end_dt = None
-    if start_date and end_date:
-        try:
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-        except Exception as e:
-            print(f"날짜 파싱 오류: {e}")
-    
-    # 🔥 효율적 크롤링: 날짜 필터가 없으면 필요한 만큼만
-    max_pages = 200 if enforce_date_limit else min(20, (end_index // 30) + 3)
-    
-    while page <= max_pages:
-        try:
-            # 페이지 URL 구성 (정렬 파라미터 유지)
-            if '&' in base_url:
-                page_url = f"{base_url}&page={page}"
-            else:
-                page_url = f"{base_url}&page={page}"
-                
-            if websocket:
-                await websocket.send_json({
-                    "status": f"📄 DCInside {page}페이지 수집 중... (정렬: {sort})",
-                    "progress": min(30 + page * 2, 70),
-                    "details": f"현재까지 {len(posts)}개 수집"
-                })
-            
-            response = requests.get(page_url, headers=headers)
-            if response.status_code != 200:
-                break
-                
-            soup = BeautifulSoup(response.text, "html.parser")
-            rows = soup.select("tr.us-post")
-            
-            if not rows:
-                break
-                
-            page_found_posts = 0
-            for row in rows:
-                title_tag = row.select_one("td.gall_tit a")
-                if not title_tag or not title_tag.get("href"):
-                    continue
-                    
-                # 날짜 확인
-                date_str = extract_post_date(row)
-                post_date = None
-                
-                if enforce_date_limit and start_dt and end_dt:
-                    try:
-                        # DC 날짜 파싱 (MM.DD 또는 HH:MM 형태)
-                        if ':' in date_str:  # 오늘 작성된 글
-                            post_date = datetime.now()
-                        elif '.' in date_str and len(date_str.split('.')) == 2:
-                            month, day = date_str.split('.')
-                            post_date = datetime(datetime.now().year, int(month), int(day))
-                        else:
-                            post_date = datetime.now()  # 파싱 실패시 현재 날짜
-                            
-                        # 날짜 범위 체크
-                        if post_date < start_dt:
-                            print(f"🛑 날짜 범위 초과로 크롤링 중단: {post_date} < {start_dt}")
-                            return posts
-                        elif post_date > end_dt:
-                            continue
-                    except Exception as e:
-                        print(f"날짜 파싱 오류: {e}")
-                        continue
-                
-                # 메트릭 추출 및 필터링
-                views, likes = extract_post_metrics(row)
-                if views < min_views or likes < min_likes:
-                    continue
-                
-                # 게시물 정보 수집
-                author = extract_post_author(row)
-                comments_count = extract_comments_count(row)
-                
-                num_element = row.select_one('td.gall_num')
-                post_num = num_element.text.strip() if num_element else str(len(posts) + 1)
-
-                post_data = {
-                    "번호": len(posts) + 1,  # 임시 번호 (나중에 재부여)
-                    "원제목": title_tag.get("title", title_tag.text).strip(),
-                    "번역제목": None,
-                    "링크": "https://gall.dcinside.com" + title_tag["href"],
-                    "본문": None,
-                    "썸네일 URL": None,
-                    "조회수": views,
-                    "추천수": likes,
-                    "댓글수": comments_count,
-                    "작성일": date_str,
-                    "작성자": author,
-                    "게시물번호": post_num,
-                    "정렬방식": sort
-                }
-                
-                posts.append(post_data)
-                page_found_posts += 1
-                
-                # 🔥 효율적 중단 조건
-                if not enforce_date_limit and len(posts) >= end_index + 10:
-                    break
-            
-            if page_found_posts == 0:
-                consecutive_no_match += 1
-                if consecutive_no_match >= max_consecutive_no_match:
-                    print(f"🛑 연속 {max_consecutive_no_match}페이지 조건 불일치로 중단")
-                    break
-            else:
-                consecutive_no_match = 0
-                
-            # 🔥 효율적 중단: 날짜 필터가 없고 충분히 수집했으면 중단
-            if not enforce_date_limit and len(posts) >= end_index + 10:
-                break
-                
-            page += 1
-            
-        except Exception as e:
-            print(f"페이지 {page} 크롤링 오류: {e}")
-            break
-    
-    # 🔥 DCInside 자체 정렬이 적용되지 않았다면 후처리 정렬
-    if not dc_sort_params or len(posts) < 10:  # 자체 정렬 실패 감지
-        if sort == "popular":
-            posts.sort(key=lambda x: x.get('조회수', 0), reverse=True)
-        elif sort == "recommend":
-            posts.sort(key=lambda x: x.get('추천수', 0), reverse=True)
-        elif sort == "comments":
-            posts.sort(key=lambda x: x.get('댓글수', 0), reverse=True)
-        # recent는 크롤링 순서 유지
-    
-    # 🔥 정확한 범위로 자르기 (날짜 강제 모드가 아닐 때)
-    if not enforce_date_limit:
-        if start_index <= len(posts):
-            posts = posts[start_index-1:end_index]
-        else:
-            posts = []
-    
-    # 🔥 번호를 start_index부터 정확히 부여
-    for idx, post in enumerate(posts):
-        post['번호'] = start_index + idx
-    
-    print(f"DCInside 크롤링 완료: {len(posts)}개 게시물 ({start_index}-{start_index+len(posts)-1}위)")
-    return posts
-
-
-
-def get_dcinside_sort_params(sort_method: str) -> str:
-    """DCInside 자체 정렬 파라미터 생성"""
-    # 🔥 DCInside 정렬 파라미터 매핑 (추정)
-    dc_sort_map = {
-        "recommend": "sort_type=recommend&order=desc",     # 추천순
-        "popular": "sort_type=hit&order=desc",             # 조회수순  
-        "comments": "sort_type=reply&order=desc",          # 댓글순
-        "recent": "",  # 기본 정렬 (최신순)
-    }
-    
-    # 다양한 파라미터 패턴 시도
-    alternative_patterns = {
-        "recommend": [
-            "sort_type=recommend&order=desc",
-            "s=recommend&o=desc", 
-            "sort=recommend",
-            "orderby=recommend_desc"
-        ],
-        "popular": [
-            "sort_type=hit&order=desc",
-            "s=hit&o=desc",
-            "sort=view",
-            "orderby=hit_desc"
-        ],
-        "comments": [
-            "sort_type=reply&order=desc", 
-            "s=reply&o=desc",
-            "sort=reply",
-            "orderby=reply_desc"
-        ]
-    }
-    
-    return dc_sort_map.get(sort_method, "")
-
+# ==================== 유틸리티 함수들 ====================
 
 def test_dcinside_sort_urls(board_name: str) -> dict:
     """DCInside 정렬 URL 테스트 함수"""
@@ -454,10 +634,8 @@ def test_dcinside_sort_urls(board_name: str) -> dict:
     
     return test_urls
 
-
-
-# ✅ 게시글 본문 추출 (선택적)
 def parse_dcinside(url: str) -> dict:
+    """게시글 본문 추출 (선택적)"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
@@ -477,7 +655,6 @@ def parse_dcinside(url: str) -> dict:
         "content": content_tag.text.strip()
     }
 
-# 로드된 갤러리 목록 확인 함수
 def list_available_galleries() -> None:
     """로드 가능한 모든 갤러리를 출력합니다."""
     gallery_map = load_gallery_map()
@@ -490,7 +667,6 @@ def list_available_galleries() -> None:
     for i, (name, info) in enumerate(sorted(gallery_map.items()), 1):
         print(f"{i:3d}. {name} (ID: {info['id']}, TYPE: {info['type']})")
 
-# 키워드 검색 함수
 def search_galleries(keyword: str) -> None:
     """키워드로 갤러리를 검색합니다."""
     keyword = keyword.strip().lower()
@@ -500,7 +676,8 @@ def search_galleries(keyword: str) -> None:
         print("❌ 로드된 갤러리가 없습니다.")
         return
 
-    matches = [(name, info) for name, info in gallery_map.items() if keyword in name.lower() or keyword == info["id"]]
+    matches = [(name, info) for name, info in gallery_map.items() 
+               if keyword in name.lower() or keyword == info["id"]]
 
     if not matches:
         print(f"❌ '{keyword}'와 일치하는 갤러리를 찾을 수 없습니다.")
