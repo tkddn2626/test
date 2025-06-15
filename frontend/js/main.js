@@ -1,3770 +1,1331 @@
-
-        // ==================== 전역 변수 및 상태 관리 ====================
-        // 애플리케이션의 전역 상태와 설정을 관리하는 변수들
-        let currentSite = null;
-        let currentLanguage = 'en';
-        let autocompleteData = [];
-        let siteAutocompleteData = [];
-        let highlightIndex = -1;
-        let siteHighlightIndex = -1;
-        let isLoading = false;
-        let searchInitiated = false;
-        let currentSocket = null;
-        let crawlResults = [];
-        let shortcuts = [];
-        let crawlStartTime = null;
-        let isMouseDownOnAutocomplete = false;
-        let isProgrammaticInput = false;
-        let currentCrawlId = null;
-
-        // 전역 오류 처리기
-        window.addEventListener('error', function(e) {
-            console.error('전역 JavaScript 오류:', {
-                message: e.message,
-                filename: e.filename,
-                lineno: e.lineno,
-                colno: e.colno,
-                error: e.error
-            });
-            
-            // 사용자에게 친화적인 메시지 표시
-            if (e.message.includes('data is not defined')) {
-                showTemporaryMessage('일시적인 데이터 처리 오류가 발생했습니다. 다시 시도해주세요.', 'error');
-            }
-        });
-
-        // ==================== API 및 환경 설정 ====================
-        // 환경별 API 설정을 반환하는 함수
-        function getApiConfig() {
-            const hostname = window.location.hostname;
-            const protocol = window.location.protocol;
-            
-            console.log('현재 환경:', { hostname, protocol });
-
-            // 개발 환경
-            if (hostname === 'localhost' || hostname === '127.0.0.1') {
-                return {
-                    API_BASE_URL: 'http://localhost:8000',
-                    WS_BASE_URL: 'ws://localhost:8000'
-                };
-            }
-            
-            // 프로덕션 환경 - HTTPS/WSS 사용
-            const RENDER_DOMAIN = 'test-1-zm0k.onrender.com';
-            
-            return {
-                API_BASE_URL: `https://${RENDER_DOMAIN}`,
-                WS_BASE_URL: `wss://${RENDER_DOMAIN}`  // WSS 사용
-            };
-        }
-
-        // WebSocket 연결을 재시도 로직과 함께 생성하는 함수
-        async function createWebSocketWithRetry(endpoint, config, maxRetries = 3) {
-            const { WS_BASE_URL } = getApiConfig();
-            
-            for (let retry = 0; retry < maxRetries; retry++) {
-                try {
-                    console.log(`WebSocket 연결 시도 ${retry + 1}/${maxRetries}: ${endpoint}`);
-                    
-                    const wsUrl = `${WS_BASE_URL}/ws/${endpoint}`;
-                    const ws = new WebSocket(wsUrl);
-                    
-                    // 연결 타임아웃을 더 짧게 설정
-                    const timeout = setTimeout(() => {
-                        ws.close();
-                    }, 5000); // 10초 → 5초로 단축
-                    
-                    await new Promise((resolve, reject) => {
-                        ws.onopen = () => {
-                            clearTimeout(timeout);
-                            console.log(`✅ WebSocket 연결 성공: ${endpoint}`);
-                            
-                            // 설정 전송
-                            ws.send(JSON.stringify(config));
-                            console.log('📤 크롤링 설정 전송:', config);
-                            
-                            resolve();
-                        };
-
-                        ws.onerror = (error) => {
-                            clearTimeout(timeout);
-                            console.error(`❌ WebSocket 연결 오류 (${endpoint}):`, error);
-                            reject(new Error(`연결 실패 (${endpoint})`));
-                        };
-
-                        ws.onclose = (event) => {
-                            clearTimeout(timeout);
-                            if (event.code !== 1000) {
-                                reject(new Error(`연결 종료 (${endpoint}): ${event.code}`));
-                            }
-                        };
-                    });
-
-                    // 메시지 핸들러 설정
-                    setupWebSocketMessageHandlers(ws, endpoint);
-                    
-                    return ws;
-
-                } catch (error) {
-                    console.warn(`연결 실패 ${retry + 1}/${maxRetries} (${endpoint}):`, error.message);
-                    
-                    if (retry === maxRetries - 1) {
-                        throw error;
-                    }
-                    
-                    // 지수적 백오프 (1초, 2초, 4초)
-                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retry)));
-                }
-            }
-        }
-
-
-        // API 연결 상태를 테스트하는 함수
-        async function testApiConnection() {
-            try {
-                console.log('API 연결 테스트 시작...');
-                const response = await fetch(`${API_BASE_URL}/health`);
-                const data = await response.json();
-                console.log('API 연결 성공:', data);
-                return true;
-            } catch (error) {
-                console.error('API 연결 실패:', error);
-                return false;
-            }
-        }
-
-        // WebSocket 연결 상태를 테스트하는 함수
-        function testWebSocketConnection() {
-            return new Promise((resolve) => {
-                console.log('WebSocket 연결 테스트 시작...');
-                const testWs = new WebSocket(`${WS_BASE_URL}/ws/auto-crawl`);
-                
-                testWs.onopen = () => {
-                    console.log('WebSocket 연결 성공');
-                    testWs.close();
-                    resolve(true);
-                };
-                
-                testWs.onerror = (error) => {
-                    console.error('WebSocket 연결 실패:', error);
-                    resolve(false);
-                };
-                
-                setTimeout(() => {
-                    if (testWs.readyState === WebSocket.CONNECTING) {
-                        testWs.close();
-                        resolve(false);
-                    }
-                }, 5000);
-            });
-        }
-
-        // API 설정을 전역 변수로 저장
-        const { API_BASE_URL, WS_BASE_URL } = getApiConfig();
-        console.log('API 설정:', { API_BASE_URL, WS_BASE_URL });
-
-        // ==================== 언어 및 라벨 관리 ====================
-        // 현재 언어에 맞는 라벨을 반환하는 함수
-        function getLabels() {
-            return window.languages[currentLanguage] || window.languages.ko;
-        }
-
-        // 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
-        function updateLabels() {
-            const lang = window.languages?.[currentLanguage] || window.languages?.ko || {};
-            
-            function safeUpdateText(selector, text) {
-                const el = document.querySelector(selector) || document.getElementById(selector);
-                if (!el || text === undefined) return false;
-                // badge 스팬만 따로 보관
-                const badge = el.querySelector('#announcementBadge');
-                el.textContent = text;
-                if (badge) el.appendChild(badge);
-                return true;
-                }
-
-            try {
-                const currentPolicies = window.policies?.[currentLanguage];
-                if (currentPolicies?.privacy && currentPolicies?.business) {
-                    const privacyModal = document.getElementById('privacyModal');
-                    if (privacyModal?.classList.contains('show')) {
-                        const titleEl = document.getElementById('privacyModalTitle');
-                        const contentEl = document.getElementById('privacyModalContent');
-                        if (titleEl) titleEl.textContent = currentPolicies.privacy.title;
-                        if (contentEl) contentEl.innerHTML = currentPolicies.privacy.content;
-                    }
-                    
-                    const businessModal = document.getElementById('businessModal');
-                    if (businessModal?.classList.contains('show')) {
-                        const titleEl = document.getElementById('businessModalTitle');
-                        const contentEl = document.getElementById('businessModalContent');
-                        if (titleEl) titleEl.textContent = currentPolicies.business.title;
-                        if (contentEl) contentEl.innerHTML = currentPolicies.business.content;
-                    }
-                    
-                    const termsModal = document.getElementById('termsModal');
-                    if (termsModal?.classList.contains('show')) {
-                        const titleEl = document.getElementById('termsModalTitle');
-                        const contentEl = document.getElementById('termsModalContent');
-                        if (titleEl) titleEl.textContent = currentPolicies.terms.title;
-                        if (contentEl) contentEl.innerHTML = currentPolicies.terms.content;
-                    }
-                }
-            } catch (error) {
-                console.warn('모달 업데이트 중 오류:', error);
-            }
-            
-            function safeUpdatePlaceholder(selector, placeholder) {
-                const element = document.querySelector(selector) || document.getElementById(selector);
-                if (element && placeholder !== undefined) {
-                    element.placeholder = placeholder;
-                    return true;
-                }
-                return false;
-            }
-            
-            safeUpdateText('crawlBtn', lang.start);
-            safeUpdateText('cancelBtn', lang.cancel);
-            safeUpdateText('downloadBtn', lang.download);
-            
-            safeUpdatePlaceholder('siteInput', lang.sitePlaceholder);
-            
-            if (currentSite) {
-                updateBoardPlaceholder(currentSite);
-            } else {
-                safeUpdatePlaceholder('boardInput', lang.boardPlaceholder || lang.sitePlaceholder || "게시판 이름을 입력하세요...");
-            }
-            
-            safeUpdatePlaceholder('shortcutNameInput', lang.shortcutNamePlaceholder);
-            safeUpdatePlaceholder('shortcutUrlInput', lang.shortcutUrlPlaceholder);
-            
-            safeUpdateText('minViewsLabel', lang.minViews);
-            safeUpdateText('minRecommendLabel', lang.minRecommend);
-            safeUpdateText('minCommentsLabel', lang.minComments);
-            safeUpdateText('startRankLabel', lang.startRank);
-            safeUpdateText('endRankLabel', lang.endRank);
-            safeUpdateText('sortMethodLabel', lang.sortMethod);
-            safeUpdateText('timePeriodLabel', lang.timePeriod);
-            safeUpdateText('advancedSearchLabel', lang.advancedSearch);
-            
-            safeUpdateText('privacyLink', lang.privacy);
-            safeUpdateText('termsLink', lang.terms); 
-            safeUpdateText('bugReportLink', lang.feedback);
-            safeUpdateText('businessLink', lang.business);
-            safeUpdateText('shortcutModalHeader', lang.shortcutModalTitle);
-            safeUpdateText('bugReportTitleText', lang.feedbackTitle);
-            safeUpdateText('bugReportDescLabel', lang.feedbackDescLabel);
-            safeUpdateText('screenshotTitle', lang.fileAttachTitle);
-            safeUpdateText('bugReportWarningText', lang.warningTitle);
-            safeUpdateText('bugReportWarningDetail', lang.warningDetail);
-            safeUpdateText('bugReportCancelBtn', lang.cancel);
-            safeUpdateText('bugReportSubmitBtn', lang.submit);
-
-            // 진행 상황 라벨 업데이트
-            safeUpdateText('postsLabel', lang.crawlingStatus?.found || '개 수집');
-            safeUpdateText('pageLabel', lang.crawlingStatus?.page || '페이지');
-            
-            // progressEta 초기 텍스트 설정
-            const progressEta = document.getElementById('progressEta');
-            if (progressEta && !isLoading) {
-                progressEta.textContent = (lang.crawlingStatus?.timeRemaining || '예상 시간') + ': ' + (lang.resultTexts?.calculating || '계산 중...');
-            }
-            
-
-            const startDateLabel = document.getElementById('startDateLabel');
-            const endDateLabel = document.getElementById('endDateLabel');
-            if (startDateLabel) startDateLabel.textContent = lang.startDate + ':';
-            if (endDateLabel) endDateLabel.textContent = lang.endDate + ':';
-            
-            const backButton = document.querySelector('.back-button');
-            if (backButton) backButton.title = lang.backBtn;
-            
-            const timePeriodSelect = document.getElementById('timePeriod');
-            if (timePeriodSelect && timePeriodSelect.options) {
-                const options = timePeriodSelect.options;
-                if (options[0]) options[0].text = lang.hour;
-                if (options[1]) options[1].text = lang.day;
-                if (options[2]) options[2].text = lang.week;
-                if (options[3]) options[3].text = lang.month;
-                if (options[4]) options[4].text = lang.year;
-                if (options[5]) options[5].text = lang.all;
-                if (options[6]) options[6].text = lang.custom;
-            }
-            
-            const shortcutModal = document.getElementById('shortcutModal');
-            if (shortcutModal) {
-                const header = shortcutModal.querySelector('.shortcut-modal-header');
-                if (header) header.textContent = lang.shortcutModalTitle;
-                
-                const buttons = shortcutModal.querySelectorAll('.shortcut-modal-buttons .btn');
-                if (buttons.length >= 2) {
-                    buttons[0].textContent = lang.cancel;
-                    buttons[1].textContent = lang.save;  
-                }
-            }
-
-            const screenshotBtnText = document.getElementById('screenshotBtnText');
-            if (screenshotBtnText && !screenshotBtnText.textContent.includes('✓')) {
-                screenshotBtnText.textContent = lang.fileAttach;
-            }
-
-            if (currentSite) {
-                loadSiteSortOptions(currentSite, currentSite === 'universal' ? document.getElementById('boardInput')?.value : null);
-            }
-
-            updateCrawlButton();
-            
-            // 진행 상황 관련 텍스트 업데이트
-            if (isLoading) {
-                // 진행 중일 때도 언어 변경 반영
-                const progressText = document.getElementById('progressText');
-                const lang = window.languages[currentLanguage];
-                
-                if (progressText && progressText.textContent.includes('%')) {
-                    // 퍼센트 표시는 그대로 두고, 상태 텍스트만 업데이트는 별도 처리
-                }
-                
-                // 라벨들 업데이트
-                const postsLabel = document.getElementById('postsLabel');
-                const pageLabel = document.getElementById('pageLabel');
-                const progressEta = document.getElementById('progressEta');
-                
-                if (postsLabel) postsLabel.textContent = lang.crawlingStatus?.found || '개 수집';
-                if (pageLabel) pageLabel.textContent = lang.crawlingStatus?.page || '페이지';
-                if (progressEta && !progressEta.textContent.includes('0sec')) {
-                    progressEta.textContent = (lang.crawlingStatus?.timeRemaining || '예상 시간') + ': ' + (lang.resultTexts?.calculating || '계산 중...');
-                }
-            }
-
-            try {
-                loadShortcuts();
-            } catch (error) {
-                console.error('바로가기 로드 오류:', error);
-            }
-            console.log(`언어 변경 완료: ${currentLanguage}`);
-        }
-
-        // 언어 드롭다운을 표시/숨김하는 함수
-        function toggleLanguageDropdown() {
-            const dropdown = document.getElementById('languageDropdown');
-            dropdown.classList.toggle('show');
-        }
-
-        // 언어 드롭다운을 숨기는 함수
-        function hideLanguageDropdown() {
-            document.getElementById('languageDropdown').classList.remove('show');
-        }
-
-        // 언어를 선택하고 UI를 업데이트하는 함수
-        function selectLanguage(langCode, langName) {
-            currentLanguage = langCode;
-            document.getElementById('currentLang').textContent = langName;
-            
-            document.querySelectorAll('.language-option').forEach(option => {
-                option.classList.remove('active');
-            });
-            event.target.classList.add('active');
-            
-            updateLabels();
-            hideLanguageDropdown();
-            
-            console.log(`언어 변경됨: ${langCode} (${langName})`);
-        }
-
-        // ==================== 피드백 및 모달 관리 ====================
-        // 피드백 모달을 여는 함수
-        function openBugReportModal() {
-            const modal = document.getElementById('bugReportModal');
-            const textarea = document.getElementById('bugReportDescription');
-            const lang = window.languages[currentLanguage];
-            
-            document.getElementById('bugReportTitleText').textContent = lang.feedbackTitle || 'PickPost에 의견 보내기';
-            document.getElementById('bugReportDescLabel').textContent = lang.feedbackDescLabel || '의견을 설명해 주세요. (필수)';
-            document.getElementById('screenshotTitle').textContent = lang.fileAttachTitle;
-            document.getElementById('bugReportWarningText').textContent = lang.warningTitle || '민감한 정보는 포함하지 마세요';
-            document.getElementById('bugReportWarningDetail').textContent = lang.warningDetail || '개인정보, 비밀번호, 금융정보 등은 포함하지 마세요...';
-            document.getElementById('bugReportCancelBtn').textContent = lang.cancel;
-            document.getElementById('bugReportSubmitBtn').textContent = lang.submit || '보내기';
-            
-            modal.classList.add('show');
-            setTimeout(() => textarea.focus(), 300);
-            setupModalKeyboardTrap(modal);
-        }
-
-        // 피드백 모달을 닫는 함수
-        function closeBugReportModal() {
-            const modal = document.getElementById('bugReportModal');
-            
-            const description = document.getElementById('bugReportDescription').value.trim();
-            if (description.length > 0) {
-                const confirmMessages = {
-                    ko: '작성 중인 내용이 있습니다. 정말 닫으시겠습니까?',
-                    en: 'There is content being written. Are you sure you want to close?',
-                    ja: '作成中の内容があります。本当に閉じますか？'
-                };
-                
-                if (!confirm(confirmMessages[currentLanguage] || confirmMessages.ko)) {
-                    return;
-                }
-            }
-            
-            modal.classList.remove('show');
-            
-            setTimeout(() => {
-                resetBugReportModal();
-            }, 300);
-        }
-
-        // 서비스 약관 모달을 여는 함수
-        function openTermsModal() {
-            const modal = document.getElementById('termsModal');
-            const terms = window.policies[currentLanguage].terms;
-            
-            document.getElementById('termsModalTitle').textContent = terms.title;
-            document.getElementById('termsModalContent').innerHTML = terms.content;
-            
-            modal.classList.add('show');
-            setupModalKeyboardTrap(modal);
-        }
-
-        // 서비스 약관 모달을 닫는 함수
-        function closeTermsModal() {
-            const modal = document.getElementById('termsModal');
-            modal.classList.remove('show');
-        }
-
-        // 개인정보처리방침 모달을 여는 함수
-        function openPrivacyModal() {
-            const modal = document.getElementById('privacyModal');
-            const policy = window.policies[currentLanguage].privacy;
-            
-            document.getElementById('privacyModalTitle').textContent = policy.title;
-            document.getElementById('privacyModalContent').innerHTML = policy.content;
-            
-            modal.classList.add('show');
-            setupModalKeyboardTrap(modal);
-        }
-
-        // 개인정보처리방침 모달을 닫는 함수
-        function closePrivacyModal() {
-            const modal = document.getElementById('privacyModal');
-            modal.classList.remove('show');
-        }
-
-        // 비즈니스 모달을 여는 함수
-        function openBusinessModal() {
-            const modal = document.getElementById('businessModal');
-            const policy = window.policies[currentLanguage].business;
-            
-            document.getElementById('businessModalTitle').textContent = policy.title;
-            document.getElementById('businessModalContent').innerHTML = policy.content;
-            
-            modal.classList.add('show');
-            setupModalKeyboardTrap(modal);
-        }
-
-        // 비즈니스 모달을 닫는 함수
-        function closeBusinessModal() {
-            const modal = document.getElementById('businessModal');
-            modal.classList.remove('show');
-        }
-
-        // 스크린샷 버튼 상태를 토글하는 함수
-        function toggleScreenshot() {
-            const screenshotBtn = document.getElementById('screenshotBtn');
-            const isActive = screenshotBtn.classList.toggle('active');
-            
-            const lang = window.languages[currentLanguage];
-            if (isActive) {
-                document.getElementById('screenshotBtnText').textContent = '✓ ' + (lang.screenshotCapture || '스크린샷 캡처');
-            } else {
-                document.getElementById('screenshotBtnText').textContent = lang.screenshotCapture || '스크린샷 캡처';
-            }
-        }
-
-        // 피드백 전송 버튼 상태를 업데이트하는 함수
-        function updateBugReportButton() {
-            const description = document.getElementById('bugReportDescription').value.trim();
-            const submitBtn = document.getElementById('bugReportSubmitBtn');
-            
-            const isValid = description.length > 0;
-            submitBtn.disabled = !isValid;
-            
-            if (isValid) {
-                submitBtn.style.opacity = '1';
-                submitBtn.style.transform = 'scale(1)';
-            } else {
-                submitBtn.style.opacity = '0.6';
-                submitBtn.style.transform = 'scale(0.95)';
-            }
-        }
-
-        // 피드백을 서버로 전송하는 함수
-        function submitBugReport() {
-            const description = document.getElementById('bugReportDescription').value.trim();
-            const fileInput = document.getElementById('fileInput');
-            const hasFile = fileInput.files.length > 0;
-            const lang = window.languages[currentLanguage];
-            
-            if (!description) {
-                showTemporaryMessage('feedback_required', 'error');
-                document.getElementById('bugReportDescription').focus();
-                return;
-            }
-            
-            const submitBtn = document.getElementById('bugReportSubmitBtn');
-            const originalText = submitBtn.textContent;
-            submitBtn.disabled = true;
-            
-            // 전송 중 텍스트 번역
-            const sendingText = {
-                ko: '전송 중...',
-                en: 'Sending...',
-                ja: '送信中...'
-            };
-            submitBtn.textContent = sendingText[currentLanguage] || sendingText.ko;
-            
-            const systemInfo = {
-                userAgent: navigator.userAgent,
-                language: navigator.language,
-                platform: navigator.platform,
-                cookieEnabled: navigator.cookieEnabled,
-                onLine: navigator.onLine,
-                screenResolution: `${screen.width}x${screen.height}`,
-                viewportSize: `${window.innerWidth}x${window.innerHeight}`,
-                timestamp: new Date().toISOString()
-            };
-            
-            const bugReport = {
-                description: description,
-                hasFile: hasFile,
-                fileName: hasFile ? fileInput.files[0].name : null,
-                fileSize: hasFile ? fileInput.files[0].size : null,
-                systemInfo: systemInfo,
-                currentLanguage: currentLanguage,
-                currentSite: currentSite,
-                url: window.location.href,
-                timestamp: new Date().toISOString()
-            };
-            
-            console.log('피드백 신고:', bugReport);
-            
-            setTimeout(() => {
-                showTemporaryMessage(lang.messages.feedback.success || '피드백이 전송되었습니다. 감사합니다!', 'success');
-                
-                closeBugReportModal();
-                
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
-                
-            }, 1000);
-            sendBugReportToServer(bugReport);
-        }
-
-        // 글자 수 카운터를 업데이트하는 함수
-        function updateCharacterCount() {
-            const textarea = document.getElementById('bugReportDescription');
-            const charCount = document.getElementById('charCount');
-            const currentLength = textarea.value.length;
-            
-            charCount.textContent = currentLength;
-            
-            if (currentLength > 900) {
-                charCount.style.color = '#d93025';
-            } else if (currentLength > 800) {
-                charCount.style.color = '#f57c00';
-            } else {
-                charCount.style.color = '#5f6368';
-            }
-        }
-
-        // 파일 업로드를 처리하는 함수
-        function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const maxSize = 5 * 1024 * 1024;
-                
-                if (file.size > maxSize) {
-                    const lang = labels[currentLanguage];
-                    showTemporaryMessage('file_too_large', 'error');
-                    
-                    event.target.value = '';
-                    return;
-                }
-
-                if (!file.type.startsWith('image/')) {
-                    showTemporaryMessage('invalid_file_type', 'error');
-                    
-                    event.target.value = '';
-                    return;
-                }
-
-                document.getElementById('fileName').textContent = file.name;
-                document.getElementById('filePreview').style.display = 'block';
-                
-                const screenshotBtn = document.getElementById('screenshotBtn');
-                screenshotBtn.classList.add('active');
-                
-                const lang = window.languages[currentLanguage];
-                document.getElementById('screenshotBtnText').textContent = '✓ ' + (lang.fileAttached || '파일 첨부됨');
-                
-                screenshotBtn.setAttribute('aria-label', '파일이 첨부되었습니다. 클릭하여 다른 파일로 변경');
-            }
-        }
-
-        // 첨부된 파일을 제거하는 함수
-        function removeFile() {
-            document.getElementById('fileInput').value = '';
-            document.getElementById('filePreview').style.display = 'none';
-            
-            const screenshotBtn = document.getElementById('screenshotBtn');
-            screenshotBtn.classList.remove('active');
-            
-            const lang = window.languages[currentLanguage];
-            document.getElementById('screenshotBtnText').textContent = lang.fileAttach || '사진 첨부';
-        }
-
-        // 피드백을 서버로 전송하는 함수
-        async function sendBugReportToServer(bugReport) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/feedback`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(bugReport)
-                });
-                
-                if (response.ok) {
-                    console.log('피드백 전송 성공');
-                } else {
-                    console.warn('피드백 전송 실패:', response.status);
-                }
-            } catch (error) {
-                console.error('피드백 전송 오류:', error);
-            }
-        }
-
-        // 피드백 모달을 초기화하는 함수
-        function resetBugReportModal() {
-            document.getElementById('bugReportDescription').value = '';
-            document.getElementById('charCount').textContent = '0';
-            document.getElementById('charCount').style.color = '#5f6368';
-            
-            removeFile();
-            
-            updateBugReportButton();
-        }
-
-        // 모달에서 키보드 트랩을 설정하는 함수 (접근성)
-        function setupModalKeyboardTrap(modal) {
-            const focusableElements = modal.querySelectorAll(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            );
-            const firstFocusableElement = focusableElements[0];
-            const lastFocusableElement = focusableElements[focusableElements.length - 1];
-
-            modal.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    closeBugReportModal();
-                }
-                
-                if (e.key === 'Tab') {
-                    if (e.shiftKey) {
-                        if (document.activeElement === firstFocusableElement) {
-                            lastFocusableElement.focus();
-                            e.preventDefault();
-                        }
-                    } else {
-                        if (document.activeElement === lastFocusableElement) {
-                            firstFocusableElement.focus();
-                            e.preventDefault();
-                        }
-                    }
-                }
-            });
-        }
-
-        // ==================== 페이지 초기화 및 이벤트 설정 ====================
-        // 페이지를 새로고침하는 함수
-        function refreshPage() {
-            location.reload();
-        }
-
-        // 날짜 입력 필드를 초기화하는 함수
-        function initializeDateInputs() {
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(yesterday.getDate() - 1);
-            
-            document.getElementById('startDate').value = yesterday.toISOString().split('T')[0];
-            document.getElementById('endDate').value = today.toISOString().split('T')[0];
-            
-            console.log('날짜 기본값 설정:', {
-                start: yesterday.toISOString().split('T')[0],
-                end: today.toISOString().split('T')[0]
-            });
-        }
-
-        // 모든 이벤트 리스너를 설정하는 함수
-        function setupEventListeners() {
-            const siteInput = document.getElementById('siteInput');
-            const boardInput = document.getElementById('boardInput');
-            
-            siteInput.addEventListener('input', function() {
-                const value = this.value;
-                
-                document.getElementById('clearSiteBtn').style.display = value.trim() ? 'flex' : 'none';
-                
-                hideSiteAutocomplete();
-            });
-
-            siteInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSiteSearch();
-                    setTimeout(() => {
-                        if (currentSite && boardInput && isElementVisible(boardInput)) {
-                            boardInput.focus();
-                        }
-                    }, 500);
-                } else if (e.key === 'Escape') {
-                    hideSiteAutocomplete();
-                }
-            });
-
-            siteInput.addEventListener('blur', function() {
-                hideSiteAutocomplete();
-            });
-
-            let originalBoardValue = '';
-            
-            function showSiteHelp(site) {
-                if (site === 'lemmy') {
-                    showLemmyHelp();
-                } else if (site === 'universal') {
-                    showUniversalHelp();
-                }
-            }
-
-            function showLemmyHelp() {
-                const boardInput = document.getElementById('boardInput');
-                if (boardInput.value.trim()) {
-                    return;
-                }
-                
-                showLemmyHelpContent();
-            }
-
-            boardInput.addEventListener('input', function() {
-                if (isProgrammaticInput) {
-                    isProgrammaticInput = false;
-                    return;
-                }
-                
-                const value = this.value.trim();
-                
-                if (value.length === 0 && currentSite === 'lemmy') {
-                    showLemmyHelp();
-                } else if (value.length >= 2) {
-                    fetchAutocomplete(value);
-                } else {
-                    hideAutocomplete();
-                }
-                
-                document.getElementById('clearBoardBtn').style.display = value ? 'flex' : 'none';
-                updateCrawlButton();
-            });
-            
-            boardInput.addEventListener('focus', function() {
-                if (!this.value.trim() && currentSite === 'lemmy') {
-                    showLemmyHelp();
-                } else if (this.value.trim() && currentSite) {
-                    fetchAutocomplete(this.value);
-                }
-            });
-            
-            boardInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (highlightIndex >= 0 && autocompleteData.length > 0) {
-                        selectAutocompleteItem(highlightIndex);
-                    } else if (this.value.trim() && currentSite) {
-                        moveToNextInput();
-                    }
-                } else if (e.key === 'Escape') {
-                    this.value = originalBoardValue;
-                    hideAutocomplete();
-                } else {
-                    handleKeyNavigation(e);
-                }
-            });
-
-            boardInput.addEventListener('blur', function() {
-                if (!isMouseDownOnAutocomplete) {
-                    setTimeout(() => {
-                        hideAutocomplete();
-                    }, 200);
-                }
-            });
-
-            document.getElementById('timePeriod').addEventListener('change', function() {
-                handleTimeSelection(this.value);
-            });
-
-            document.getElementById('timePeriod').addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    moveToNextInput(this);
-                }
-            });
-
-            const inputElements = [
-                '#minViews', '#minRecommend', '#startRank', '#endRank', 
-                '#startRankAdv', '#endRankAdv', '#minComments',
-                '#sortMethod', '#startDate', '#endDate'
-            ];
-            
-            inputElements.forEach(selector => {
-                const element = document.querySelector(selector);
-                if (element) {
-                    element.addEventListener('input', updateCrawlButton);
-                    element.addEventListener('change', updateCrawlButton);
-                    element.addEventListener('keydown', function(e) {
-                        if (e.key === 'Enter') {
-                            e.preventDefault();
-                            moveToNextInput(this);
-                        }
-                    });
-                }
-            });
-
-            document.getElementById('advancedSearch').addEventListener('change', function() {
-                toggleAdvancedSearch();
-                updateCrawlButton();
-            });
-
-            document.addEventListener('click', function(e) {
-                if (!e.target.closest('.language-selector')) {
-                    hideLanguageDropdown();
-                }
-                if (!e.target.closest('.board-search-container')) {
-                    hideAutocomplete();
-                }
-                if (!e.target.closest('.search-container')) {
-                    hideSiteAutocomplete();
-                }
-                if (!e.target.closest('.shortcut-modal-content') && !e.target.closest('.add-shortcut-btn')) {
-                    closeShortcutModal();
-                }
-            });
-
-            document.getElementById('shortcutNameInput').addEventListener('keydown', handleShortcutModalKeydown);
-            document.getElementById('shortcutUrlInput').addEventListener('keydown', handleShortcutModalKeydown);
-        }
-
-        // DOM 로드 완료 시 초기화를 실행하는 이벤트 리스너
-        document.addEventListener('DOMContentLoaded', function() {
-            currentLanguage = 'en';
-
-            // 언어 버튼 텍스트 초기화
-            document.getElementById('currentLang').textContent = 'English';
-            
-            // 언어 옵션 활성화 상태 변경
-            document.querySelectorAll('.language-option').forEach(option => {
-                option.classList.remove('active');
-            });
-            // 영어 옵션을 활성화
-            document.querySelector('[onclick*="en"]').classList.add('active');
-            
-            updateLabels(); // 영어 라벨로 업데이트
-
-            updateLabels();
-            initializeDefaultShortcuts();
-            setupEventListeners();
-            initializeDateInputs();
-            loadShortcuts();
-        
-            const logoImage = document.querySelector('.logo-image');
-            if (logoImage) {
-                logoImage.addEventListener('click', function() {
-                    location.reload();
-                });
-            }
-            
-            console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
-            
-            testApiConnection().then(apiConnected => {
-                console.log('API 연결 상태:', apiConnected);
-            });
-            
-            testWebSocketConnection().then(wsConnected => {
-                console.log('WebSocket 연결 상태:', wsConnected);
-            });
-
-            // 피드백 시스템 초기화
-            if (window.initializeFeedbackSystem) {
-                window.initializeFeedbackSystem();
-            }
-            
-            // ready 이벤트 발생
-            window.dispatchEvent(new Event('PickPostReady'));
-
-        });
-
-        // ESC 키로 모달을 닫는 이벤트 리스너
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const modal = document.getElementById('bugReportModal');
-                if (modal.classList.contains('show')) {
-                    closeBugReportModal();
-                    return;
-                }
-                
-                const termsModal = document.getElementById('termsModal');
-                if (termsModal.classList.contains('show')) {
-                    closeTermsModal();
-                    return;
-                }
-                
-                const privacyModal = document.getElementById('privacyModal');
-                if (privacyModal.classList.contains('show')) {
-                    closePrivacyModal();
-                    return;
-                }
-                
-                const businessModal = document.getElementById('businessModal');
-                if (businessModal.classList.contains('show')) {
-                    closeBusinessModal();
-                    return;
-                }
-            }
-        });
-
-        // ==================== 바로가기 관리 시스템 ====================
-        // 기본 사이트들을 포함한 초기 바로가기를 설정하는 함수
-        function initializeDefaultShortcuts() {
-            const stored = localStorage.getItem('pickpost_shortcuts');
-            if (!stored) {
-                const defaultShortcuts = [
-                    { name: 'Reddit', url: 'reddit.com', site: 'reddit' }, 
-                    { name: 'BBC', url: 'bbc.com', site: 'bbc' },
-                    { name: 'Lemmy', url: 'lemmy.world', site: 'lemmy' }
-                ];
-                localStorage.setItem('pickpost_shortcuts', JSON.stringify(defaultShortcuts));
-                shortcuts = defaultShortcuts;
-            } else {
-                shortcuts = JSON.parse(stored);
-            }
-        }
-
-        // 저장된 바로가기들을 화면에 로드하는 함수
-        function loadShortcuts() {
-            const container = document.getElementById('siteSelection');
-            const lang = window.languages[currentLanguage];
-
-            const siteColors = {
-                reddit: '#ff4500',
-                dcinside: '#00a8ff', 
-                blind: '#00d2d3',
-                bbc: '#bb1919',
-                lemmy: '#00af54',
-                universal: '#28a745'
-            };
-            
-            const shortcutButtons = shortcuts.map((shortcut, index) => {
-                let displayName = shortcut.name;
-                
-                if (window.innerWidth <= 768 && displayName.length > 6) {
-                    displayName = displayName.substring(0, 6) + '...';
-                }
-                
-                return `
-                    <button class="site-btn" data-site="${shortcut.site}" onclick="useShortcut('${shortcut.site}', '${shortcut.url}')" title="${shortcut.name}">
-                        <div class="site-icon" style="background: ${siteColors[shortcut.site] || '#6c757d'};"></div>
-                        <span>${displayName}</span>
-                        <span class="shortcut-remove" onclick="event.stopPropagation(); removeShortcut(${index})" title="삭제">×</span>
-                    </button>
-                `;
-            }).join('');
-            
-            const addButton = shortcuts.length < 5 ? `
-                <button class="site-btn add-shortcut-btn" onclick="openShortcutModal()">
-                    ➕ ${lang.addShortcut || '추가'}
-                </button>
-            ` : '';
-            
-            container.innerHTML = shortcutButtons + addButton;
-        }
-
-        // 바로가기 추가 모달을 여는 함수
-        function openShortcutModal() {
-            const modal = document.getElementById('shortcutModal');
-            if (!modal) {
-                console.error('shortcutModal 요소를 찾을 수 없습니다');
-                return;
-            }
-
-            const lang = window.languages[currentLanguage];
-
-            const header = modal.querySelector('.shortcut-modal-header');
-            if (header) {
-                header.textContent = lang.shortcutModalTitle || '사이트 추가';
-            }
-            
-            const nameInput = document.getElementById('shortcutNameInput');
-            const urlInput = document.getElementById('shortcutUrlInput');
-            if (nameInput) nameInput.placeholder = lang.shortcutNamePlaceholder || '사이트 이름';
-            if (urlInput) urlInput.placeholder = lang.shortcutUrlPlaceholder || '사이트 URL';
-            
-            const buttons = modal.querySelectorAll('.shortcut-modal-buttons .btn');
-            if (buttons.length >= 2) {
-                buttons[0].textContent = lang.cancel || '취소';
-                buttons[1].textContent = lang.save || '저장';
-            }
-
-            modal.classList.add('show');
-
-            setTimeout(() => {
-                const nameInput = document.getElementById('shortcutNameInput');
-                if (nameInput) {
-                    nameInput.focus();
-                }
-            }, 100);
-        }
-
-        // 바로가기 추가 모달을 닫는 함수
-        function closeShortcutModal() {
-            const modal = document.getElementById('shortcutModal');
-            modal.classList.remove('show');
-            
-            document.getElementById('shortcutNameInput').value = '';
-            document.getElementById('shortcutUrlInput').value = '';
-        }
-
-        // 새로운 바로가기를 저장하는 함수
-        function saveShortcut() {
-            const name = document.getElementById('shortcutNameInput').value.trim();
-            const url = document.getElementById('shortcutUrlInput').value.trim();
-            
-            if (!name || !url) {
-                alert('이름과 URL을 모두 입력해주세요.');
-                return;
-            }
-            
-            if (shortcuts.length >= 5) {
-                alert('바로가기는 최대 5개까지만 추가할 수 있습니다.');
-                return;
-            }
-            
-            const shortcut = { name, url, site: 'universal' };
-            shortcuts.push(shortcut);
-            localStorage.setItem('pickpost_shortcuts', JSON.stringify(shortcuts));
-            
-            loadShortcuts();
-            closeShortcutModal();
-        }
-
-        // 바로가기를 삭제하는 함수
-        function removeShortcut(index) {
-            shortcuts.splice(index, 1);
-            localStorage.setItem('pickpost_shortcuts', JSON.stringify(shortcuts));
-            loadShortcuts();
-        }
-
-        // 바로가기를 사용하여 사이트를 선택하는 함수
-        function useShortcut(site, url) {
-            const siteInput = document.getElementById('siteInput');
-            const siteNames = { 
-                reddit: 'Reddit', 
-                dcinside: 'DCInside', 
-                blind: 'Blind',
-                bbc: 'BBC',
-                lemmy: 'Lemmy',
-                universal: 'universal'
-            };
-            
-            siteInput.value = siteNames[site] || site;
-            document.getElementById('clearSiteBtn').style.display = 'flex';
-            
-            selectSite(site);
-        }
-
-        // 바로가기 모달에서 키보드 이벤트를 처리하는 함수
-        function handleShortcutModalKeydown(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                if (e.target.id === 'shortcutNameInput') {
-                    document.getElementById('shortcutUrlInput').focus();
-                } else if (e.target.id === 'shortcutUrlInput') {
-                    saveShortcut();
-                }
-            }
-        }
-
-
-        // ==================== 사이트 검색 및 자동완성 ====================
-        // 사이트 입력창을 클리어하는 함수
-        function clearSiteInput() {
-            const siteInput = document.getElementById('siteInput');
-            siteInput.value = '';
-            document.getElementById('clearSiteBtn').style.display = 'none';
-            
-            document.querySelectorAll('.site-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            currentSite = null;
-            searchInitiated = false;
-            
-            hideSiteAutocomplete();
-        }
-
-        // 보드 입력을 안전하게 설정하는 함수 (프로그래밍 방식)
-        function safeSetBoardInput(value) {
-            const boardInput = document.getElementById('boardInput');
-            
-            isProgrammaticInput = true;
-            
-            boardInput.value = value;
-            
-            document.getElementById('clearBoardBtn').style.display = value ? 'flex' : 'none';
-            hideAutocomplete();
-            updateCrawlButton();
-            
-            setTimeout(() => {
-                isProgrammaticInput = false;
-            }, 0);
-        }
-
-        // 시간 선택을 처리하는 함수
-        function handleTimeSelection(value) {
-            const customDateContainer = document.getElementById('customDateContainer');
-            
-            if (value === 'custom') {
-                customDateContainer.classList.add('show');
-                console.log('사용자 지정 날짜 모드 활성화');
-            } else {
-                customDateContainer.classList.remove('show');
-                console.log(`시간 필터 선택: ${value}`);
-            }
-            
-            updateCrawlButton();
-        }
-
-        // 입력에서 URL을 추출하는 함수
-        function extractURLFromInput(input) {
-            const value = input.trim().toLowerCase();
-            
-            if (value.startsWith('http://') || value.startsWith('https://')) {
-                return input.trim();
-            }
-            
-            if (value.startsWith('www.')) {
-                return 'https://' + input.trim();
-            }
-            
-            if (value.includes('.') && value.includes('/')) {
-                return 'https://' + input.trim();
-            }
-            
-            if (value.includes('.') && !value.includes(' ')) {
-                return 'https://' + input.trim();
-            }
-            
-            return null;
-        }
-
-        // 사이트 자동완성을 표시하는 함수
-        function showSiteAutocomplete(keyword) {
-            if (!keyword || keyword.length < 1) {
-                hideSiteAutocomplete();
-                return;
-            }
-            
-            const keywordLower = keyword.toLowerCase();
-            const extractedURL = extractURLFromInput(keyword);
-            
-            const suggestions = [
-            { name: 'Reddit', site: 'reddit', icon: '#ff4500', desc: 'reddit.com' },
-            { name: 'DCInside', site: 'dcinside', icon: '#00a8ff', desc: 'dcinside.com' },
-            { name: 'Blind', site: 'blind', icon: '#00d2d3', desc: 'teamblind.com' },
-            { name: 'BBC', site: 'bbc', icon: '#bb1919', desc: 'bbc.com (British Broadcasting)' }, 
-            { name: 'Lemmy', site: 'lemmy', icon: '#00af54', desc: 'lemmy federation network' }, 
-            { name: 'Universal Crawler', site: 'universal', icon: '#28a745', desc: 'All websites (Direct URL input)' } 
-            
-            ].filter(item => {
-                return item.name.toLowerCase().includes(keywordLower) ||
-                    item.site.toLowerCase().includes(keywordLower) ||
-                    item.desc.toLowerCase().includes(keywordLower) ||
-                    (keywordLower === '레딧' && item.site === 'reddit') ||
-                    (keywordLower.includes('디시') && item.site === 'dcinside') ||
-                    (keywordLower.includes('갤러리') && item.site === 'dcinside') ||
-                    (keywordLower.includes('블라인드') && item.site === 'blind') ||
-                    (keywordLower.includes('bbc') && item.site === 'bbc') ||
-                    (keywordLower.includes('뉴스') && item.site === 'bbc') ||
-                    (keywordLower.includes('영국') && item.site === 'bbc') ||
-                    (keywordLower.includes('레미') && item.site === 'lemmy') ||
-                    (keywordLower.includes('범용') && item.site === 'universal') ||
-                    extractedURL;
-            });
-
-            if (extractedURL) {
-                const universalIndex = suggestions.findIndex(s => s.site === 'universal');
-                if (universalIndex > -1) {
-                    const universal = suggestions.splice(universalIndex, 1)[0];
-                    universal.desc = `URL 감지됨: ${extractedURL}`;
-                    suggestions.unshift(universal);
-                }
-            }
-
-            if (suggestions.length > 0) {
-                siteAutocompleteData = suggestions;
-                showSiteSuggestions(suggestions, keyword, extractedURL);
-            } else {
-                hideSiteAutocomplete();
-            }
-        }
-
-        // 사이트 제안 목록을 표시하는 함수
-        function showSiteSuggestions(suggestions, keyword, extractedURL = null) {
-            const searchContainer = document.querySelector('.search-container');
-            
-            let existingDropdown = searchContainer.querySelector('.site-autocomplete');
-            
-            if (existingDropdown) {
-                existingDropdown.remove();
-            }
-
-            searchContainer.classList.add('dropdown-active');
-
-            const dropdown = document.createElement('div');
-            dropdown.className = 'site-autocomplete';
-            dropdown.innerHTML = suggestions.map((item, index) => {
-                const nameHighlighted = item.name.replace(
-                    new RegExp(`(${keyword})`, 'gi'),
-                    '<mark style="background: #ffeb3b;">$1</mark>'
-                );
-                const descHighlighted = item.desc.replace(
-                    new RegExp(`(${keyword})`, 'gi'),
-                    '<mark style="background: #ffeb3b;">$1</mark>'
-                );
-                
-                return `
-                    <div class="site-autocomplete-item" data-index="${index}" onclick="selectSiteAutocompleteItem(${index})">
-                        <div class="site-icon" style="background: ${item.icon};"></div>
-                        <div style="flex: 1;">
-                            <div>${nameHighlighted}</div>
-                            <div style="font-size: 12px; color: #70757a;">${descHighlighted}</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            searchContainer.appendChild(dropdown);
-            siteHighlightIndex = -1;
-        }
-
-        // 사이트 자동완성을 숨기는 함수
-        function hideSiteAutocomplete() {
-            const searchContainer = document.querySelector('.search-container');
-            const dropdown = searchContainer.querySelector('.site-autocomplete');
-            
-            if (dropdown) {
-                dropdown.remove();
-            }
-            
-            searchContainer.classList.remove('dropdown-active');
-            
-            siteAutocompleteData = [];
-            siteHighlightIndex = -1;
-        }
-
-        // 사이트 자동완성에서 탐색하는 함수
-        function navigateSiteAutocomplete(direction) {
-            if (siteAutocompleteData.length === 0) return;
-
-            if (direction === 'down') {
-                siteHighlightIndex = Math.min(siteHighlightIndex + 1, siteAutocompleteData.length - 1);
-            } else {
-                siteHighlightIndex = Math.max(siteHighlightIndex - 1, -1);
-            }
-
-            updateSiteHighlight();
-        }
-
-        // 사이트 자동완성의 하이라이트를 업데이트하는 함수
-        function updateSiteHighlight() {
-            const siteInput = document.getElementById('siteInput');
-            document.querySelectorAll('.site-autocomplete-item').forEach((item, index) => {
-                item.classList.toggle('highlighted', index === siteHighlightIndex);
-            });
-
-            if (siteHighlightIndex >= 0 && siteHighlightIndex < siteAutocompleteData.length) {
-                siteInput.value = siteAutocompleteData[siteHighlightIndex].name;
-            }
-        }
-
-        // 사이트 자동완성 항목을 선택하는 함수
-        function selectSiteAutocompleteItem(index) {
-            if (index >= 0 && index < siteAutocompleteData.length) {
-                const selectedSite = siteAutocompleteData[index];
-                const originalInput = document.getElementById('siteInput').value;
-                const extractedURL = extractURLFromInput(originalInput);
-                
-                if (selectedSite.site === 'universal' && extractedURL) {
-                    const siteName = extractSiteName(extractedURL);
-                    document.getElementById('siteInput').value = siteName;
-                    
-                    hideSiteAutocomplete();
-                    selectSite(selectedSite.site, extractedURL);
-                    
-                    setTimeout(() => {
-                        document.getElementById('boardInput').value = extractedURL;
-                        document.getElementById('clearBoardBtn').style.display = 'flex';
-                        updateCrawlButton();
-                    }, 300);
-                    
-                } else {
-                    document.getElementById('siteInput').value = selectedSite.name;
-                    hideSiteAutocomplete();
-                    selectSite(selectedSite.site);
-                }
-            }
-        }
-
-        // 고급 검색 모드를 토글하는 함수
-        function toggleAdvancedSearch() {
-            const advancedOptions = document.getElementById('advancedOptions');
-            const basicOptions = document.getElementById('basicOptions');
-            const checkbox = document.getElementById('advancedSearch');
-            const optionsContainer = document.getElementById('optionsContainer');
-            
-            if (checkbox.checked) {
-                basicOptions.style.display = 'none';
-                advancedOptions.style.display = 'contents';
-                optionsContainer.classList.add('advanced-mode');
-                
-                document.getElementById('startRankAdv').value = document.getElementById('startRank').value;
-                document.getElementById('endRankAdv').value = document.getElementById('endRank').value;
-            } else {
-                advancedOptions.style.display = 'none';
-                basicOptions.style.display = 'contents';
-                optionsContainer.classList.remove('advanced-mode');
-                
-                document.getElementById('startRank').value = document.getElementById('startRankAdv').value;
-                document.getElementById('endRank').value = document.getElementById('endRankAdv').value;
-            }
-        }
-
-        // 다음 입력 필드로 포커스를 이동하는 함수
-        function moveToNextInput(currentElement = null) {
-            let targetElement = null;
-            
-            if (!currentElement) {
-                targetElement = document.getElementById('sortMethod');
-            } else {
-                const isAdvancedMode = document.getElementById('advancedSearch').checked;
-                
-                let navigationOrder;
-                if (isAdvancedMode) {
-                    navigationOrder = [
-                        'sortMethod', 'timePeriod', 'minViews', 'minRecommend', 
-                        'startRankAdv', 'endRankAdv', 'minComments', 'startDate', 'endDate'
-                    ];
-                } else {
-                    navigationOrder = [
-                        'sortMethod', 'timePeriod', 'startRank', 'endRank', 'startDate', 'endDate'
-                    ];
-                }
-                
-                const currentIndex = navigationOrder.indexOf(currentElement.id);
-                if (currentIndex >= 0 && currentIndex < navigationOrder.length - 1) {
-                    let nextIndex = currentIndex + 1;
-                    
-                    while (nextIndex < navigationOrder.length) {
-                        const nextElement = document.getElementById(navigationOrder[nextIndex]);
-                        if (nextElement && isElementVisible(nextElement)) {
-                            targetElement = nextElement;
-                            break;
-                        }
-                        nextIndex++;
-                    }
-                    
-                    if (!targetElement) {
-                        if (!document.getElementById('crawlBtn').disabled) {
-                            startCrawling();
-                        }
-                        return;
-                    }
-                }
-            }
-            
-            if (targetElement) {
-                targetElement.focus();
-                if (targetElement.select) {
-                    targetElement.select();
-                }
-            }
-        }
-
-        // 요소가 화면에 보이는지 확인하는 함수
-        function isElementVisible(element) {
-            return element.offsetParent !== null && !element.disabled;
-        }
-
-        // 사이트 검색을 처리하는 함수
-        function handleSiteSearch() {
-            const siteInputValue = document.getElementById('siteInput').value.trim();
-            const extractedURL = extractURLFromInput(siteInputValue);
-            
-            if (extractedURL) {
-                const siteName = extractSiteName(extractedURL);
-                document.getElementById('siteInput').value = siteName;
-                selectSite('universal', extractedURL);
-                
-                setTimeout(() => {
-                    document.getElementById('boardInput').value = extractedURL;
-                    document.getElementById('clearBoardBtn').style.display = 'flex';
-                    updateCrawlButton();
-                }, 200);
-                
-            } else {
-                if (siteInputValue.toLowerCase().includes('reddit')) {
-                    document.getElementById('siteInput').value = 'Reddit';
-                    selectSite('reddit');
-                } else if (siteInputValue.toLowerCase().includes('dc') || siteInputValue.toLowerCase().includes('디시')) {
-                    document.getElementById('siteInput').value = 'DCInside';
-                    selectSite('dcinside');
-                } else if (siteInputValue.toLowerCase().includes('blind') || siteInputValue.toLowerCase().includes('블라인드')) {
-                    document.getElementById('siteInput').value = 'Blind';
-                    selectSite('blind');
-                } else if (siteInputValue.toLowerCase().includes('lemmy') || siteInputValue.toLowerCase().includes('레미')) {
-                    document.getElementById('siteInput').value = 'Lemmy';
-                    selectSite('lemmy');
-                } else {
-                    document.getElementById('siteInput').value = siteInputValue;
-                    selectSite('universal');
-                }
-            }
-        }
-
-        // 퀵 사이트를 선택하는 함수
-        function selectQuickSite(site) {
-            const siteNames = {
-                'reddit': 'Reddit',
-                'dcinside': 'DCInside', 
-                'blind': 'Blind',
-                'lemmy': 'Lemmy'
-            };
-            
-            document.getElementById('siteInput').value = siteNames[site];
-            document.getElementById('clearSiteBtn').style.display = 'flex';
-            hideSiteAutocomplete();
-            selectSite(site);
-        }
-
-        // ==================== 사이트 선택 및 설정 ====================
-        // 사이트를 선택하고 관련 설정을 적용하는 함수
-        function selectSite(site, extractedURL = null) {
-            autocompleteData = [];
-            highlightIndex = -1;
-            const container = document.getElementById('autocomplete');
-            container.innerHTML = '';
-            
-            const boardInput = document.getElementById('boardInput');
-            boardInput.value = '';
-            
-            if (searchInitiated && currentSite === site && !extractedURL) return;
-            
-            currentSite = site;
-            searchInitiated = true;
-            
-            updateBoardPlaceholder(site);
-            
-            document.querySelectorAll('.site-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.dataset.site === site) {
-                    btn.classList.add('active');
-                }
-            });
-
-            loadSiteSortOptions(site, extractedURL);
-            animateToSearchMode();
-            
-            setTimeout(() => {
-                showBoardSearch();
-                showOptions(site);
-                
-                if (extractedURL && site === 'universal') {
-                    boardInput.value = extractedURL;
-                    document.getElementById('clearBoardBtn').style.display = 'flex';
-                    updateCrawlButton();
-                }
-            }, 300);
-        }
-
-        // 사이트별 보드 입력창의 placeholder를 업데이트하는 함수
-        function updateBoardPlaceholder(site) {
-            const boardInput = document.getElementById('boardInput');
-            const lang = window.languages[currentLanguage];
-            
-            if (boardInput && lang.boardPlaceholders) {
-                const placeholder = lang.boardPlaceholders[site] || lang.boardPlaceholders.default;
-                boardInput.placeholder = placeholder;
-            }
-        }
-
-        // 사이트별 정렬 옵션을 로드하는 함수
-        async function loadSiteSortOptions(site, url = null) {
-            const sortSelect = document.getElementById('sortMethod');
-            const lang = window.languages[currentLanguage];
-            
-            if (site === 'reddit') {
-                sortSelect.innerHTML = `
-                    <option value="new">${lang.sortOptions.reddit.new}</option>
-                    <option value="top">${lang.sortOptions.reddit.top}</option>
-                    <option value="hot">${lang.sortOptions.reddit.hot}</option>
-                    <option value="best">${lang.sortOptions.reddit.best}</option>
-                    <option value="rising">${lang.sortOptions.reddit.rising}</option>
-                `;
-                sortSelect.value = "new";
-                
-            } else if (site === 'lemmy') {
-                sortSelect.innerHTML = `
-                    <option value="New">${lang.sortOptions.lemmy.New}</option>
-                    <option value="Hot">${lang.sortOptions.lemmy.Hot}</option>
-                    <option value="Active">${lang.sortOptions.lemmy.Active}</option>
-                    <option value="TopDay">${lang.sortOptions.lemmy.TopDay}</option>
-                    <option value="TopWeek">${lang.sortOptions.lemmy.TopWeek}</option>
-                    <option value="TopMonth">${lang.sortOptions.lemmy.TopMonth}</option>
-                    <option value="TopYear">${lang.sortOptions.lemmy.TopYear}</option>
-                    <option value="TopAll">${lang.sortOptions.lemmy.TopAll}</option>
-                    <option value="MostComments">${lang.sortOptions.lemmy.MostComments}</option>
-                `;
-                sortSelect.value = "New";
-                
-            } else if (site === 'dcinside') {
-                sortSelect.innerHTML = `
-                    <option value="recent">${lang.sortOptions.other.recent}</option>
-                    <option value="popular">${lang.sortOptions.other.popular}</option>
-                    <option value="recommend">${lang.sortOptions.other.recommend}</option>
-                    <option value="comments">${lang.sortOptions.other.comments}</option>
-                `;
-                sortSelect.value = "recent";
-                
-            } else if (site === 'blind') {
-                sortSelect.innerHTML = `
-                    <option value="recent">${lang.sortOptions.other.recent}</option>
-                    <option value="popular">${lang.sortOptions.other.popular}</option>
-                    <option value="recommend">${lang.sortOptions.other.recommend}</option>
-                    <option value="comments">${lang.sortOptions.other.comments}</option>
-                `;
-                sortSelect.value = "recent";
-                
-            } else if (site === 'bbc') {
-                sortSelect.innerHTML = `
-                    <option value="recent">${lang.sortOptions.other.recent}</option>
-                    <option value="popular">${lang.sortOptions.other.popular}</option>
-                `;
-                sortSelect.value = "recent";
-                
-            } else if (site === 'universal' && url) {
-                try {
-                    const detectedSortOptions = await detectSiteSortOptions(url);
-                    if (detectedSortOptions && detectedSortOptions.length > 0) {
-                        sortSelect.innerHTML = detectedSortOptions.map(option => 
-                            `<option value="${option.value}">${option.label}</option>`
-                        ).join('');
-                        
-                        if (detectedSortOptions.length > 0) {
-                            sortSelect.value = detectedSortOptions[0].value;
-                        }
-                    } else {
-                        useDefaultSortOptions(sortSelect, lang);
-                    }
-                } catch (error) {
-                    useDefaultSortOptions(sortSelect, lang);
-                }
-            } else {
-                sortSelect.innerHTML = `
-                    <option value="recent">${lang.sortOptions.other.recent}</option>
-                    <option value="popular">${lang.sortOptions.other.popular}</option>
-                    <option value="recommend">${lang.sortOptions.other.recommend}</option>
-                    <option value="comments">${lang.sortOptions.other.comments}</option>
-                `;
-                sortSelect.value = "recent";
-            }
-            
-            sortSelect.dispatchEvent(new Event('change'));
-        }
-
-        // 기본 정렬 옵션을 사용하는 함수
-        function useDefaultSortOptions(sortSelect, lang) {
-            sortSelect.innerHTML = `
-                <option value="popular">${lang.sortOptions.other.popular}</option>
-                <option value="recommend">${lang.sortOptions.other.recommend}</option>
-                <option value="recent">${lang.sortOptions.other.recent}</option>
-                <option value="comments">${lang.sortOptions.other.comments}</option>
-            `;
-        }
-
-        // 사이트별 정렬 옵션을 감지하는 함수
-        async function detectSiteSortOptions(url) {
-            try {
-                const domain = new URL(url).hostname.toLowerCase();
-                
-                if (domain.includes('lemmy') || url.includes('lemmy')) {
-                    return [
-                        { value: 'Active', label: 'Active' },
-                        { value: 'Hot', label: 'Hot' },
-                        { value: 'New', label: 'New' },
-                        { value: 'Old', label: 'Old' },
-                        { value: 'TopDay', label: 'Top Day' },
-                        { value: 'TopWeek', label: 'Top Week' },
-                        { value: 'TopMonth', label: 'Top Month' },
-                        { value: 'TopYear', label: 'Top Year' },
-                        { value: 'TopAll', label: 'Top All Time' },
-                        { value: 'MostComments', label: 'Most Comments' },
-                        { value: 'NewComments', label: 'New Comments' }
-                    ];
-                }
-                
-                if (domain.includes('news.ycombinator') || domain.includes('hackernews')) {
-                    return [
-                        { value: 'top', label: 'Top' },
-                        { value: 'new', label: 'New' },
-                        { value: 'best', label: 'Best' },
-                        { value: 'ask', label: 'Ask' },
-                        { value: 'show', label: 'Show' },
-                        { value: 'jobs', label: 'Jobs' }
-                    ];
-                }
-                
-                if (await isDiscourseSite(url)) {
-                    return [
-                        { value: 'latest', label: 'Latest' },
-                        { value: 'top', label: 'Top' },
-                        { value: 'new', label: 'New' },
-                        { value: 'unread', label: 'Unread' },
-                        { value: 'categories', label: 'Categories' }
-                    ];
-                }
-                
-                if (domain.includes('phpbb') || url.includes('viewforum.php')) {
-                    return [
-                        { value: 't', label: 'Last Post Time' },
-                        { value: 'a', label: 'Author' },
-                        { value: 's', label: 'Subject' },
-                        { value: 'r', label: 'Replies' },
-                        { value: 'v', label: 'Views' }
-                    ];
-                }
-
-                return [
-                    { value: 'newest', label: 'Newest' },
-                    { value: 'oldest', label: 'Oldest' },
-                    { value: 'popular', label: 'Popular' },
-                    { value: 'trending', label: 'Trending' },
-                    { value: 'top', label: 'Top' },
-                    { value: 'hot', label: 'Hot' }
-                ];
-                
-            } catch (error) {
-                console.warn('정렬 방식 감지 중 오류:', error);
-                return null;
-            }
-        }
-
-        // Discourse 사이트인지 확인하는 함수
-        async function isDiscourseSite(url) {
-            try {
-                const discoursePatterns = [
-                    'discourse', 'forum', 'community', 'discuss'
-                ];
-                
-                const domain = new URL(url).hostname.toLowerCase();
-                return discoursePatterns.some(pattern => domain.includes(pattern));
-            } catch {
-                return false;
-            }
-        }
-
-        // 검색 모드로 애니메이션하는 함수
-        function animateToSearchMode() {
-            const searchText = document.getElementById('siteInput').value.trim();
-            if (!searchText) return;
-
-            const logoContainer = document.getElementById('logoContainer');
-            const mainContainer = document.getElementById('mainContainer');
-            
-            logoContainer.classList.add('compact');
-            mainContainer.classList.add('compact');
-        }
-
-        // 보드 검색 인터페이스를 표시하는 함수
-        function showBoardSearch(extractedURL = null) {
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            const boardInput = document.getElementById('boardInput');
-            
-            boardSearchContainer.classList.add('show');
-            
-            setTimeout(() => {
-                if (!boardInput.value.trim()) {
-                    boardInput.focus();
-                }
-            }, 200);
-        }
-
-        // 옵션 인터페이스를 표시하는 함수
-        function showOptions(site) {
-            const optionsContainer = document.getElementById('optionsContainer');
-            const buttonContainer = document.getElementById('buttonContainer');
-            
-            setTimeout(() => {
-                optionsContainer.classList.add('show');
-                buttonContainer.classList.add('show');
-            }, 200);
-
-            updateCrawlButton();
-        }
-
-        // 뒤로가기 기능을 수행하는 함수
-        function goBack() {
-            currentSite = null;
-            searchInitiated = false;
-            
-            const logoContainer = document.getElementById('logoContainer');
-            const mainContainer = document.getElementById('mainContainer');
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            const optionsContainer = document.getElementById('optionsContainer');
-            const buttonContainer = document.getElementById('buttonContainer');
-            
-            logoContainer.classList.remove('compact');
-            mainContainer.classList.remove('compact');
-            
-            boardSearchContainer.classList.remove('show');
-            optionsContainer.classList.remove('show');
-            buttonContainer.classList.remove('show');
-            
-            document.getElementById('siteInput').value = '';
-            document.getElementById('boardInput').value = '';
-            document.getElementById('clearSiteBtn').style.display = 'none';
-            document.getElementById('clearBoardBtn').style.display = 'none';
-            
-            document.querySelectorAll('.site-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            document.getElementById('customDateContainer').classList.remove('show');
-            document.getElementById('timePeriod').value = 'day';
-            
-            clearResults();
-            hideProgress();
-            hideSiteAutocomplete();
-            hideAutocomplete();
-        }
-
-        // ==================== 자동완성 시스템 ====================
-        // BBC 전용 자동완성을 표시하는 함수
-        function showBBCAutocomplete(keyword) {
-            const keywordLower = keyword.toLowerCase();
-            
-            const bbcSections = [
-                { name: 'BBC News', url: 'https://www.bbc.com/news', desc: '최신 뉴스' },
-                { name: 'BBC Business', url: 'https://www.bbc.com/business', desc: '비즈니스 뉴스' },
-                { name: 'BBC Technology', url: 'https://www.bbc.com/technology', desc: '기술 뉴스' },
-                { name: 'BBC Sport', url: 'https://www.bbc.com/sport', desc: '스포츠 뉴스' },
-                { name: 'BBC Health', url: 'https://www.bbc.com/health', desc: '건강 뉴스' },
-                { name: 'BBC Science', url: 'https://www.bbc.com/science', desc: '과학 뉴스' },
-                { name: 'BBC Entertainment', url: 'https://www.bbc.com/entertainment', desc: '연예 뉴스' },
-                { name: 'BBC World', url: 'https://www.bbc.com/news/world', desc: '세계 뉴스' },
-                { name: 'BBC UK', url: 'https://www.bbc.com/news/uk', desc: '영국 뉴스' },
-                { name: 'BBC Politics', url: 'https://www.bbc.com/news/politics', desc: '정치 뉴스' }
-            ];
-
-            const filtered = bbcSections.filter(section => {
-                return section.name.toLowerCase().includes(keywordLower) ||
-                    section.desc.toLowerCase().includes(keywordLower) ||
-                    (keywordLower.includes('뉴스') && section.desc.includes('뉴스')) ||
-                    (keywordLower.includes('news') && section.name.includes('News')) ||
-                    (keywordLower.includes('비즈니스') && section.name.includes('Business')) ||
-                    (keywordLower.includes('기술') && section.name.includes('Technology')) ||
-                    (keywordLower.includes('스포츠') && section.name.includes('Sport')) ||
-                    (keywordLower.includes('건강') && section.name.includes('Health')) ||
-                    (keywordLower.includes('과학') && section.name.includes('Science')) ||
-                    (keywordLower.includes('연예') && section.name.includes('Entertainment'));
-            });
-
-            if (filtered.length > 0) {
-                autocompleteData = filtered.map(section => section.url);
-                showBBCAutocompleteDropdown(filtered, keyword);
-            } else {
-                const popularSections = bbcSections.slice(0, 5);
-                autocompleteData = popularSections.map(section => section.url);
-                showBBCAutocompleteDropdown(popularSections, keyword);
-            }
-        }
-
-        // BBC 자동완성 드롭다운을 표시하는 함수
-        function showBBCAutocompleteDropdown(sections, keyword) {
-            const container = document.getElementById('autocomplete');
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            
-            boardSearchContainer.classList.add('dropdown-active');
-
-            container.addEventListener('mousedown', function(e) {
-                isMouseDownOnAutocomplete = true;
-                e.preventDefault();
-            });
-
-            container.innerHTML = sections.map((section, index) => {
-                const nameHighlighted = section.name.replace(
-                    new RegExp(`(${keyword})`, 'gi'),
-                    '<mark style="background: #ffeb3b;">$1</mark>'
-                );
-                const descHighlighted = section.desc.replace(
-                    new RegExp(`(${keyword})`, 'gi'),
-                    '<mark style="background: #ffeb3b;">$1</mark>'
-                );
-                
-                return `
-                    <div class="autocomplete-item" data-index="${index}" onclick="selectBBCSection(${index})">
-                        <div style="width: 20px; height: 20px; background: #bb1919; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold;">BBC</div>
-                        <div style="flex: 1;">
-                            <div>${nameHighlighted}</div>
-                            <div style="font-size: 12px; color: #70757a;">${descHighlighted}</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            container.classList.add('show');
-            highlightIndex = -1;
-        }
-
-        // BBC 섹션을 선택하는 함수
-        function selectBBCSection(index) {
-            if (index >= 0 && index < autocompleteData.length) {
-                safeSetBoardInput(autocompleteData[index]);
-            }
-        }
-
-        // 키워드에 따른 자동완성을 가져오는 함수
-        async function fetchAutocomplete(keyword) {
-            if (!keyword || keyword.trim().length < 2 || !currentSite) {
-                if (currentSite === 'lemmy' && (!keyword || keyword.trim().length === 0)) {
-                    showLemmyHelp();
-                    return;
-                }
-                hideAutocomplete();
-                return;
-            }
-            if (currentSite === 'universal') {
-                if (keyword.startsWith('http://') || keyword.startsWith('https://')) {
-                    hideAutocomplete();
-                    updateCrawlButton();
-                } else {
-                    showUniversalHelp();
-                }
-                return;
-            }
-            
-            if (currentSite === 'bbc') {
-                showBBCAutocomplete(keyword);
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/autocomplete/${currentSite}?keyword=${encodeURIComponent(keyword)}`);
-                const data = await response.json();
-                
-                if (data.matches && data.matches.length > 0) {
-                    autocompleteData = data.matches;
-                    showAutocomplete(keyword);
-                } else {
-                    hideAutocomplete();
-                }
-            } catch (error) {
-                console.error('Autocomplete error:', error);
-                useOfflineAutocomplete(keyword);
-            }
-        }
-
-        // 오프라인 자동완성을 사용하는 함수
-        function useOfflineAutocomplete(keyword) {
-            if (!keyword.trim()) {
-                hideAutocomplete();
-                return;
-            }
-
-            const keywordLower = keyword.toLowerCase();
-            let suggestions = [];
-
-            if (currentSite === 'reddit') {
-                const redditSubreddits = [
-                    'askreddit', 'todayilearned', 'funny', 'pics', 'worldnews', 'gaming', 
-                    'movies', 'music', 'science', 'technology', 'programming', 'python', 
-                    'javascript', 'webdev', 'machinelearning', 'artificial', 'lifeprotips', 
-                    'showerthoughts', 'mildlyinteresting', 'food', 'cooking', 'fitness', 
-                    'aww', 'videos', 'gifs', 'memes', 'explainlikeimfive', 'korea', 'korean'
-                ];
-                suggestions = redditSubreddits.filter(sub => sub.includes(keywordLower));
-            } else if (currentSite === 'dcinside') {
-                const dcGalleries = [
-                    '싱글벙글', '유머', '정치', '축구', '야구', '농구', '배구', '게임', 
-                    '리그오브레전드', '오버워치', '스타크래프트', '카운터스트라이크', 'PC게임', 
-                    '모바일게임', '애니메이션', '만화', '영화', '드라마', '음악', '아이돌', 
-                    '케이팝', '힙합', '요리', '여행', '사진', '자동차', '컴퓨터', '스마트폰'
-                ];
-                suggestions = dcGalleries.filter(gallery => gallery.includes(keywordLower));
-            } else if (currentSite === 'blind') {
-                const blindTopics = [
-                    '블라블라', '회사생활', '자유토크', '개발자', '경력개발', '취업/이직', 
-                    '스타트업', '회사와사람들', '디자인', '금융/재테크', '부동산', '결혼/육아', 
-                    '여행', '음식', '건강', '연애', '게임', '주식', '암호화폐', 'IT/기술'
-                ];
-                suggestions = blindTopics.filter(topic => topic.includes(keywordLower));
-            } else if (currentSite === 'lemmy') {
-                const lemmyCommunities = [
-                    'technology@lemmy.world',
-                    'worldnews@lemmy.ml', 
-                    'asklemmy@lemmy.ml',
-                    'programming@programming.dev',
-                    'linux@lemmy.ml',
-                    'privacy@lemmy.ml',
-                    'opensource@lemmy.ml',
-                    'science@lemmy.ml',
-                    'memes@lemmy.ml',
-                    'gaming@beehaw.org',
-                    'movies@lemm.ee',
-                    'music@lemmy.ml',
-                    'books@lemmy.ml',
-                    'photography@lemmy.ml',
-                    'art@lemmy.ml',
-                    'food@lemmy.world',
-                    'travel@lemmy.world',
-                    'fitness@lemmy.world',
-                    'diy@lemmy.world',
-                    'showerthoughts@lemmy.world',
-                    'todayilearned@lemmy.world',
-                    'funny@lemmy.world',
-                    'news@lemmy.world',
-                    'askscience@lemmy.world',
-                    'explainlikeimfive@lemmy.world'
-                ];
-                
-                suggestions = lemmyCommunities.filter(community => {
-                    const [name, instance] = community.split('@');
-                    return name.toLowerCase().includes(keywordLower) || 
-                        community.toLowerCase().includes(keywordLower) ||
-                        instance.toLowerCase().includes(keywordLower);
-                });
-                
-                if (keywordLower.length <= 2) {
-                    const popularSuggestions = [
-                        'technology@lemmy.world',
-                        'asklemmy@lemmy.ml', 
-                        'worldnews@lemmy.ml',
-                        'programming@programming.dev',
-                        'gaming@beehaw.org'
-                    ];
-                    suggestions = [...new Set([...popularSuggestions, ...suggestions])];
-                }
-            }
-
-            if (suggestions.length > 0) {
-                autocompleteData = suggestions.slice(0, 10);
-                showAutocomplete(keyword);
-            } else {
-                hideAutocomplete();
-            }
-        }
-
-        // Lemmy 전용 도움말을 표시하는 함수
-        function showLemmyHelpContent() {
-            const container = document.getElementById('autocomplete');
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            const lang = window.languages[currentLanguage];
-            
-            boardSearchContainer.classList.add('dropdown-active');
-            
-            container.innerHTML = `
-                <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500; color: #1a73e8;">${lang.lemmyHelp.title}</div>
-                        <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
-                            ${lang.lemmyHelp.description.replace(/\n/g, '<br>')}
-                        </div>
-                    </div>
-                </div>
-                <div class="autocomplete-item" onclick="setLemmyCommunity('technology@lemmy.world');">
-                    <div style="flex: 1;">
-                        <div style="color: #1a73e8;">🔧 technology@lemmy.world</div>
-                        <div style="font-size: 11px; color: #70757a;">${lang.lemmyHelp.examples.technology}</div>
-                    </div>
-                </div>
-                <div class="autocomplete-item" onclick="setLemmyCommunity('asklemmy@lemmy.ml');">
-                    <div style="flex: 1;">
-                        <div style="color: #1a73e8;">❓ asklemmy@lemmy.ml</div>
-                        <div style="font-size: 11px; color: #70757a;">${lang.lemmyHelp.examples.asklemmy}</div>
-                    </div>
-                </div>
-            `;
-            
-            container.classList.add('show');
-        }
-
-        // Lemmy 커뮤니티를 설정하는 함수
-        function setLemmyCommunity(community) {
-            safeSetBoardInput(community);
-        }
-
-        // 크롤링 버튼 상태를 업데이트하는 함수
-        function updateCrawlButton() {
-            const boardValue = document.getElementById('boardInput').value.trim();
-            const crawlBtn = document.getElementById('crawlBtn');
-            const lang = window.languages[currentLanguage];
-            
-            let isValid = false;
-            let buttonText = lang.start;
-            
-            if (!currentSite) {
-                buttonText = lang.crawlButtonMessages.siteNotSelected;
-                isValid = false;
-            } else if (!boardValue) {
-                if (currentSite === 'universal') {
-                    buttonText = lang.crawlButtonMessages.universalEmpty;
-                } else if (currentSite === 'lemmy') {
-                    buttonText = lang.crawlButtonMessages.lemmyEmpty;
-                } else {
-                    buttonText = lang.crawlButtonMessages.boardEmpty;
-                }
-                isValid = false;
-            } else {
-                switch (currentSite) {
-                    case 'universal':
-                        isValid = boardValue.startsWith('http://') || 
-                                boardValue.startsWith('https://') ||
-                                (boardValue.includes('.') && boardValue.includes('/'));
-                        if (!isValid) {
-                            buttonText = lang.crawlButtonMessages.universalUrlError;
-                        }
-                        break;
-                    
-                    case 'lemmy':
-                        if (boardValue.includes('@') && boardValue.split('@').length === 2) {
-                            const [community, instance] = boardValue.split('@');
-                            isValid = community.length > 0 && instance.length > 0;
-                        } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
-                            isValid = true;
-                        } else if (boardValue.length > 2) {
-                            isValid = true;
-                            buttonText = `${community_name}@lemmy.world로 시도`;
-                        } else {
-                            buttonText = lang.crawlButtonMessages.lemmyFormatError;
-                            isValid = false;
-                        }
-                        break;
-                        
-                    case 'reddit':
-                        if (boardValue.includes('reddit.com') && !boardValue.includes('/r/')) {
-                            buttonText = lang.crawlButtonMessages.redditFormatError;
-                            isValid = false;
-                        } else {
-                            isValid = true;
-                        }
-                        break;
-                        
-                    default:
-                        isValid = boardValue.length > 0;
-                        break;
-                }
-            }
-            
-            crawlBtn.disabled = !isValid || isLoading;
-            
-            if (!isLoading) {
-                crawlBtn.textContent = buttonText;
-            }
-        }
-
-        // 범용 크롤러 도움말을 표시하는 함수
-        function showUniversalHelp() {
-            const container = document.getElementById('autocomplete');
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            const lang = window.languages[currentLanguage];
-            
-            boardSearchContainer.classList.add('dropdown-active');
-            
-            container.innerHTML = `
-                <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500; color: #1a73e8;">${lang.helpTexts.universalTitle}</div>
-                        <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
-                            ${lang.helpTexts.universalDesc.replace(/\n/g, '<br>')}
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            container.classList.add('show');
-        }
-
-        // 자동완성을 표시하는 함수
-        function showAutocomplete(keyword) {
-            const container = document.getElementById('autocomplete');
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            
-            if (autocompleteData.length === 0) {
-                hideAutocomplete();
-                return;
-            }
-
-            boardSearchContainer.classList.add('dropdown-active');
-
-            container.innerHTML = autocompleteData.map((item, index) => {
-                const highlighted = item.replace(
-                    new RegExp(`(${keyword})`, 'gi'),
-                    '<mark style="background: #ffeb3b;">$1</mark>'
-                );
-                return `
-                    <div class="autocomplete-item" data-index="${index}" onclick="selectAutocompleteItem(${index})">
-                        <div style="flex: 1;">${highlighted}</div>
-                    </div>
-                `;
-            }).join('');
-
-            container.classList.add('show');
-            highlightIndex = -1;
-
-            container.addEventListener('mousedown', function(e) {
-                isMouseDownOnAutocomplete = true;
-                e.preventDefault();
-            });
-            
-            container.addEventListener('mouseup', function() {
-                isMouseDownOnAutocomplete = false;
-            });
-            
-            container.addEventListener('mouseleave', function() {
-                isMouseDownOnAutocomplete = false;
-            });
-            
-            container.innerHTML = autocompleteData.map((item, index) => {
-                const highlighted = item.replace(
-                    new RegExp(`(${keyword})`, 'gi'),
-                    '<mark style="background: #ffeb3b;">$1</mark>'
-                );
-                return `
-                    <div class="autocomplete-item" 
-                        data-index="${index}" 
-                        onclick="selectAutocompleteItem(${index})"
-                        onmouseenter="highlightIndex = ${index}; updateHighlight();"
-                        style="cursor: pointer;">
-                        <div style="flex: 1;">${highlighted}</div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // 자동완성을 숨기는 함수
-        function hideAutocomplete() {
-            if (isMouseDownOnAutocomplete) {
-                return;
-            }
-
-            const container = document.getElementById('autocomplete');
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            
-            container.classList.remove('show');
-            boardSearchContainer.classList.remove('dropdown-active');
-            
-            highlightIndex = -1;
-        }
-
-        // 키보드 탐색을 처리하는 함수
-        function handleKeyNavigation(e) {
-            const container = document.getElementById('autocomplete');
-            if (!container.classList.contains('show')) return;
-
-            switch (e.key) {
-                case 'ArrowDown':
-                    e.preventDefault();
-                    highlightIndex = Math.min(highlightIndex + 1, autocompleteData.length - 1);
-                    updateHighlight();
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    highlightIndex = Math.max(highlightIndex - 1, -1);
-                    updateHighlight();
-                    break;
-                case 'Escape':
-                    hideAutocomplete();
-                    break;
-            }
-        }
-
-        // 자동완성 하이라이트를 업데이트하는 함수
-        function updateHighlight() {
-            const boardInput = document.getElementById('boardInput');
-            document.querySelectorAll('.autocomplete-item').forEach((item, index) => {
-                item.classList.toggle('highlighted', index === highlightIndex);
-            });
-
-            if (highlightIndex >= 0 && highlightIndex < autocompleteData.length) {
-                boardInput.value = autocompleteData[highlightIndex];
-            }
-        }
-
-        // 자동완성 항목을 선택하는 함수
-        function selectAutocompleteItem(index) {
-            if (index >= 0 && index < autocompleteData.length) {
-                safeSetBoardInput(autocompleteData[index]);
-            }
-        }
-
-        // ==================== 크롤링 시스템 ====================
-        // 크롤링을 시작하는 메인 함수
-        async function startCrawling() {
-            if (isLoading) {
-                console.log('이미 크롤링이 진행 중입니다.');
-                return;
-            }
-
-            const boardInput = document.getElementById('boardInput').value.trim();
-            if (!boardInput) {
-                showTemporaryMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
-                return;
-            }
-
-            try {
-                isLoading = true;
-                searchInitiated = true;
-                crawlStartTime = Date.now();
-                
-                // UI 상태 업데이트
-                updateUIForCrawlStart();
-                
-                // 🚀 통합 엔드포인트로 크롤링 시작
-                await startUnifiedCrawling(boardInput);
-                
-            } catch (error) {
-                console.error('크롤링 시작 오류:', error);
-                showTemporaryMessage(`크롤링 시작 중 오류가 발생했습니다: ${error.message}`, 'error');
-                resetCrawlingState();
-            }
-        }
-
-        async function startUnifiedCrawling(boardInput) {
-            try {
-                // 1. 통합 엔드포인트 시도 (우선순위)
-                console.log('🔥 통합 엔드포인트 시도...');
-                const config = buildCrawlConfig(boardInput);
-                currentSocket = await createWebSocketWithRetry('crawl', config);
-                
-                console.log('✅ 통합 엔드포인트 연결 성공');
-                
-            } catch (unifiedError) {
-                console.warn('⚠️ 통합 엔드포인트 실패, 레거시 방식으로 폴백:', unifiedError);
-                
-                // 2. 레거시 자동 크롤링으로 폴백
-                try {
-                    const config = buildLegacyCrawlConfig(boardInput);
-                    currentSocket = await createWebSocketWithRetry('auto-crawl', config);
-                    console.log('✅ 레거시 auto-crawl 연결 성공');
-                    
-                } catch (legacyError) {
-                    console.error('❌ 모든 크롤링 방식 실패');
-                    throw new Error(`통합 크롤링과 레거시 크롤링 모두 실패: ${legacyError.message}`);
-                }
-            }
-        }
-
-        // 🔥 통합 엔드포인트용 설정 생성
-        function buildCrawlConfig(boardInput) {
-            const selectedLangs = getSelectedLanguages();
-            
-            // ✅ 실제 HTML ID와 일치하도록 수정
-            const sort = document.getElementById('sortMethod')?.value || 'recent';
-            const timeFilter = document.getElementById('timePeriod')?.value || 'day';
-            const range = getSelectedRange();
-            
-            return {
-                // 핵심 입력
-                input: boardInput,
-                site: currentSite || 'auto',
-                
-                // ✅ 크롤링 옵션 (올바른 필드명 사용)
-                sort: sort,
-                start: range.start,
-                end: range.end,
-                min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-                min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'), // minRecommend 사용
-                min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-                time_filter: timeFilter,
-                start_date: document.getElementById('startDate')?.value || null,
-                end_date: document.getElementById('endDate')?.value || null,
-                
-                // 번역 옵션
-                translate: selectedLangs.length > 0,
-                target_languages: selectedLangs,
-                
-                // 메타데이터
-                user_agent: navigator.userAgent,
-                timestamp: new Date().toISOString(),
-                
-                debug: {
-                    frontend_version: '2.0.0',
-                    endpoint_type: 'unified',
-                    user_selected_site: currentSite,
-                    detected_site: null
-                }
-            };
-        }
-
-        // 레거시 auto-crawl용 설정 생성 
-        function buildLegacyCrawlConfig(boardInput) {
-            const selectedLangs = getSelectedLanguages();
-            const sort = document.getElementById('sortMethod')?.value || 'recent';
-            const timeFilter = document.getElementById('timePeriod')?.value || 'day';
-            const range = getSelectedRange();
-            
-            return {
-                // 레거시 필드명
-                board: boardInput,
-                
-                // ✅ 필터 옵션들 (정확한 필드명)
-                sort: sort,
-                start: range.start,
-                end: range.end,
-                min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-                min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
-                min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-                time_filter: timeFilter,
-                start_date: document.getElementById('startDate')?.value || null,
-                end_date: document.getElementById('endDate')?.value || null,
-                
-                translate: selectedLangs.length > 0,
-                target_languages: selectedLangs,
-                
-                debug: {
-                    frontend_version: '2.0.0',
-                    endpoint_type: 'legacy_auto',
-                    fallback: true
-                }
-            };
-        }
-
-        // 임시 메시지를 표시하는 함수
-        function showTemporaryMessage(message, type = 'info', variables = {}) {
-            const messageDiv = document.createElement('div');
-            let translatedMessage = message;
-            
-            // 메시지가 언어 키인 경우 번역
-            const lang = window.languages[currentLanguage];
-            if (lang && lang.notifications && lang.notifications[message]) {
-                translatedMessage = lang.notifications[message];
-                
-                // 템플릿 변수 치환
-                Object.keys(variables).forEach(key => {
-                    translatedMessage = translatedMessage.replace(`{${key}}`, variables[key]);
-                });
-            }
-            
-            // CSS 클래스 적용
-            messageDiv.className = `temporary-message ${type}`;
-            messageDiv.textContent = translatedMessage;
-            
-            document.body.appendChild(messageDiv);
-            
-            // 표시 애니메이션
-            setTimeout(() => {
-                messageDiv.classList.add('show');
-            }, 100);
-            
-            // 숨김 애니메이션 후 제거
-            setTimeout(() => {
-                messageDiv.classList.remove('show');
-                messageDiv.classList.add('hide');
-                
-                setTimeout(() => {
-                    if (document.body.contains(messageDiv)) {
-                        document.body.removeChild(messageDiv);
-                    }
-                }, 300);
-            }, 3000);
-        }
-        //백엔드에서 처리한 임시 메세지 표시
-        function getLocalizedMessage(messageKey, messageData = {}) {
-            const lang = window.languages[currentLanguage];
-            const keyParts = messageKey.split('.');
-            
-            // 중첩된 객체에서 메시지 템플릿 찾기
-            let template = lang;
-            for (const part of keyParts) {
-                template = template?.[part];
-                if (!template) break;
-            }
-            
-            if (!template) {
-                console.warn(`메시지 템플릿을 찾을 수 없음: ${messageKey} (언어: ${currentLanguage})`);
-                // 키의 마지막 부분을 기본값으로 사용
-                return keyParts[keyParts.length - 1] || messageKey;
-            }
-            
-            // 템플릿 변수 치환
-            if (typeof template === 'string' && messageData) {
-                Object.keys(messageData).forEach(key => {
-                    const value = messageData[key];
-                    if (value !== null && value !== undefined && value !== '') {
-                        const placeholder = new RegExp(`\\{${key}\\}`, 'g');
-                        template = template.replace(placeholder, value);
-                    }
-                });
-            }
-            
-            return template;
-        }
-
-        // 백엔드에서 처리하는 progress-message 메시지 템플릿을 실제 텍스트로 변환하는 함수
-        function formatMessage(template, data = {}) {
-            if (!template) return '';
-            
-            let message = template;
-            Object.keys(data).forEach(key => {
-                const placeholder = `{${key}}`;
-                message = message.replace(new RegExp(placeholder, 'g'), data[key]);
-            });
-            
-            return message;
-        }
-
-        // WebSocket 메시지에서 번역된 상태 메시지 생성
-        function getTranslatedStatus(statusKey, statusData = {}) {
-            const lang = window.languages[currentLanguage];
-            const template = lang.crawlingStatus?.[statusKey];
-
-            if (!template) {
-                console.warn(`Missing translation for status key: ${statusKey}`);
-                return statusKey; // 키가 없으면 키 자체를 반환
-            }
-            
-            return formatMessage(template, statusData);
-        }
-
-        // 레거시 상태 메시지 번역 (패턴 매칭)
-        function translateLegacyStatus(status) {
-            const lang = window.languages[currentLanguage];
-            
-            // 패턴 매칭 규칙
-            const statusPatterns = [
-                { pattern: /메타데이터 보강/, key: 'metadata_processing' },
-                { pattern: /게시물 수집/, key: 'collecting_posts' },
-                { pattern: /데이터 분석/, key: 'analyzing_content' },
-                { pattern: /결과 필터링/, key: 'filtering_results' },
-                { pattern: /번역 준비/, key: 'preparing_translation' },
-                { pattern: /Reddit.*정렬로 수집/, key: 'reddit_analyzing' },
-                { pattern: /DCInside.*파싱/, key: 'dcinside_parsing' },
-                { pattern: /Blind.*처리/, key: 'blind_processing' },
-                { pattern: /BBC.*가져오는/, key: 'bbc_fetching' },
-                { pattern: /Lemmy.*연결/, key: 'lemmy_connecting' },
-                { pattern: /웹페이지 분석/, key: 'universal_parsing' }
-            ];
-            
-            for (const {pattern, key} of statusPatterns) {
-                if (pattern.test(status)) {
-                    return lang.crawlingStatus?.[key] || status;
-                }
-            }
-            
-            return status;
-        }
-            
-        // 🔥 통합 WebSocket 메시지 핸들러
-        function setupWebSocketMessageHandlers(ws, endpoint) {
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    console.log(`📨 메시지 수신 (${endpoint}):`, data);
-
-                    // 중단 처리 (최우선)
-                    if (data.cancelled) {
-                        showTemporaryMessage('크롤링이 취소되었습니다.', 'info');
-                        resetCrawlingState();
-                        return;
-                    }
-
-                    // 신규 메시지 시스템 처리
-                    if (data.message_type) {
-                        switch (data.message_type) {
-                            case 'progress':
-                                handleProgressMessage(data);
-                                break;
-                            case 'status':
-                                handleStatusMessage(data);
-                                break;
-                            case 'error':
-                                handleErrorMessage(data);
-                                break;
-                            case 'complete':
-                                handleCompleteMessage(data);
-                                break;
-                            default:
-                                console.log(`🔸 알 수 없는 메시지 타입: ${data.message_type}`);
-                                break;
-                        }
-                        return;
-                    }
-
-                    // 레거시 시스템 처리 (하위 호환성)
-                    if (data.error) {
-                        handleLegacyError(data.error, endpoint);
-                    } else if (data.done) {
-                        handleLegacyComplete(data, endpoint);
-                    } else if (data.progress !== undefined) {
-                        handleLegacyProgress(data, endpoint);
-                    } else if (data.status) {
-                        handleLegacyStatus(data, endpoint);
-                    } else if (data.data) {
-                        handlePartialResults(data, endpoint);
-                    } else {
-                        console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
-                    }
-
-                } catch (error) {
-                    console.error('메시지 파싱 오류:', error, event.data);
-                    showTemporaryMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
-                }
-            };
-
-            ws.onerror = (error) => {
-                console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
-                showTemporaryMessage('연결 오류가 발생했습니다', 'error');
-            };
-
-            ws.onclose = (event) => {
-                console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
-                
-                if (isLoading && event.code !== 1000) {
-                    showTemporaryMessage('연결이 예기치 않게 종료되었습니다', 'error');
-                    resetCrawlingState();
-                }
-            };
-        }
-
-        // 크롤링 완료 처리 (통합)
-        function handleCrawlComplete(data, endpoint) {
-            console.log(`✅ 크롤링 완료 (${endpoint}):`, data);
-            
-            // 결과 데이터 추출 (엔드포인트별 호환성)
-            let results = data.data || data.results || [];
-            let summary = data.summary || `크롤링 완료: ${results.length}개 게시물`;
-            
-            // 🔥 통합 엔드포인트에서 사이트 감지 정보 확인
-            if (data.detected_site) {
-                console.log(`🎯 자동 감지된 사이트: ${data.detected_site}`);
-                summary += ` (감지된 사이트: ${data.detected_site})`;
-            }
-            
-            // 결과 표시
-            if (results.length > 0) {
-                crawlResults = results;
-                displayResults(results);
-                
-                const elapsed = crawlStartTime ? ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
-                showTemporaryMessage(`${summary} (${elapsed}초)`, 'success');
-                
-                // 다운로드 버튼 활성화
-                enableDownloadButtons();
-                
-            } else {
-                showTemporaryMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
-            }
-            
-            resetCrawlingState();
-        }
-
-        // 크롤링 에러 처리 (통합)
-        function handleCrawlError(error, endpoint) {
-            console.error(`❌ 크롤링 오류 (${endpoint}):`, error);
-            
-            let errorMessage;
-            const lang = window.languages[currentLanguage];
-            
-            // 에러 타입별 메시지 처리
-            if (error.error_code) {
-                errorMessage = getLocalizedMessage(`errors.${error.error_code}`, error);
-            } else if (typeof error === 'string') {
-                errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error}`;
-            } else if (error.message) {
-                errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error.message}`;
-            } else {
-                errorMessage = lang?.errors?.unknown || '알 수 없는 오류가 발생했습니다';
-            }
-            
-            showTemporaryMessage(errorMessage, 'error');
-            resetCrawlingState();
-        }
-
-        function handleErrorMessage(data) {
-            const errorCode = data.error_code || 'unknown_error';
-            const errorDetail = data.error_detail || '';
-            const site = (data.site || '').toUpperCase();
-            
-            console.error(`❌ 오류: ${errorCode}`);
-            
-            const messageKey = `errors.${errorCode}`;
-            const translatedMessage = getLocalizedMessage(messageKey, {
-                site: site,
-                detail: errorDetail
-            });
-            
-            showTemporaryMessage(translatedMessage, 'error');
-            resetCrawlingState();
-        }
-
-        // 레거시 진행률 메시지 처리 
-        function handleLegacyProgress(data, endpoint) {
-            const progress = Math.min(Math.max(data.progress || 0, 0), 100);
-            let status = data.status || data.message || '처리 중...';
-            
-            // 레거시 상태 메시지 번역
-            status = translateLegacyStatus(status);
-            
-            console.log(`📊 레거시 진행률 (${endpoint}): ${progress}% - ${status}`);
-            
-            updateProgress(progress, status);
-            
-            // 부분 결과 실시간 표시
-            if (data.partial_results && data.partial_results.length > 0) {
-                displayPartialResults(data.partial_results);
-            }
-        }
-        // 레거시 메시지 처리 (하위 호환성)
-        function handleLegacyMessage(data, endpoint) {
-            // 중단 메시지 처리
-            if (data.cancelled) {
-                showTemporaryMessage('크롤링이 취소되었습니다.', 'info');
-                resetCrawlingState();
-                return;
-            }
-
-            // 에러 처리
-            if (data.error) {
-                handleLegacyError(data.error, endpoint);
-                return;
-            }
-
-            // 완료 처리
-            if (data.done) {
-                handleLegacyComplete(data, endpoint);
-                return;
-            }
-
-            // 진행률 처리
-            if (data.progress !== undefined) {
-                handleLegacyProgress(data, endpoint);
-                return;
-            }
-
-            // 상태 처리
-            if (data.status) {
-                handleLegacyStatus(data, endpoint);
-                return;
-            }
-
-            // 부분 결과 처리
-            if (data.data) {
-                handlePartialResults(data, endpoint);
-                return;
-            }
-
-            console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
-        }
-        // 레거시 에러 처리
-        function handleLegacyError(error, endpoint) {
-            console.error(`❌ 레거시 오류 (${endpoint}):`, error);
-            
-            const lang = window.languages[currentLanguage];
-            let errorMessage;
-            
-            if (typeof error === 'string') {
-                errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error}`;
-            } else if (error.message) {
-                errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error.message}`;
-            } else {
-                errorMessage = lang?.errors?.unknown || '알 수 없는 오류가 발생했습니다';
-            }
-            
-            showTemporaryMessage(errorMessage, 'error');
-            resetCrawlingState();
-        }
-        // 레거시 완료 처리
-        function handleLegacyComplete(data, endpoint) {
-            console.log(`✅ 레거시 완료 (${endpoint}):`, data);
-            
-            let results = data.data || data.results || [];
-            let summary = data.summary || `크롤링 완료: ${results.length}개 게시물`;
-            
-            // 자동 감지 정보 표시
-            if (data.detected_site) {
-                console.log(`🎯 자동 감지된 사이트: ${data.detected_site}`);
-                summary += ` (감지: ${data.detected_site})`;
-            }
-            
-            if (results.length > 0) {
-                crawlResults = results;
-                displayResults(results);
-                enableDownloadButtons();
-                
-                const elapsed = crawlStartTime ?
-                    ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
-                showTemporaryMessage(`${summary} (${elapsed}초)`, 'success');
-            } else {
-                showTemporaryMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
-            }
-            
-            resetCrawlingState();
-        }
-        // 레거시 상태 처리
-        function handleLegacyStatus(data, endpoint) {
-            let status = data.status || '상태 업데이트';
-            status = translateLegacyStatus(status);
-            
-            console.log(`ℹ️ 레거시 상태 (${endpoint}): ${status}`);
-            showTemporaryMessage(status, 'info');
-        }
-
-        // 부분 결과 처리 (실시간 업데이트)
-        function handlePartialResults(data, endpoint) {
-            if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-                console.log(`📥 부분 결과 수신 (${endpoint}): ${data.data.length}개`);
-                
-                // 기존 결과와 병합
-                if (!crawlResults) crawlResults = [];
-                
-                // 중복 제거 (ID 기준)
-                const existingIds = new Set(crawlResults.map(item => item.id || item.url));
-                const newResults = data.data.filter(item => !existingIds.has(item.id || item.url));
-                
-                if (newResults.length > 0) {
-                    crawlResults = crawlResults.concat(newResults);
-                    displayPartialResults(newResults);
-                }
-            }
-        }
-        
-        // UI 업데이트 함수들...
-
-        function updateProgressBar(progress, status) {
-            const progressBar = document.querySelector('.progress-bar');
-            const progressText = document.querySelector('.progress-text');
-            
-            if (progressBar) {
-                progressBar.style.width = `${Math.min(progress, 100)}%`;
-            }
-            
-            if (progressText) {
-                progressText.textContent = `${Math.round(progress)}% - ${status}`;
-            }
-        }
-
-        function updateStatusDisplay(status) {
-            const statusElement = document.querySelector('.crawl-status');
-            if (statusElement) {
-                statusElement.textContent = status;
-                statusElement.style.display = 'block';
-            }
-        }
-
-        function updateUIForCrawlStart() {
-            // 기존 결과 클리어
-            crawlResults = [];
-            const resultsContainer = document.getElementById('resultsContainer') || 
-                                    document.getElementById('results');
-            if (resultsContainer) {
-                resultsContainer.innerHTML = '';
-            }
-            
-            // 크롤링 버튼 상태 변경
-            const crawlBtn = document.getElementById('crawlBtn');
-            if (crawlBtn) {
-                crawlBtn.disabled = true;
-                const lang = window.languages[currentLanguage];
-                crawlBtn.textContent = lang?.crawlingStatus?.inProgress || '크롤링 중...';
-            }
-            
-            // 🔥 진행률 표시 시작
-            showProgress();
-            
-            // 취소 버튼 활성화
-            showCancelButton();
-            
-            console.log('🚀 크롤링 UI 준비 완료');
-        }
-
-        function resetCrawlingState() {
-            hideProgress();
-            isLoading = false;
-            updateCrawlButton();
-            hideCancelButton();
-            
-            if (currentSocket) {
-                try {
-                    currentSocket.close();
-                } catch (e) {
-                    console.warn('WebSocket 종료 중 오류:', e);
-                }
-                currentSocket = null;
-            }
-            
-            currentCrawlId = null;
-            crawlStartTime = null;
+# main.py - 자동 감지 기반 엔드포인트 시스템 적용
+
+from fastapi import FastAPI, WebSocket, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+from typing import Optional, Dict, Set, Tuple, Optional, Any
+import os, asyncio, json, requests
+from reddit import fetch_posts
+from blind import crawl_blind_board, list_available_topics, search_topics, load_blind_map, sort_posts as sort_blind_posts
+from dcinside import crawl_dcinside_board, list_available_galleries, search_galleries, load_gallery_map, sort_posts as sort_dcinside_posts
+from universal import crawl_universal_board, parse_generic
+from lemmy import crawl_lemmy_board, search_lemmy_communities, get_popular_lemmy_instances, resolve_lemmy_community_id
+from bbc import (
+    detect_bbc_url_and_extract_info,
+    is_bbc_domain,
+    get_bbc_autocomplete_suggestions,
+    get_bbc_topics_list,
+    search_bbc_topics,
+    validate_bbc_url_info,
+    crawl_bbc_board
+)
+
+from datetime import datetime
+import pandas as pd
+from fastapi.middleware.cors import CORSMiddleware
+import traceback
+from dotenv import load_dotenv
+from urllib.parse import urlparse
+from enum import Enum
+from dataclasses import dataclass
+import weakref
+import time
+from fastapi import HTTPException
+import logging
+
+# ==================== 환경 설정 및 초기화 ====================
+load_dotenv()
+
+DEEPL_API_KEY = os.getenv("DEEPL_API_KEY")
+APP_ENV = os.getenv("APP_ENV", "development")
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+PORT = int(os.getenv("PORT", 8000))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+
+# ==================== 로깅 설정 ====================
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL.upper()),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log') if APP_ENV == "production" else logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger("pickpost")
+
+if DEBUG:
+    logger.debug(f"🔧 환경 설정:")
+    logger.debug(f"  APP_ENV: {APP_ENV}")
+    logger.debug(f"  DEBUG: {DEBUG}")
+    logger.debug(f"  PORT: {PORT}")
+    logger.debug(f"  ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
+    logger.debug(f"  LOG_LEVEL: {LOG_LEVEL}")
+    logger.debug(f"  DEEPL_API_KEY: {'설정됨' if DEEPL_API_KEY else '미설정'}")
+
+# ==================== 🔥 NEW: 통합 크롤링 시스템 ====================
+import core.messages 
+import core.utils
+import core.auto_crawler
+import core.site_detector
+
+from core.site_detector import SiteDetector
+from core.auto_crawler import AutoCrawler
+from core.utils import (
+    create_localized_message, 
+    create_error_message, 
+    create_message_response,
+    get_user_language,
+    calculate_actual_dates,
+    calculate_actual_dates_for_lemmy
+)
+
+# ==================== 크롤링 관리 시스템 ====================
+class CrawlManager:
+    """크롤링 작업 관리 클래스"""
+    def __init__(self):
+        self.cancelled_crawls: Set[str] = set()
+        self.creation_time = time.time()
+    
+    def cancel_crawl(self, crawl_id: str):
+        """크롤링 작업 취소 마킹"""
+        self.cancelled_crawls.add(crawl_id)
+        logger.info(f"🚫 크롤링 취소 요청: {crawl_id} (총 {len(self.cancelled_crawls)}개 취소됨)")
+    
+    def is_cancelled(self, crawl_id: str) -> bool:
+        """크롤링이 취소되었는지 확인"""
+        return crawl_id in self.cancelled_crawls
+    
+    def cleanup_crawl(self, crawl_id: str):
+        """크롤링 정리"""
+        removed = crawl_id in self.cancelled_crawls
+        self.cancelled_crawls.discard(crawl_id)
+        if removed:
+            logger.info(f"🧹 크롤링 정리: {crawl_id} (남은 취소된 크롤링: {len(self.cancelled_crawls)}개)")
+    
+    def get_stats(self) -> dict:
+        """크롤링 매니저 통계"""
+        return {
+            "cancelled_crawls_count": len(self.cancelled_crawls),
+            "uptime_seconds": time.time() - self.creation_time,
+            "cancelled_ids": list(self.cancelled_crawls)
         }
     
-        function debugCrawlConfig() {
-            const config = buildCrawlConfig(document.getElementById('boardInput').value);
-            console.log('🔍 현재 크롤링 설정:', config);
-            
-            // 필터 값들 확인
-            console.log('📊 필터 설정:', {
-                sort: document.getElementById('sortMethod')?.value,
-                timeFilter: document.getElementById('timePeriod')?.value,
-                minViews: document.getElementById('minViews')?.value,
-                minRecommend: document.getElementById('minRecommend')?.value,
-                minComments: document.getElementById('minComments')?.value,
-                startRank: document.getElementById('startRank')?.value,
-                endRank: document.getElementById('endRank')?.value,
-                startDate: document.getElementById('startDate')?.value,
-                endDate: document.getElementById('endDate')?.value
-            });
-            
-            return config;
-        }
+    def cleanup_old_crawls(self, max_age_seconds: int = 3600):
+        """오래된 크롤링 정리"""
+        old_count = len(self.cancelled_crawls)
+        self.cancelled_crawls.clear()
+        logger.info(f"🧹 오래된 크롤링 정리: {old_count}개")
+        return old_count
 
+# 크롤링 매니저 인스턴스 생성
+crawl_manager = CrawlManager()
 
-        // 🔥 사이트별 엔드포인트 지원 (레거시 호환성)
-        // 필요시 기존 사이트별 함수들도 통합 엔드포인트를 우선 사용하도록 업데이트
-
-        function startRedditCrawling() {
-            // 통합 엔드포인트 우선, 실패시 기존 방식
-            currentSite = 'reddit';
-            return startCrawling();
-        }
-
-        function startDCInsideCrawling() {
-            currentSite = 'dcinside';
-            return startCrawling();
-        }
-
-        function startBlindCrawling() {
-            currentSite = 'blind';
-            return startCrawling();
-        }
-
-        function startBBCCrawling() {
-            currentSite = 'bbc';
-            return startCrawling();
-        }
-
-        function startLemmyCrawling() {
-            currentSite = 'lemmy';
-            return startCrawling();
-        }
-
-        function startUniversalCrawling() {
-            currentSite = 'universal';
-            return startCrawling();
-        }
-
-        // 진행률 메시지 처리
-        function handleProgressMessage(data) {
-            const progress = Math.min(Math.max(data.progress || 0, 0), 100);
-            const step = data.step || 'unknown';
-            const site = (data.site || '').toUpperCase();
-            const board = data.board || '';
-            const details = data.details || {};
-            
-            console.log(`📊 진행률: ${progress}% - ${step}`);
-            
-            // 언어팩에서 메시지 가져오기
-            const messageKey = `crawlingSteps.${step}`;
-            const translatedMessage = getLocalizedMessage(messageKey, {
-                site: site,
-                board: board,
-                page: details.page || details.current_page || '',
-                matched: details.matched_posts || details.matched || '',
-                total: details.total_posts || details.total_checked || '',
-                current: details.current_post || details.current || '',
-                ...details
-            });
-            
-            updateProgress(progress, translatedMessage);
-        }
-        // 상태 메시지 처리
-        function handleStatusMessage(data) {
-            const step = data.step || 'unknown';
-            const site = (data.site || '').toUpperCase();
-            const details = data.details || {};
-            
-            console.log(`ℹ️ 상태: ${step}`);
-            
-            const messageKey = `crawlingStatus.${step}`;
-            const translatedMessage = getLocalizedMessage(messageKey, {
-                site: site,
-                ...details
-            });
-            
-            showTemporaryMessage(translatedMessage, 'info');
-        }
-
-        // 완료 메시지 처리
-        function handleCompleteMessage(data) {
-            const totalCount = data.total_count || 0;
-            const site = (data.site || '').toUpperCase();
-            const board = data.board || '';
-            const startRank = data.start_rank || 1;
-            const endRank = data.end_rank || totalCount;
-            
-            console.log(`✅ 완료: ${totalCount}개 게시물`);
-            
-            // 결과 데이터 저장 및 표시
-            if (data.data && data.data.length > 0) {
-                crawlResults = data.data;
-                displayResults(data.data);
-                enableDownloadButtons();
+# ==================== 번역 서비스 ====================
+async def deepl_translate(text: str, target_lang: str) -> str:
+    try:
+        if not text.strip():
+            return ""
+        response = requests.post(
+            "https://api-free.deepl.com/v2/translate",
+            data={
+                "auth_key": DEEPL_API_KEY,
+                "text": text,
+                "target_lang": target_lang.upper()
             }
-            
-            const messageKey = 'crawling.complete';
-            const translatedMessage = getLocalizedMessage(messageKey, {
-                site: site,
-                board: board,
-                count: totalCount,
-                start: startRank,
-                end: endRank
-            });
-            
-            const elapsed = crawlStartTime ? 
-                ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
-            
-            showTemporaryMessage(`${translatedMessage} (${elapsed}초)`, 'success');
-            resetCrawlingState();
-        }
+        )
+        result = response.json()
+        return result["translations"][0]["text"]
+    except Exception as e:
+        logger.error("DeepL 번역 오류:", e)
+        return "(번역 실패)"
 
+# ==================== 크롤링 취소 확인 함수들 ====================
+async def fetch_posts_with_cancel_check(*args, crawl_id=None, **kwargs):
+    """Reddit 크롤링에 취소 확인 추가"""
+    if crawl_id and crawl_manager.is_cancelled(crawl_id):
+        raise asyncio.CancelledError("크롤링이 취소되었습니다")
+    
+    kwargs.pop('crawl_id', None)
+    return await fetch_posts(*args, **kwargs)
 
-        function handleCrawlingEnd() {
-            hideProgress();
-            isLoading = false;
-            updateCrawlButton();
-            hideCancelButton();
-            
-            if (currentSocket) {
-                currentSocket.close();
-                currentSocket = null;
-            }
-        }
+async def crawl_dcinside_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+    """DCInside 크롤링에 취소 확인 추가"""
+    if crawl_id and crawl_manager.is_cancelled(crawl_id):
+        raise asyncio.CancelledError("크롤링이 취소되었습니다")
+    
+    kwargs.pop('crawl_id', None)
+    return await crawl_dcinside_board(*args, **kwargs)
 
-        function handleCrawlingSuccess(data) {
-            // 결과 데이터 저장
-            if (data.data && data.data.length > 0) {
-                crawlResults = data.data;
-                showDownloadButton();
-            }
-            
-            handleCrawlingEnd();
-        }
+async def crawl_blind_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+    """Blind 크롤링에 취소 확인 추가"""
+    if crawl_id and crawl_manager.is_cancelled(crawl_id):
+        raise asyncio.CancelledError("크롤링이 취소되었습니다")
+    
+    kwargs.pop('crawl_id', None)
+    return await crawl_blind_board(*args, **kwargs)
 
-        // 검색 인터페이스가 보이도록 보장하는 함수
-        function ensureSearchInterfaceVisible() {
-            const boardSearchContainer = document.getElementById('boardSearchContainer');
-            const optionsContainer = document.getElementById('optionsContainer');
-            const buttonContainer = document.getElementById('buttonContainer');
-            
-            boardSearchContainer.classList.add('show');
-            optionsContainer.classList.add('show');
-            buttonContainer.classList.add('show');
-        }
+async def crawl_bbc_board_with_cancel_check(board_url: str, crawl_id=None, **kwargs):
+    """BBC 크롤링에 취소 확인 추가"""
+    if crawl_id and crawl_manager.is_cancelled(crawl_id):
+        raise asyncio.CancelledError("크롤링이 취소되었습니다")
+    
+    from bbc import crawl_bbc_board
+    return await crawl_bbc_board(board_url=board_url, **kwargs)
 
-        // 취소 버튼을 표시하는 함수
-        function showCancelButton() {
-            const cancelBtn = document.getElementById('cancelBtn');
-            cancelBtn.style.display = 'inline-flex';
-        }
+async def crawl_lemmy_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+    """Lemmy 크롤링에 취소 확인 추가"""
+    if crawl_id and crawl_manager.is_cancelled(crawl_id):
+        raise asyncio.CancelledError("크롤링이 취소되었습니다")
+    
+    kwargs.pop('crawl_id', None)
+    return await crawl_lemmy_board(*args, **kwargs)
 
-        // 취소 버튼을 숨기는 함수
-        function hideCancelButton() {
-            const cancelBtn = document.getElementById('cancelBtn');
-            cancelBtn.style.display = 'none';
-        }
+# ==================== 애플리케이션 생명주기 관리 ====================
+from contextlib import asynccontextmanager
 
-        // 다운로드 버튼을 표시하는 함수
-        function showDownloadButton() {
-            const downloadBtn = document.getElementById('downloadBtn');
-            downloadBtn.style.display = 'inline-flex';
-        }
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """애플리케이션 생명주기 관리"""
+    # 시작시 실행
+    logger.info("🔥 PickPost v2.0 크롤링 시스템 시작")
+    logger.info("🚀 크롤링 매니저 초기화 완료")
+    logger.info("🔄 통합 크롤링 엔드포인트 활성화")
+    
+    # 주기적 정리 작업 시작
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(3600)  # 1시간마다
+            crawl_manager.cleanup_old_crawls()
+    
+    cleanup_task = asyncio.create_task(periodic_cleanup())
+    
+    try:
+        yield  # 애플리케이션 실행
+    finally:
+        # 종료시 실행
+        logger.info("🛑 PickPost v2.0 크롤링 시스템 종료")
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            logger.info("✅ 정리 작업 취소 완료")
 
-        // 다운로드 버튼을 숨기는 함수
-        function hideDownloadButton() {
-            const downloadBtn = document.getElementById('downloadBtn');
-            downloadBtn.style.display = 'none';
-        }
+# ==================== FastAPI 앱 초기화 ====================
+app = FastAPI(
+    title="PickPost API",
+    debug=DEBUG,
+    lifespan=lifespan
+)
 
-        // 크롤링을 취소하는 함수
-        function cancelCrawling() {
-            console.log(`크롤링 취소 요청: ${currentCrawlId}`);
-            
-            if (currentSocket) {
-                currentSocket.close();
-                currentSocket = null;
-            }
-            
-            if (currentCrawlId) {
-                sendCancelRequest(currentCrawlId);
-            }
-            
-            isLoading = false;
-            updateCrawlButton();
-            hideProgress();
-            hideCancelButton();
-            
-            updateProgress(0);
-            
-            const lang = window.languages[currentLanguage];
-            showTemporaryMessage(lang.crawlingStatus?.cancelled || '크롤링이 취소되었습니다.', 'info');
-            
-            currentCrawlId = null;
-        }
+# ==================== 🔥 자동 엔드포인트 시스템 초기화 ====================
+# 🚨 중요: app과 crawl_manager가 정의된 후에 호출
+try:
+    from core.endpoints import create_simple_endpoint_manager
+    
+    # 자동 엔드포인트 매니저 생성 - 모든 크롤러 자동 감지 및 엔드포인트 생성
+    endpoint_manager = create_simple_endpoint_manager(app, crawl_manager)
+    
+    logger.info("✅ 자동 엔드포인트 시스템 초기화 완료")
+    logger.info(f"📡 자동 생성된 엔드포인트: {len(endpoint_manager.crawlers)}개 크롤러")
+    
+    # 감지된 크롤러 정보 로깅
+    for site_type, crawler_info in endpoint_manager.crawlers.items():
+        logger.info(f"  🎯 {site_type}: /ws/{site_type}-crawl")
+    
+    # 통합 엔드포인트 확인
+    logger.info("🔥 통합 엔드포인트:")
+    logger.info("  📡 /ws/crawl - 자동 감지 + 통합 크롤링")
+    logger.info("  🔍 /ws/analyze - 사이트 분석 전용")
+    
+except ImportError as e:
+    logger.error(f"❌ core.simple_endpoints 모듈을 찾을 수 없습니다: {e}")
+    logger.warning("⚠️ 레거시 엔드포인트만 사용됩니다")
+    endpoint_manager = None
+except Exception as e:
+    logger.error(f"❌ 자동 엔드포인트 시스템 초기화 실패: {e}")
+    logger.warning("⚠️ 레거시 엔드포인트만 사용됩니다")
+    endpoint_manager = None
 
-        // 백엔드에 취소 요청을 보내는 함수
-        async function sendCancelRequest(crawlId) {
-            try {
-                console.log(`백엔드 취소 요청 전송: ${crawlId}`);
+# ==================== CORS 설정 ====================
+def get_cors_origins():
+    """환경별 CORS 도메인 설정"""
+    if APP_ENV == "production":
+        base_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
+        production_origins = [
+            "https://pickpost.netlify.app",
+            "https://pickpost--*.netlify.app",
+            "https:testfdd.netlify.app",
+            "https:testfdd--*.netlify.app"
+        ]
+        
+        for origin in base_origins:
+            origin = origin.strip()
+            if origin and origin.startswith("https://"):
+                production_origins.append(origin)
                 
-                const response = await fetch('http://localhost:8000/api/cancel-crawl', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        crawl_id: crawlId,
-                        action: 'cancel'
-                    })
-                });
-                
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log('취소 요청 성공:', result);
-                } else {
-                    console.warn('취소 요청 실패:', response.status);
-                }
-            } catch (error) {
-                console.error('취소 요청 오류:', error);
-            }
-        }
+        return production_origins
+    else:
+        return [
+            "http://localhost:3000",
+            "http://localhost:8000", 
+            "http://127.0.0.1:8000",
+            "https://127.0.0.1:8000",
+            "https://pickpost.netlify.app",
+            "https://testfdd.netlify.app"
+        ]
 
-        // 페이지 벗어날 때 크롤링 정리하는 이벤트 리스너
-        window.addEventListener('beforeunload', function() {
-            if (currentCrawlId) {
-                console.log('페이지 종료시 크롤링 정리');
-                sendCancelRequest(currentCrawlId);
-            }
-        });
+if APP_ENV == "production":
+    allowed_origins = get_cors_origins()
+    allow_origin_regex = r"https://.*\.netlify\.app$"
+else:
+    allowed_origins = ["*"]
+    allow_origin_regex = None
 
-        // Excel 파일을 다운로드하는 함수
-        function downloadExcel() {
-            if (crawlResults.length === 0) {
-                showTemporaryMessage('no_data', 'error');
-                return;
-            }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-            const headers = ['번호', '원제목', '번역제목', '링크', '본문', '조회수', '추천수', '댓글수', '작성일'];
-            const csvContent = [
-                headers.join(','),
-                ...crawlResults.map(item => [
-                    item.번호 || '',
-                    `"${(item.원제목 || '').replace(/"/g, '""')}"`,
-                    `"${(item.번역제목 || '').replace(/"/g, '""')}"`,
-                    item.링크 || '',
-                    `"${(item.본문 || '').replace(/"/g, '""')}"`.replace(/\n/g, ' '),
-                    item.조회수 || 0,
-                    item.추천수 || 0,
-                    item.댓글수 || 0,
-                    `"${(item.작성일 || '').replace(/"/g, '""')}"`
-                ].join(','))
-            ].join('\n');
+# ==================== 환경변수 검증 ====================
+def validate_environment():
+    """필수 환경변수 검증"""
+    required_vars = ['DEEPL_API_KEY']
+    missing_vars = []
+    
+    for var in required_vars:
+        if not os.getenv(var):
+            missing_vars.append(var)
+    
+    if missing_vars:
+        logger.error(f"❌ 필수 환경변수 누락: {', '.join(missing_vars)}")
+        if APP_ENV == "production":
+            raise ValueError(f"필수 환경변수 누락: {', '.join(missing_vars)}")
+    
+    logger.info(f"🔧 환경 설정 ({APP_ENV}):")
+    logger.info(f"  PORT: {PORT}")
+    logger.info(f"  DEEPL_API_KEY: {'설정됨' if DEEPL_API_KEY else '미설정'}")
+    logger.info(f"  ALLOWED_ORIGINS: {os.getenv('ALLOWED_ORIGINS', 'default')}")
 
-            const BOM = '\uFEFF';
-            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            
-            const now = new Date();
-            const dateStr = now.getFullYear() + 
-                        String(now.getMonth() + 1).padStart(2, '0') + 
-                        String(now.getDate()).padStart(2, '0') + '_' +
-                        String(now.getHours()).padStart(2, '0') +
-                        String(now.getMinutes()).padStart(2, '0');
-            
-            const filename = `${currentSite}_crawl_${dateStr}.csv`;
-            
-            const link = document.createElement('a');
-            if (link.download !== undefined) {
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                
-                showTemporaryMessage('download_success', 'success', { filename: filename });
-            }
-        }
+try:
+    validate_environment()
+    logger.info("✅ 환경변수 검증 완료")
+except ValueError as e:
+    logger.error(f"❌ 환경변수 오류: {e}")
+    if APP_ENV == "production":
+        exit(1)
 
-        // ==================== 진행 상황 및 결과 표시 ====================
-        // 진행 상황을 표시하는 함수
-        function showProgress() {
-            const progressContainer = document.getElementById('progressContainer');
-            if (progressContainer) {
-                progressContainer.classList.add('show');
-                progressContainer.style.display = 'block';
-            }
-            
-            const progressDetails = document.getElementById('progressDetails');
-            if (progressDetails) {
-                progressDetails.style.display = 'flex';
-            }
-            
-            updateProgress(0, '크롤링 준비 중...');
-        }
+# ==================== 동적 CORS 미들웨어 ====================
+@app.middleware("http")
+async def dynamic_cors_middleware(request: Request, call_next):
+    """환경별 동적 CORS 처리"""
+    origin = request.headers.get("origin")
+    
+    response = await call_next(request)
+    
+    if APP_ENV == "production":
+        if origin and "netlify.app" in origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+    else:
+        if origin and (
+            "netlify.app" in origin or
+            "localhost" in origin or
+            "127.0.0.1" in origin
+        ):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
-        // 진행 상황을 숨기는 함수
-        function hideProgress() {
-            const progressContainer = document.getElementById('progressContainer');
-            if (progressContainer) {
-                progressContainer.classList.remove('show');
-                progressContainer.style.display = 'none';
-            }
-            
-            const progressDetails = document.getElementById('progressDetails');
-            if (progressDetails) {
-                progressDetails.style.display = 'none';
-            }
-        }
-
-        // 진행 상황을 업데이트하는 함수
-        function updateProgress(progress, message, details = {}) {
-            // 진행률 컨테이너 표시
-            const progressContainer = document.getElementById('progressContainer');
-            if (progressContainer) {
-                progressContainer.classList.add('show');
-            }
-            
-            // 진행률 바 업데이트
-            const progressBar = document.getElementById('progress-bar') || 
-                                document.querySelector('.progress-bar') ||
-                                document.querySelector('[id*="progress"]');
-            
-            if (progressBar) {
-                progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-                progressBar.setAttribute('aria-valuenow', progress);
-            }
-            
-            // 진행률 텍스트 업데이트
-            const progressText = document.getElementById('progress-text') || 
-                                document.getElementById('progressText') ||
-                                document.querySelector('.progress-text');
-                                
-            if (progressText) {
-                progressText.textContent = message || `${progress}%`;
-            }
-            
-            // 상세 정보 표시
-            const progressDetails = document.getElementById('progress-details') || 
-                                document.getElementById('progressDetails');
-                                
-            if (progressDetails && Object.keys(details).length > 0) {
-                const detailsText = Object.entries(details)
-                    .map(([key, value]) => `${key}: ${value}`)
-                    .join(' | ');
-                progressDetails.textContent = detailsText;
-                progressDetails.style.display = 'block';
-            } else if (progressDetails) {
-                progressDetails.style.display = 'none';
-            }
-            
-            console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
-        }
-        // 결과를 초기화하는 함수
-        function clearResults() {
-            const container = document.getElementById('resultsContainer');
-            const downloadBtn = document.getElementById('downloadBtn');
-            
-            container.innerHTML = '';
-            downloadBtn.style.display = 'none';
-            crawlResults = [];
-            
-            container.style.opacity = '0';
-            container.style.transform = 'translateY(-8px)';
-            
-            setTimeout(() => {
-                container.style.opacity = '1';
-                container.style.transform = 'translateY(0)';
-            }, 300);
-        }
-
-        // 크롤링 결과를 표시하는 함수
-        function displayResults(results, startIndex = 1) {
-            const container = document.getElementById('resultsContainer');
-            const lang = window.languages[currentLanguage];
-            
-            if (results.length === 0) {
-                container.innerHTML = `<p style="text-align: center; color: #5f6368; font-size: 16px; padding: 40px;">${lang.resultTexts.noResults}</p>`;
-                return;
-            }
-            
-            // 완료 알림
-            setTimeout(() => {
-                const successMsg = (lang.crawlingStatus?.complete || '수집 완료') + `! ${results.length}${lang.crawlingStatus?.found || '개 게시글을 찾았습니다'}`;
-                showTemporaryMessage(successMsg, 'success');
-            }, 500);
-            
-            const elapsedTime = crawlStartTime ? Math.round((Date.now() - crawlStartTime) / 1000) : 0;
-            
-            const isAdvanced = document.getElementById('advancedSearch').checked;
-            const start = isAdvanced ? parseInt(document.getElementById('startRankAdv').value) || 1 : parseInt(document.getElementById('startRank').value) || 1;
-            const end = isAdvanced ? parseInt(document.getElementById('endRankAdv').value) || 20 : parseInt(document.getElementById('endRank').value) || 20;
-            const estimatedPages = Math.ceil(end / 25);
-            
-            const summaryHtml = `
-                <div style="
-                    background: #f8f9fa; 
-                    border-radius: 12px; 
-                    padding: 16px; 
-                    margin-bottom: 16px; 
-                    box-shadow: 0 2px 8px rgba(32,33,36,.1);">
-
-                    <div style="
-                        display: flex; 
-                        align-items: center; 
-                        gap: 12px; 
-                        margin-bottom: 16px;">
-
-                        <div style="
-                            width: 40px; 
-                            height: 40px; 
-                            background: white; 
-                            border-radius: 50%;
-                            display: flex; 
-                            align-items: center; 
-                            justify-content: center;">
-                            
-                            <img src="logo.png" alt="통계" style="width: 24px; height: 24px;">
-                        </div>
-                        <div>
-                            <h3 style="color: #ff8000; margin: 0; font-size: 16px; font-weight: 550;">
-                                ${lang.resultTexts.crawlComplete}
-                            </h3>
-                            <p style="color: #5f6368; margin: 0px 0 0 0; font-size: 11.5px;">
-                                ${new Date().toLocaleString(currentLanguage === 'ko' ? 'ko-KR' : currentLanguage === 'ja' ? 'ja-JP' : 'en-US')} ${lang.resultTexts.completedAt}
-                            </p>
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; 
-                        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); 
-                        gap: 16px; 
-                        margin-bottom: 16px;">
-
-                        <div style="
-                            text-align: center; 
-                            background: white; 
-                            padding: 4px 6px; 
-                            border-radius: 8px; 
-                            border: 1px solid #e8eaed;">
-
-                            <div style="
-                                font-size: 16px; 
-                                font-weight: 550; 
-                                color: #ff8000; 
-                                margin-top: 4px;">
-                                ${results.length}
-                            </div>
-
-                            <div style="
-                                font-size: 12px;
-                                color: #5f6368;">
-                                ${lang.resultTexts.totalPosts}
-                            </div>
-                        </div>
-
-                        <div style="
-                            text-align: center; 
-                            background: white; 
-                            padding: 4px 6px; 
-                            border-radius: 8px; 
-                            border: 1px solid #e8eaed;">
-
-                            <div style="
-                                font-size: 16px; 
-                                font-weight: 550; 
-                                color: #ff8000; 
-                                margin-top: 4px;">
-                                ${start}-${end}
-                            </div>
-                            <div style="
-                                font-size: 12px; 
-                                color: #5f6368;">
-                                ${lang.resultTexts.rankRange || '순위 범위'}
-                            </div>
-                        </div>
-
-                        <div style="
-                            text-align: center; 
-                            background: white; 
-                            padding: 4px 6px; 
-                            border-radius: 8px; 
-                            border: 1px solid #e8eaed;">
-                            
-                            <div style="
-                            font-size: 16px; 
-                            font-weight: 550; 
-                            color: #ff8000; 
-                            margin-top: 4px;">
-                            ~${estimatedPages}
-                        </div>
-                            <div style="
-                            font-size: 12px;
-                            color: #5f6368;">
-                            ${lang.resultTexts.estimatedPages || '예상 페이지'}
-                        </div>
-                        </div>
-
-                        <div style="
-                            text-align: center; 
-                            background: white; 
-                            padding: 4px 6px; 
-                            border-radius: 8px; 
-                            border: 1px solid #e8eaed;">
-                            
-                            <div style="
-                                font-size: 16px; 
-                                font-weight: 550; 
-                                color: #ff8000; 
-                                margin-top: 4px;">
-                                ${currentSite.toUpperCase()}
-                            </div>
-
-                            <div style="
-                                font-size: 12px; 
-                                color: #5f6368;">
-                                ${lang.resultTexts.sourceSite}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="
-                        display: flex; 
-                        justify-content: space-between; 
-                        align-items: center; 
-                        padding-top: 16px; 
-                        border-top: 1px solid #e8eaed;">
-                        
-                        <div style="
-                            display: flex; 
-                            align-items: center; 
-                            gap: 8px;">
-                            
-                            <span style="
-                                font-size: 14px; 
-                                color: #5f6368;">
-                                ${lang.resultTexts.crawlMode || '크롤링 모드'}:
-                            </span>
-
-                            <span style="
-                                font-size: 14px; 
-                                font-weight: 500; 
-                                color: #ff8000;">
-                                ${isAdvanced ? (lang.resultTexts.advancedMode || '고급 검색색') : (lang.resultTexts.basicMode || '기본')}
-                            </span>
-
-                        </div>
-                        <div style="
-                            display: flex; 
-                                align-items: center; 
-                                gap: 8px;">
-
-                            <span style="
-                                font-size: 14px; 
-                                color: #5f6368;">
-                                ⏱️ ${lang.resultTexts.elapsedTime}:
-                            </span>
-
-                            <span style="
-                                font-size: 14px;
-                                font-weight: 500; 
-                                color: #137333;">
-                                ${elapsedTime}${lang.resultTexts.seconds}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            const resultsHtml = results.map((item, index) => {
-                const itemNumber = startIndex + index;
-                
-                const title = item.원제목 || item.title || item.제목 || '';
-                const translatedTitle = item.번역제목 || item.translated_title || '';
-                const link = item.링크 || item.link || item.url || '#';
-                const content = item.본문 || item.content || item.내용 || '';
-                const views = item.조회수 || item.views || 0;
-                const likes = item.추천수 || item.likes || item.score || 0;
-                const comments = item.댓글수 || item.comments || 0;
-                const date = item.작성일 || item.date || item.created_at || '';
-                
-                return `
-                    <div class="result-item" style="opacity: 0; transform: translateY(8px);">
-                        <div class="result-header">
-                            <div style="display: flex; align-items: flex-start; flex: 1;">
-                                <div class="result-number">${itemNumber}</div>
-                                <div style="flex: 1;">
-                                    <a href="${link}" target="_blank" class="result-title" rel="noopener noreferrer">
-                                        ${title}
-                                    </a>
-                                    ${translatedTitle ? `<div class="result-translation">${translatedTitle}</div>` : ''}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="result-meta-row">
-                            <div class="result-date">
-                                📅 ${date}
-                            </div>
-                            <div class="result-stats">
-                                ${views > 0 ? `<div class="stat-item">👁️ ${views.toLocaleString()}</div>` : ''}
-                                ${likes > 0 ? `<div class="stat-item">👍 ${likes.toLocaleString()}</div>` : ''}
-                                ${comments > 0 ? `<div class="stat-item">💬 ${comments.toLocaleString()}</div>` : ''}
-                            </div>
-                        </div>
-                        
-                        ${content ? `
-                            <div class="result-content">
-                                ${content.length > 200 ? content.substring(0, 200) + '...' : content}
-                            </div>
-                        ` : ''}
-                        
-                        <div class="result-links">
-                            <a href="${link}" target="_blank" rel="noopener noreferrer">
-                                ${lang.original || '원문 보기'}
-                            </a>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            container.innerHTML = summaryHtml + resultsHtml;
-            
-            const resultItems = container.querySelectorAll('.result-item');
-            resultItems.forEach((item, index) => {
-                setTimeout(() => {
-                    item.style.opacity = '1';
-                    item.style.transform = 'translateY(0)';
-                }, index * 100);
-            });
-
-            setTimeout(() => {
-                showDownloadButton();  // 다운로드 버튼 강제 표시
-                hideCancelButton();    // 취소 버튼 숨김
-                
-                // 크롤링 버튼 텍스트도 원래대로 복원
-                const lang = window.languages[currentLanguage];
-                document.getElementById('crawlBtn').textContent = lang.start || '크롤링 시작';
-            }, 100);
-
-            console.log(`${results.length}개 결과 표시 완료`);
-        }
-
-        // ==================== 유틸리티 함수 ====================
-        // DOM 요소를 안전하게 쿼리하는 함수
-        function safeQuerySelector(selector) {
-            try {
-                return document.querySelector(selector) || document.getElementById(selector);
-            } catch (e) {
-                console.warn(`Selector not found: ${selector}`);
-                return null;
-            }
-        }
-
-        // DOM 요소를 안전하게 업데이트하는 함수
-        function safeUpdateElement(selector, property, value) {
-            const element = safeQuerySelector(selector);
-            if (element && value !== undefined) {
-                element[property] = value;
-            }
-        }
-
-        // URL에서 사이트명을 추출하는 함수
-        function extractSiteName(url) {
-            try {
-                const urlObj = new URL(url.startsWith('http') ? url : 'https://' + url);
-                const hostname = urlObj.hostname.toLowerCase();
-                
-                const siteMap = {
-                    'reddit.com': 'Reddit',
-                    'www.reddit.com': 'Reddit',
-                    'dcinside.com': 'DCInside',
-                    'gall.dcinside.com': 'DCInside',
-                    'teamblind.com': 'Blind',
-                    'blind.com': 'Blind',
-                    'lemmy.world': 'Lemmy',
-                    'lemmy.ml': 'Lemmy',
-                    'beehaw.org': 'Lemmy'
-                };
-                
-                if (siteMap[hostname]) {
-                    return siteMap[hostname];
-                }
-                
-                let siteName = hostname.replace(/^(www\.|m\.|mobile\.)/, '');
-                
-                siteName = siteName.split('.')[0];
-                siteName = siteName.charAt(0).toUpperCase() + siteName.slice(1);
-                
-                return siteName;
-                
-            } catch (error) {
-                return url;
-            }
-        }
-
-        // 강화된 에러 메시지를 표시하는 함수
-        function showEnhancedError(title, details, suggestions = []) {
-            const lang = window.languages[currentLanguage];
-            
-            // 기본 에러 메시지 표시
-            showTemporaryMessage(title, 'error');
-            
-            // 상세 에러 정보 콘솔 출력
-            console.error('Enhanced Error:', {
-                title,
-                details,
-                suggestions,
-                timestamp: new Date().toISOString(),
-                language: currentLanguage
-            });
-            
-            // 제안사항이 있으면 추가 메시지 표시
-            if (suggestions.length > 0) {
-                setTimeout(() => {
-                    const suggestionMessage = getLocalizedMessage('errors.suggestions', {
-                        suggestions: suggestions.join(', ')
-                    });
-                    showTemporaryMessage(suggestionMessage, 'info');
-                }, 2000);
-            }
-        }
-        // 사이트를 자동으로 감지하는 함수
-        function enhancedSiteDetection(input) {
-            const patterns = [
-                { pattern: /reddit\.com/i, site: 'reddit', name: 'Reddit' },
-                { pattern: /(dcinside\.com|gall\.dcinside)/i, site: 'dcinside', name: 'DCInside' },
-                { pattern: /(teamblind\.com|blind\.com)/i, site: 'blind', name: 'Blind' },
-                { pattern: /(bbc\.com|bbc\.co\.uk)/i, site: 'bbc', name: 'BBC' },
-                { pattern: /lemmy\./i, site: 'lemmy', name: 'Lemmy' },
-                { pattern: /beehaw\.org/i, site: 'lemmy', name: 'Lemmy' },
-                { pattern: /sh\.itjust\.works/i, site: 'lemmy', name: 'Lemmy' }
-            ];
-            
-            for (const {pattern, site, name} of patterns) {
-                if (pattern.test(input)) {
-                    return { site, name };
-                }
-            }
-            
-            return null;
-        }
-
-        // 입력 유효성을 검사하는 함수
-        function validateInput(site, boardInput) {
-            const errors = [];
-            
-            if (!site) {
-                errors.push('사이트를 선택해주세요');
-                return errors;
-            }
-            
-            if (!boardInput.trim()) {
-                if (site === 'universal') {
-                    errors.push('크롤링할 웹사이트 URL을 입력해주세요');
-                } else {
-                    errors.push('게시판 이름을 입력해주세요');
-                }
-                return errors;
-            }
-            
-            switch (site) {
-                case 'universal':
-                    if (!boardInput.startsWith('http')) {
-                        errors.push('범용 크롤러는 http:// 또는 https://로 시작하는 완전한 URL이 필요합니다');
-                    }
-                    break;
-                    
-                case 'reddit':
-                    if (boardInput.includes('reddit.com') && !boardInput.includes('/r/')) {
-                        errors.push('Reddit 게시판은 "/r/게시판명" 형태여야 합니다');
-                    }
-                    break;
-                    
-                case 'lemmy':
-                    if (!boardInput.includes('@') && !boardInput.includes('lemmy')) {
-                        errors.push('Lemmy 커뮤니티는 "커뮤니티명@인스턴스" 형태여야 합니다 (예: technology@lemmy.world)');
-                    }
-                    break;
-            }
-            
-            return errors;
-        }
-
-        // 디버깅을 위한 콘솔 명령어
-        window.debugCrawl = {
-            getCurrentId: () => currentCrawlId,
-            forceCancel: () => cancelCrawling(),
-            getStatus: () => ({
-                isLoading,
-                currentSite,
-                currentCrawlId,
-                socketStatus: currentSocket ? 'connected' : 'disconnected'
-            })
-        };
-
-        console.log('디버깅 명령어: window.debugCrawl.getStatus(), window.debugCrawl.forceCancel()');
-
-
-        // 보드 입력창을 클리어하는 함수
-        function clearBoardInput() {
-            const boardInput = document.getElementById('boardInput');
-            boardInput.value = '';
-            document.getElementById('clearBoardBtn').style.display = 'none';
-            
-            hideAutocomplete();
-            updateCrawlButton();
-            
-            // 포커스를 보드 입력창에 다시 설정
-            boardInput.focus();
-        }
-
-        function enableDownloadButtons() {
-        const downloadButtons = document.querySelectorAll('.download-button');
-        downloadButtons.forEach(button => {
-            button.disabled = false;
-            button.style.opacity = '1';
-        });
-        }
-
-        function showProgressBar(show) {
-            const progressContainer = document.querySelector('.progress-container');
-            if (progressContainer) {
-                progressContainer.style.display = show ? 'block' : 'none';
-            }
-        }
-
-        // 선택된 언어 가져오기
-        function getSelectedLanguages() {
-            // 언어 선택 체크박스가 있는지 확인
-            const languageCheckboxes = document.querySelectorAll('input[name="target_languages"]:checked');
-            if (languageCheckboxes.length > 0) {
-                return Array.from(languageCheckboxes).map(cb => cb.value);
-            }
-            
-            // 기본값: 현재 선택된 언어로 번역
-            if (currentLanguage !== 'ko') {
-                return [currentLanguage];
-            }
-            
-            return []; // 번역 안함
-        }
-
-        // 선택된 범위 가져오기
-        function getSelectedRange() {
-            const isAdvanced = document.getElementById('advancedSearch')?.checked;
+# ==================== API 엔드포인트 ====================
+@app.get("/api/topics/{site}")
+def get_available_topics(site: str):
+    """사용 가능한 토픽/갤러리 목록을 반환합니다."""
+    try:
+        if site == "blind":
+            board_map = load_blind_map()
+            return {"topics": list(board_map.keys()), "count": len(board_map)}
+        elif site == "dcinside":
+            gallery_map = load_gallery_map()
+            return {"topics": list(gallery_map.keys()), "count": len(gallery_map)}
+        elif site == "bbc": 
+            return get_bbc_topics_list()
+        elif site == "lemmy":
+            instances = get_popular_lemmy_instances()
             return {
-                start: parseInt(document.getElementById(isAdvanced ? 'startRankAdv' : 'startRank')?.value || '1'),
-                end: parseInt(document.getElementById(isAdvanced ? 'endRankAdv' : 'endRank')?.value || '20')
-            };
+                "topics": ["Lemmy 커뮤니티 URL을 입력하세요"], 
+                "count": len(instances),
+                "instances": instances,
+                "note": "예: technology@lemmy.world 또는 https://lemmy.world/c/technology"
+            }
+        elif site == "universal":
+            return {"topics": ["URL을 직접 입력하세요"], "count": 1, "note": "범용 크롤러는 게시판 URL을 직접 입력하세요"}
+        else:
+            return JSONResponse(status_code=400, content={"error": "지원하지 않는 사이트입니다."})
+    except Exception as e:
+        logger.error(f"Topics API error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/search/{site}")
+def search_topics_api(site: str, keyword: str = Query(...)):
+    """키워드로 토픽/갤러리를 검색합니다."""
+    try:
+        keyword = keyword.strip().lower()
+        if site == "blind":
+            board_map = load_blind_map()
+            matches = [(name, board_id) for name, board_id in board_map.items() if keyword in name.lower()]
+            return {"matches": [{"name": name, "id": board_id} for name, board_id in matches[:20]]}
+        elif site == "dcinside":
+            gallery_map = load_gallery_map()
+            matches = [(name, board_id) for name, board_id in gallery_map.items() if keyword in name.lower()]
+            return {"matches": [{"name": name, "id": board_id} for name, board_id in matches[:20]]}
+        elif site == "bbc": 
+                return search_bbc_topics(keyword)
+        elif site == "lemmy":
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                communities = loop.run_until_complete(search_lemmy_communities(keyword))
+                matches = [{"name": f"{comm['이름']}@{comm['인스턴스']}", "id": comm['URL']} for comm in communities[:20]]
+                return {"matches": matches}
+            finally:
+                loop.close()
+        elif site == "universal":
+            return {"matches": [{"name": "범용 크롤러", "id": "URL 직접 입력"}], "note": "게시판 URL을 직접 입력하세요"}
+        else:
+            return JSONResponse(status_code=400, content={"error": "지원하지 않는 사이트입니다."})
+    except Exception as e:
+        logger.error(f"Search API error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+# ==================== 자동완성 API ====================
+@app.get("/autocomplete/{site}")
+async def autocomplete(site: str, keyword: str = Query(...)):
+    keyword = keyword.strip()
+    matches = []
+    
+    # BBC URL 감지 로직
+    bbc_detection = detect_bbc_url_and_extract_info(keyword)
+    
+    if bbc_detection["is_bbc"]:
+        return {
+            "matches": [bbc_detection["board_name"]],
+            "detected_site": "bbc",
+            "original_url": bbc_detection["normalized_url"],
+            "board_url": bbc_detection["normalized_url"],
+            "section_info": {
+                "section": bbc_detection["section"],
+                "subsection": bbc_detection["subsection"], 
+                "description": bbc_detection["description"]
+            },
+            "auto_detected": True,
+            "auto_switch_site": True,
+            "switch_message": bbc_detection["switch_message"],
+            "suggestion": f"자동으로 BBC 크롤러로 전환됩니다: {bbc_detection['board_name']}"
+        }
+    
+    # URL 감지 로직
+    if keyword.startswith('http'):
+        site_detector = SiteDetector()
+        detected_site = await site_detector.detect_site_type(keyword)
+        board_name = site_detector.extract_board_identifier(keyword, detected_site)
+        
+        return {
+            "matches": [board_name],
+            "detected_site": detected_site,
+            "original_url": keyword,
+            "auto_detected": True
+        }
+    
+    keyword_lower = keyword.lower()
+    
+    try:
+        if site == "blind":
+            try:
+                board_map = load_blind_map()
+                if board_map:
+                    matches = [name for name in board_map.keys() if keyword_lower in name.lower()]
+                else:
+                    # 기본 매치 목록 사용
+                    matches = [
+                        "블라블라", "회사생활", "자유토크", "개발자", "경력개발", 
+                        "취업/이직", "스타트업", "회사와사람들", "디자인", "금융/재테크",
+                        "부동산", "결혼/육아", "여행", "음식", "건강", "연애", "게임",
+                        "주식", "암호화폐", "IT/기술", "AI/머신러닝"
+                    ]
+                    matches = [name for name in matches if keyword_lower in name.lower()]
+            except Exception as e:
+                logger.warning(f"Blind 자동완성 오류: {e}")
+                matches = []
+                
+        elif site == "dcinside":
+            try:
+                gallery_map = load_gallery_map()
+                if gallery_map:
+                    matches = [name for name in gallery_map.keys() if keyword_lower in name.lower()]
+                else:
+                    # 기본 매치 목록 사용
+                    matches = [
+                        "싱글벙글", "유머", "정치", "축구", "야구", "농구", "배구",
+                        "게임", "리그오브레전드", "오버워치", "스타크래프트",
+                        "PC게임", "모바일게임", "애니메이션", "만화", "영화", "드라마",
+                        "음악", "아이돌", "케이팝", "힙합", "요리", "여행", "사진"
+                    ]
+                    matches = [name for name in matches if keyword_lower in name.lower()]
+            except Exception as e:
+                logger.warning(f"DCInside 자동완성 오류: {e}")
+                matches = []
+                
+        elif site == "bbc": 
+            bbc_suggestions = {
+                "news": ["news", "뉴스", "세계", "국제"],
+                "business": ["business", "비즈니스", "경제", "금융"],
+                "technology": ["technology", "기술", "tech", "테크"],
+                "sport": ["sport", "스포츠", "축구", "올림픽"],
+                "health": ["health", "건강", "의료", "코로나"],
+                "science": ["science", "과학", "연구", "발견"],
+                "entertainment": ["entertainment", "연예", "문화", "음악", "영화"]
+            }
+            
+            for section, keywords in bbc_suggestions.items():
+                if any(keyword_lower in keyword.lower() for keyword in keywords):
+                    matches.append(f"https://www.bbc.com/{section}")
+            
+            matches = list(set(matches))
+
+        elif site == "lemmy":
+            lemmy_communities = {
+                "technology": ["technology", "기술", "tech"],
+                "worldnews": ["worldnews", "뉴스", "news", "세계뉴스"],
+                "asklemmy": ["asklemmy", "질문", "ask"],
+                "programming": ["programming", "프로그래밍", "코딩", "개발"],
+                "linux": ["linux", "리눅스"],
+                "privacy": ["privacy", "프라이버시", "보안"],
+                "gaming": ["gaming", "게임", "game"],
+                "movies": ["movies", "영화", "movie"],
+                "music": ["music", "음악"]
+            }
+            
+            for community, keywords in lemmy_communities.items():
+                if any(keyword_lower in keyword.lower() for keyword in keywords):
+                    matches.append(f"{community}@lemmy.world")
+            
+            matches = list(set(matches))
+            
+        elif site == "universal":
+            universal_suggestions = [
+                "네이버 카페", "다음 카페", "디시인사이드", "클리앙", "루리웹", 
+                "뽐뿌", "인벤", "와이고수", "92dp", "티스토리", "네이트판"
+            ]
+            matches = [name for name in universal_suggestions if keyword_lower in name.lower()]
+            
+        elif site == "reddit":
+            reddit_subreddits = {
+                "askreddit": ["askreddit", "질문", "ask"],
+                "todayilearned": ["todayilearned", "til", "오늘배운것", "배움"],
+                "funny": ["funny", "유머", "웃긴", "재미"],
+                "pics": ["pics", "사진", "picture"],
+                "worldnews": ["worldnews", "뉴스", "news", "세계뉴스"],
+                "gaming": ["gaming", "게임", "game"],
+                "technology": ["technology", "기술", "tech"],
+                "programming": ["programming", "프로그래밍", "코딩", "개발"],
+                "korea": ["korea", "한국"],
+                "korean": ["korean", "한국어", "코리안"]
+            }
+            
+            for subreddit, keywords in reddit_subreddits.items():
+                if any(keyword_lower in keyword.lower() for keyword in keywords):
+                    matches.append(subreddit)
+            
+            matches = list(set(matches))
+            
+        return {"matches": matches[:15], "auto_detected": False}
+        
+    except Exception as e:
+        logger.error(f"Autocomplete error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+# ==================== 🔥 NEW: 통합 크롤링 엔드포인트 ====================
+# 📝 주의: 자동 엔드포인트 시스템이 성공적으로 초기화된 경우 
+# 이 엔드포인트들은 자동 생성된 것으로 대체됩니다.
+
+if endpoint_manager is None:
+    # 자동 시스템이 실패한 경우에만 수동 엔드포인트 생성
+    logger.warning("⚠️ 자동 엔드포인트 시스템이 비활성화됨 - 수동 엔드포인트 생성")
+    
+    @app.websocket("/ws/crawl")
+    async def unified_crawl_endpoint(websocket: WebSocket):
+        """🔥 통합 크롤링 WebSocket 엔드포인트 (수동 버전)"""
+        origin = websocket.headers.get("origin", "")
+
+        # Origin 검증 (기존 로직과 동일)
+        if APP_ENV == "production":
+            allowed_patterns = ["netlify.app", "onrender.com"]
+            origin_allowed = any(pattern in origin for pattern in allowed_patterns)
+        else:
+            allowed_patterns = ["netlify.app", "localhost", "127.0.0.1", "onrender.com", "file://"]
+            origin_allowed = (
+                any(pattern in origin for pattern in allowed_patterns) or 
+                origin == "" or 
+                origin == "null" or
+                origin.startswith("http://localhost") or
+                origin.startswith("http://127.0.0.1")
+            )
+
+        if not origin_allowed:
+            logger.warning(f"❌ 통합 WebSocket Origin 거부 ({APP_ENV}): {origin}")
+            await websocket.close(code=1008, reason="Invalid origin")
+            return
+
+        await websocket.accept()
+        
+        crawl_id = f"unified_{id(websocket)}_{int(time.time())}"
+        logger.info(f"🔥 새 통합 크롤링 시작: {crawl_id}")
+        
+        try:
+            # 설정 데이터 수신
+            config = await websocket.receive_json()
+            user_lang = await get_user_language(config)
+            
+            input_data = config.get("input", "")
+            sort = config.get("sort", "recent")
+            start_index = config.get("start", 1)
+            end_index = config.get("end", 20)
+            min_views = config.get("min_views", 0)
+            min_likes = config.get("min_likes", 0)
+            min_comments = config.get("min_comments", 0)
+            time_filter = config.get("time_filter", "day")
+            start_date_input = config.get("start_date")
+            end_date_input = config.get("end_date")
+            
+            logger.info(f"통합 크롤링 요청: {input_data}, sort: {sort}, range: {start_index}-{end_index}")
+
+            # 취소 확인
+            def check_cancelled():
+                if crawl_manager.is_cancelled(crawl_id):
+                    raise asyncio.CancelledError(f"크롤링 {crawl_id} 취소됨")
+
+            check_cancelled()
+
+            # 날짜 범위 계산
+            actual_start_date, actual_end_date = calculate_actual_dates(
+                time_filter, start_date_input, end_date_input
+            )
+            
+            # AutoCrawler 인스턴스 생성 및 설정
+            auto_crawler = AutoCrawler()
+            
+            # 크롤링 설정 구성
+            crawl_config = {
+                'websocket': websocket,
+                'sort': sort,
+                'start_index': start_index,
+                'end_index': end_index,
+                'min_views': min_views,
+                'min_likes': min_likes,
+                'min_comments': min_comments,
+                'time_filter': time_filter,
+                'start_date': actual_start_date,
+                'end_date': actual_end_date,
+                'crawl_id': crawl_id
+            }
+
+            # 사이트 감지 진행률 업데이트
+            await websocket.send_json(create_localized_message(
+                progress=5,
+                status_key="detecting_site",
+                lang=user_lang,
+                status_data={"input": input_data}
+            ))
+
+            check_cancelled()
+
+            # 통합 크롤링 실행
+            raw_posts = await auto_crawler.crawl(input_data, **crawl_config)
+            
+            if not raw_posts:
+                await websocket.send_json(create_error_message(
+                    error_key="no_posts_found",
+                    lang=user_lang
+                ))
+                return
+
+            # 번역 진행률 업데이트
+            await websocket.send_json(create_localized_message(
+                progress=85,
+                status_key="translating_posts",
+                lang=user_lang,
+                details_key="translating_details", 
+                details_data={"count": len(raw_posts)}
+            ))
+
+            # 번역 처리
+            results = []
+            for idx, post in enumerate(raw_posts):
+                check_cancelled()
+                
+                original_title = post['원제목']
+                # 한국어가 포함된 경우 번역하지 않음
+                if any(ord(char) > 127 for char in original_title):
+                    post['번역제목'] = original_title
+                else:
+                    post['번역제목'] = await deepl_translate(original_title, user_lang)
+                    
+                results.append(post)
+                
+                if len(raw_posts) > 0:
+                    translation_progress = 85 + int((idx + 1) / len(raw_posts) * 15)
+                    await websocket.send_json({"progress": translation_progress})
+
+            # 최종 결과 전송
+            detected_site = await auto_crawler.site_detector.detect_site_type(input_data)
+            
+            await websocket.send_json({
+                "done": True, 
+                "data": results,
+                "detected_site": detected_site,
+                "total_found": len(results),
+                "unified_mode": True,  # 통합 모드임을 표시
+                "summary": create_message_response(
+                    "unified_complete",
+                    lang=user_lang,
+                    site=detected_site,
+                    count=len(results),
+                    start=start_index,
+                    end=start_index+len(results)-1,
+                    input=input_data
+                )
+            })
+            
+            logger.info(f"🔥 통합 크롤링 완료: {len(results)}개 게시물 ({detected_site})")
+
+        except asyncio.CancelledError:
+            logger.info(f"❌ 통합 크롤링 취소됨: {crawl_id}")
+            await websocket.send_json({
+                "cancelled": True,
+                "message": "통합 크롤링이 사용자에 의해 취소되었습니다."
+            })
+        except Exception as e:
+            error_detail = traceback.format_exc()
+            logger.error(f"❌ 통합 크롤링 오류: {e}")
+            logger.error(f"❌ Full traceback: {error_detail}")
+            
+            await websocket.send_json(create_error_message(
+                error_key="unified_crawling_error",
+                lang=user_lang,
+                error_data={"error": str(e)}
+            ))
+        finally:
+            crawl_manager.cleanup_crawl(crawl_id)
+            await websocket.close()
+
+    # ==================== 🔍 NEW: 사이트 분석 전용 엔드포인트 ====================
+    @app.websocket("/ws/analyze")
+    async def analyze_site_endpoint(websocket: WebSocket):
+        """🔍 사이트 분석 전용 WebSocket 엔드포인트"""
+        await websocket.accept()
+        
+        try:
+            data = await websocket.receive_json()
+            input_data = data.get("input", "")
+            user_lang = data.get("language", "en")
+            
+            # 사이트 감지 및 분석
+            site_detector = SiteDetector()
+            detected_site = await site_detector.detect_site_type(input_data)
+            board_identifier = site_detector.extract_board_identifier(input_data, detected_site)
+            
+            # 분석 결과 전송
+            analysis_result = {
+                "input": input_data,
+                "detected_site": detected_site,
+                "board_identifier": board_identifier,
+                "is_url": input_data.startswith('http'),
+                "analysis_complete": True
+            }
+            
+            # BBC의 경우 추가 정보 제공
+            if detected_site == 'bbc':
+                bbc_info = detect_bbc_url_and_extract_info(input_data)
+                analysis_result.update({
+                    "bbc_info": bbc_info,
+                    "section": bbc_info.get("section"),
+                    "description": bbc_info.get("description")
+                })
+            
+            await websocket.send_json(analysis_result)
+            
+        except Exception as e:
+            await websocket.send_json({
+                "error": "사이트 분석 중 오류가 발생했습니다.",
+                "error_detail": str(e)
+            })
+        finally:
+            await websocket.close()
+
+else:
+    logger.info("✅ 자동 엔드포인트 시스템 활성화됨 - 수동 엔드포인트 생략")
+
+# ==================== LEGACY WebSocket 엔드포인트들 (하위 호환성 유지) ====================
+
+@app.websocket("/ws/auto-crawl")
+async def crawl_auto_socket(websocket: WebSocket):
+    """통합 자동 크롤링 WebSocket 핸들러 (기존 호환성 유지)"""
+    origin = websocket.headers.get("origin", "")
+    
+    # 기본 언어 설정 (초기화)
+    user_lang = "ko"  # 기본값 설정
+    crawl_id = None
+
+    if APP_ENV == "production":
+        allowed_patterns = ["netlify.app", "onrender.com"]
+        origin_allowed = any(pattern in origin for pattern in allowed_patterns)
+    else:
+        allowed_patterns = ["netlify.app", "localhost", "127.0.0.1", "onrender.com", "file://"]
+        origin_allowed = (
+            any(pattern in origin for pattern in allowed_patterns) or 
+            origin == "" or 
+            origin == "null" or
+            origin.startswith("http://localhost") or
+            origin.startswith("http://127.0.0.1")
+        )
+
+    if not origin_allowed:
+        logger.warning(f"❌ WebSocket Origin 거부 ({APP_ENV}): {origin}")
+        await websocket.close(code=1008, reason="Invalid origin")
+        return
+
+    if APP_ENV != "production":
+        logger.info(f"✅ WebSocket Origin 허용: {origin}")
+
+    await websocket.accept()
+    
+    crawl_id = f"auto_{id(websocket)}_{int(time.time())}"
+    logger.info(f"🚀 새 크롤링 시작: {crawl_id}")
+    
+    try:
+        # 초기 데이터 수신 및 언어 설정
+        try:
+            init_data = await websocket.receive_json()
+            user_lang = get_user_language(init_data)  # async 제거
+        except Exception as conn_error:
+            if "ConnectionClosed" in str(type(conn_error).__name__):
+                logger.warning(f"🔌 WebSocket 연결이 초기화 중 종료됨: {crawl_id}")
+            return
+        except Exception as e:
+            logger.error(f"❌ 초기 데이터 수신 오류: {e}")
+            await websocket.send_json(create_error_message(
+                error_key="initialization_error",
+                lang=user_lang,  # 이미 기본값으로 초기화됨
+                error_data={"error": str(e)}
+            ))
+            return
+        
+        board_input = init_data.get("board", "")
+        sort = init_data.get("sort", "recent")
+        start = init_data.get("start", 1)
+        end = init_data.get("end", 20)
+        min_views = init_data.get("min_views", 0)
+        min_likes = init_data.get("min_likes", 0)
+        time_filter = init_data.get("time_filter", "day")
+        start_date_input = init_data.get("start_date")
+        end_date_input = init_data.get("end_date")
+
+        logger.info(f"Auto crawl started: {board_input}")
+
+        def check_cancelled():
+            if crawl_manager.is_cancelled(crawl_id):
+                raise asyncio.CancelledError(f"크롤링 {crawl_id} 취소됨")
+
+        check_cancelled()
+
+        # 사이트 감지 (하위 호환성을 위해 기존 로직 유지)
+        site_detector = SiteDetector()
+        detected_site = await site_detector.detect_site_type(board_input)
+        auto_crawler = AutoCrawler()
+
+        # 실제 날짜 범위 계산
+        actual_start_date, actual_end_date = calculate_actual_dates(
+            time_filter, start_date_input, end_date_input
+        )
+
+        # 크롤링 설정
+        crawl_config = {
+            'sort': sort,
+            'start': start,
+            'end': end,
+            'min_views': min_views,
+            'min_likes': min_likes,
+            'time_filter': time_filter,
+            'start_date': actual_start_date,
+            'end_date': actual_end_date,
+            'crawl_id': crawl_id
         }
 
-        console.log('✅ 통합 엔드포인트 지원 main.js 로드 완료');
+        # 사이트 감지 진행률 업데이트
+        await websocket.send_json(create_localized_message(
+            progress=5,
+            status_key="detecting_site",
+            lang=user_lang,
+            status_data={"input": board_input}
+        ))
 
-        // ========================================
-        // HTML onclick 함수들을 전역으로 노출
-        // ========================================
+        check_cancelled()
 
-        // 사이트 관련
-        window.handleSiteSearch = handleSiteSearch;
-        window.clearSiteInput = clearSiteInput;
-        window.clearBoardInput = clearBoardInput;
+        # 통합 크롤링 실행
+        raw_posts = await auto_crawler.crawl(board_input, **crawl_config)
+        
+        if not raw_posts:
+            await websocket.send_json(create_error_message(
+                error_key="no_posts_found",
+                lang=user_lang
+            ))
+            return
 
-        // 크롤링 관련
-        window.startCrawling = startCrawling;
-        window.cancelCrawling = cancelCrawling;
-        window.downloadExcel = downloadExcel;
-        window.goBack = goBack;
-        window.toggleAdvancedSearch = toggleAdvancedSearch;
-        window.debugCrawlConfig = debugCrawlConfig;
-        window.debugProgress = (progress, message) => updateProgress(progress, message);
+        # 번역 진행률 업데이트
+        await websocket.send_json(create_localized_message(
+            progress=85,
+            status_key="translating_posts",
+            lang=user_lang,
+            details_key="translating_details", 
+            details_data={"count": len(raw_posts)}
+        ))
 
-        // 모달 관련
-        window.openBugReportModal = openBugReportModal;
-        window.closeBugReportModal = closeBugReportModal;
-        window.openTermsModal = openTermsModal;
-        window.closeTermsModal = closeTermsModal;
-        window.openPrivacyModal = openPrivacyModal;
-        window.closePrivacyModal = closePrivacyModal;
-        window.openBusinessModal = openBusinessModal;
-        window.closeBusinessModal = closeBusinessModal;
-
-        // 피드백 관련
-        window.updateCharacterCount = updateCharacterCount;
-        window.updateBugReportButton = updateBugReportButton;
-        window.handleFileUpload = handleFileUpload;
-        window.removeFile = removeFile;
-        window.submitBugReport = submitBugReport;
-
-        // 바로가기 관련
-        window.openShortcutModal = openShortcutModal;
-        window.closeShortcutModal = closeShortcutModal;
-        window.saveShortcut = saveShortcut;
-        window.useShortcut = useShortcut;
-
-        // 언어 관련
-        window.toggleLanguageDropdown = toggleLanguageDropdown;
-        window.selectLanguage = selectLanguage;
-
-        // 자동완성 관련
-        window.selectBBCSection = selectBBCSection;
-        window.setLemmyCommunity = setLemmyCommunity;
-        window.selectAutocompleteItem = selectAutocompleteItem;
-        window.selectSiteAutocompleteItem = selectSiteAutocompleteItem;
-
-        // ========================================
-        // 전역 변수들을 다른 파일에서 접근 가능하게 노출
-        // ========================================
-        window.PickPostGlobals = {
-            // 변수 getter/setter
-            getCurrentSite: () => currentSite,
-            setCurrentSite: (site) => currentSite = site,
-            getCurrentLanguage: () => currentLanguage,
-            setCurrentLanguage: (lang) => currentLanguage = lang,
-            getIsLoading: () => isLoading,
-            setIsLoading: (loading) => isLoading = loading,
+        # 번역 처리
+        results = []
+        for idx, post in enumerate(raw_posts):
+            check_cancelled()
             
-            // API 설정
-            API_BASE_URL,
-            WS_BASE_URL,
+            original_title = post['원제목']
+            # 한국어가 포함된 경우 번역하지 않음
+            if any(ord(char) > 127 for char in original_title):
+                post['번역제목'] = original_title
+            else:
+                # 영어나 기타 언어인 경우 번역
+                translated_title = deepl_translate(original_title, target_lang="KO")
+                post['번역제목'] = translated_title
+
+            results.append(post)
+
+            # 진행률 업데이트
+            progress = 85 + int((idx + 1) / len(raw_posts) * 10)
+            await websocket.send_json(create_localized_message(
+                progress=progress,
+                status_key="translating_posts",
+                lang=user_lang,
+                details_key="translating_details",
+                details_data={"current": idx + 1, "total": len(raw_posts)}
+            ))
+
+        # 완료 메시지
+        await websocket.send_json({
+            "done": True,
+            "data": results,
+            "progress": 100,
+            "message": "크롤링이 완료되었습니다!",
+            "timestamp": time.time()
+        })
+
+    except asyncio.CancelledError:
+        logger.info(f"🛑 크롤링 취소됨: {crawl_id}")
+        await websocket.send_json(create_error_message(
+            error_key="crawling_cancelled",
+            lang=user_lang,
+            error_data={"crawl_id": crawl_id}
+        ))
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"❌ Auto crawl error: {e}")
+        logger.error(f"❌ Full traceback: {error_detail}")
+        
+        # WebSocket이 여전히 연결되어 있는지 확인
+        try:
+            await websocket.send_json(create_error_message(
+                error_key="crawling_error",
+                lang=user_lang,
+                error_data={"error": str(e)}
+            ))
+        except Exception as send_error:
+            logger.error(f"❌ 오류 메시지 전송 실패: {send_error}")
+    finally:
+        # 크롤링 정리
+        if crawl_id:
+            crawl_manager.cleanup_crawl(crawl_id)
+        
+        # WebSocket 안전하게 종료
+        try:
+            if not websocket.client_state.DISCONNECTED:
+                await websocket.close()
+        except Exception as close_error:
+            logger.error(f"❌ WebSocket 종료 오류: {close_error}")
+            # 이미 연결이 끊어진 경우 무시
+
+# ==================== 크롤링 취소 시스템 ====================
+@app.websocket("/ws/cancel")
+async def cancel_crawl_socket(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        data = await websocket.receive_json()
+        crawl_id = data.get("crawl_id")
+        
+        if crawl_id:
+            crawl_manager.cancel_crawl(crawl_id)
+            await websocket.send_json({"success": True, "message": f"크롤링 {crawl_id}가 취소되었습니다."})
+        else:
+            await websocket.send_json({"error": "crawl_id가 필요합니다."})
+    except Exception as e:
+        await websocket.send_json({"error": str(e)})
+    finally:
+        await websocket.close()
+
+class CancelRequest(BaseModel):
+    crawl_id: str
+    action: str = "cancel"
+
+@app.post("/api/cancel-crawl")
+async def cancel_crawl_endpoint(request: CancelRequest):
+    """크롤링 취소 요청 처리"""
+    try:
+        crawl_id = request.crawl_id
+        
+        if not crawl_id:
+            raise HTTPException(status_code=400, detail="crawl_id가 필요합니다")
+        
+        crawl_manager.cancel_crawl(crawl_id)
+        
+        logger.info(f"📡 HTTP 취소 요청 수신: {crawl_id}")
+        
+        return {
+            "success": True,
+            "message": f"크롤링 {crawl_id} 취소 요청이 처리되었습니다",
+            "crawl_id": crawl_id,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 취소 요청 처리 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"취소 요청 처리 중 오류: {str(e)}")
+   
+@app.get("/api/crawl-status/{crawl_id}")
+async def get_crawl_status(crawl_id: str):
+    """크롤링 상태 확인"""
+    try:
+        is_cancelled = crawl_manager.is_cancelled(crawl_id)
+        
+        return {
+            "crawl_id": crawl_id,
+            "is_cancelled": is_cancelled,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"상태 확인 중 오류: {str(e)}")
+
+@app.get("/api/active-crawls")
+async def get_active_crawls():
+    """활성 크롤링 목록 반환"""
+    try:
+        return {
+            "cancelled_crawls": list(crawl_manager.cancelled_crawls),
+            "cancelled_count": len(crawl_manager.cancelled_crawls),
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"활성 크롤링 조회 중 오류: {str(e)}")
+
+@app.post("/api/cleanup-crawls")
+async def cleanup_all_crawls():
+    """모든 크롤링 정리"""
+    try:
+        cancelled_count = len(crawl_manager.cancelled_crawls)
+        crawl_manager.cancelled_crawls.clear()
+        
+        logger.info(f"🧹 모든 크롤링 정리 완료: {cancelled_count}개")
+        
+        return {
+            "success": True,
+            "cleaned_count": cancelled_count,
+            "message": f"{cancelled_count}개의 크롤링이 정리되었습니다",
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"정리 중 오류: {str(e)}")
+
+# ==================== BBC URL 검증 API ====================
+@app.post("/api/validate-bbc-url")
+async def validate_bbc_url(request: dict):
+    """BBC URL 유효성 검사 및 정보 추출"""
+    try:
+        url = request.get("url", "")
+        return validate_bbc_url_info(url)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+# ==================== 🔥 NEW: 시스템 정보 API ====================
+@app.get("/api/system-info")
+async def get_system_info():
+    """시스템 정보 및 통계 반환"""
+    try:
+        crawl_stats = crawl_manager.get_stats()
+        
+        system_info = {
+            "system": {
+                "version": "2.0.0",
+                "environment": APP_ENV,
+                "debug_mode": DEBUG,
+                "unified_mode": True,  # 통합 크롤링 지원
+                "uptime_seconds": crawl_stats["uptime_seconds"],
+                "auto_endpoint_system": endpoint_manager is not None
+            },
+            "endpoints": {
+                "unified": "/ws/crawl",  # 새로운 통합 엔드포인트
+                "analyze": "/ws/analyze",  # 사이트 분석 전용
+                "legacy": [
+                    "/ws/auto-crawl",
+                    "/ws/reddit-crawl",
+                    "/ws/dcinside-crawl", 
+                    "/ws/blind-crawl",
+                    "/ws/bbc-crawl",
+                    "/ws/lemmy-crawl",
+                    "/ws/universal-crawl"
+                ]
+            },
+            "supported_sites": [
+                "reddit", "dcinside", "blind", "bbc", "lemmy", "universal"
+            ],
+            "crawl_manager": crawl_stats,
+            "features": {
+                "auto_site_detection": True,
+                "smart_conditions": True,
+                "multi_language": True,
+                "cancellation_support": True,
+                "progress_tracking": True
+            }
+        }
+        
+        # 자동 엔드포인트 시스템 정보 추가
+        if endpoint_manager:
+            system_info["auto_endpoints"] = {
+                "status": "active",
+                "crawlers_detected": len(endpoint_manager.crawlers),
+                "crawlers": list(endpoint_manager.crawlers.keys())
+            }
+        else:
+            system_info["auto_endpoints"] = {
+                "status": "inactive",
+                "reason": "자동 엔드포인트 시스템 초기화 실패"
+            }
+        
+        return system_info
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"시스템 정보 조회 중 오류: {str(e)}")
+
+# ==================== 피드백 시스템 ====================
+class Feedback(BaseModel):
+    description: str
+    hasFile: Optional[bool] = False
+    fileName: Optional[str] = None
+    fileSize: Optional[int] = None
+    systemInfo: Optional[Dict[str, Any]] = {}
+    currentLanguage: Optional[str] = "ko"
+    currentSite: Optional[str] = None
+    url: Optional[str] = None
+    timestamp: Optional[str] = None
+
+class SimpleFeedback(BaseModel):
+    message: str
+
+@app.post("/api/feedback")
+async def submit_feedback(request: Request):
+    """개선된 피드백 처리 - 다양한 형태의 데이터 수용"""
+    try:
+        raw_data = await request.json()
+        
+        feedback_dir = "outputs/feedback"
+        os.makedirs(feedback_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        client_ip = request.client.host
+
+        if "description" in raw_data:
+            feedback_content = raw_data.get("description", "").strip()
             
-            // 유틸리티 함수
-            showTemporaryMessage,
-            extractSiteName,
-            updateLabels
-        };
+            if not feedback_content:
+                return JSONResponse(
+                    status_code=400, 
+                    content={"error": "피드백 내용이 비어있습니다."}
+                )
+            
+            feedback_data = {
+                "type": "enhanced",
+                "timestamp": timestamp,
+                "ip": client_ip,
+                "content": feedback_content,
+                "metadata": {
+                    "hasFile": raw_data.get("hasFile", False),
+                    "fileName": raw_data.get("fileName"),
+                    "fileSize": raw_data.get("fileSize"),
+                    "currentLanguage": raw_data.get("currentLanguage", "ko"),
+                    "currentSite": raw_data.get("currentSite"),
+                    "url": raw_data.get("url"),
+                    "clientTimestamp": raw_data.get("timestamp"),
+                    "systemInfo": raw_data.get("systemInfo", {}),
+                    "version": "2.0.0",  # 리팩토링 버전 기록
+                    "auto_endpoint_active": endpoint_manager is not None
+                }
+            }
+            
+        elif "message" in raw_data:
+            feedback_content = raw_data.get("message", "").strip()
+            
+            if not feedback_content:
+                return JSONResponse(
+                    status_code=400, 
+                    content={"error": "메시지가 비어있습니다."}
+                )
+            
+            feedback_data = {
+                "type": "simple",
+                "timestamp": timestamp,
+                "ip": client_ip,
+                "content": feedback_content,
+                "metadata": {
+                    "version": "2.0.0",
+                    "auto_endpoint_active": endpoint_manager is not None
+                }
+            }
+            
+        else:
+            return JSONResponse(
+                status_code=400, 
+                content={
+                    "error": "올바른 피드백 형식이 아닙니다. 'description' 또는 'message' 필드가 필요합니다.",
+                    "received_fields": list(raw_data.keys())
+                }
+            )
+
+        filename = f"feedback_{timestamp}_{feedback_data['type']}.json"
+        filepath = os.path.join(feedback_dir, filename)
+        
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(feedback_data, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"📝 새로운 피드백 수신 (v2.0):")
+        logger.info(f"   📁 파일: {filename}")
+        logger.info(f"   📍 IP: {client_ip}")
+        logger.info(f"   🌐 언어: {feedback_data.get('metadata', {}).get('currentLanguage', 'N/A')}")
+        logger.info(f"   📏 길이: {len(feedback_content)}자")
+        logger.info(f"   📄 내용 미리보기: {feedback_content[:100]}{'...' if len(feedback_content) > 100 else ''}")
+
+        return {
+            "status": "success", 
+            "message": "피드백이 성공적으로 저장되었습니다.",
+            "feedback_id": timestamp,
+            "type": feedback_data["type"],
+            "version": "2.0.0"
+        }
+
+    except json.JSONDecodeError:
+        return JSONResponse(
+            status_code=400, 
+            content={"error": "잘못된 JSON 형식입니다."}
+        )
+    except Exception as e:
+        logger.error(f"❌ 피드백 처리 오류: {e}")
+        return JSONResponse(
+            status_code=500, 
+            content={"error": f"서버 오류가 발생했습니다: {str(e)}"}
+        )
+
+@app.get("/api/feedback/{feedback_id}")
+async def get_feedback_detail(feedback_id: str):
+    """특정 피드백 상세 정보 조회"""
+    try:
+        feedback_dir = "outputs/feedback"
+        
+        for filename in os.listdir(feedback_dir):
+            if filename.startswith(f"feedback_{feedback_id}") and filename.endswith(".json"):
+                filepath = os.path.join(feedback_dir, filename)
+                
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data
+        
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"피드백 {feedback_id}를 찾을 수 없습니다."}
+        )
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"피드백 조회 오류: {str(e)}"}
+        )
+
+# ==================== 기본 API 엔드포인트 ====================
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "message": "Community Crawler API is running"}
+
+@app.get("/")
+def root():
+    return {
+        "message": "PickPost API Server", 
+        "status": "running",
+        "version": "2.0.0",  # 리팩토링된 버전
+        "docs": "/docs",
+        "unified_endpoint": "/ws/crawl",  # 새로운 통합 엔드포인트 안내
+        "auto_endpoint_system": endpoint_manager is not None,
+        "legacy_endpoints": [
+            "/ws/auto-crawl",
+            "/ws/reddit-crawl", 
+            "/ws/dcinside-crawl",
+            "/ws/blind-crawl",
+            "/ws/bbc-crawl",
+            "/ws/lemmy-crawl",
+            "/ws/universal-crawl"
+        ]
+    }
+
+# ==================== 시작 시 최종 로깅 ====================
+logger.info("✅ PickPost v2.0 크롤링 시스템 설정 완료")
+logger.info("📡 사용 가능한 엔드포인트:")
+logger.info("  🔥 NEW:")
+logger.info("    - /ws/crawl - 통합 크롤링 엔드포인트")  
+logger.info("    - /ws/analyze - 사이트 분석 전용")
+logger.info("    - GET /api/system-info - 시스템 정보")
+
+if endpoint_manager:
+    logger.info("  🤖 AUTO-GENERATED:")
+    for site_type in endpoint_manager.crawlers.keys():
+        logger.info(f"    - /ws/{site_type}-crawl - {site_type} 전용 (자동생성)")
+else:
+    logger.info("  ⚠️ AUTO-GENERATED: 비활성화됨")
+
+logger.info("  📜 LEGACY (하위 호환성):")
+logger.info("    - /ws/auto-crawl - 자동 크롤링")
+logger.info("  🛠️ MANAGEMENT:")
+logger.info("    - POST /api/cancel-crawl - 크롤링 취소")
+logger.info("    - GET /api/crawl-status/{crawl_id} - 상태 확인")
+logger.info("    - POST /api/cleanup-crawls - 모든 크롤링 정리")
+logger.info("  📝 FEEDBACK:")
+logger.info("    - POST /api/feedback - 피드백 제출")
+logger.info("    - GET /api/feedback/{feedback_id} - 피드백 조회")
+
+if endpoint_manager:
+    logger.info("🎉 자동 엔드포인트 시스템 활성화: 새 크롤러 파일을 추가하면 자동으로 엔드포인트가 생성됩니다!")
+else:
+    logger.info("⚠️ 자동 엔드포인트 시스템 비활성화: core.simple_endpoints 모듈을 확인하세요")
