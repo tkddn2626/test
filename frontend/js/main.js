@@ -30,12 +30,45 @@ window.addEventListener('error', function(e) {
     // ✅ 수정: 더 구체적인 오류 처리
     if (e.message.includes('community_name is not defined')) {
         console.warn('community_name 변수 오류 감지 - 크롤링 버튼 업데이트');
-        showTemporaryMessage('입력 검증 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
+        
+        // 즉시 크롤링 버튼 상태 재계산
+        setTimeout(() => {
+            try {
+                updateCrawlButton();
+                console.log('✅ 크롤링 버튼 상태 복구 완료');
+            } catch (fixError) {
+                console.error('크롤링 버튼 복구 실패:', fixError);
+            }
+        }, 100);
+        
+        showTemporaryMessage('입력 검증 중 오류가 발생했습니다. 버튼 상태를 복구했습니다.', 'warning');
+        
     } else if (e.message.includes('Cannot read properties of undefined')) {
         console.warn('undefined 속성 접근 오류 감지');
         showTemporaryMessage('일시적인 UI 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 'error');
+        
     } else if (e.message.includes('data is not defined')) {
         showTemporaryMessage('일시적인 데이터 처리 오류가 발생했습니다. 다시 시도해주세요.', 'error');
+        
+    } else if (e.message.includes('Cannot read property') || e.message.includes('Cannot read properties')) {
+        // 일반적인 undefined 속성 접근 오류
+        console.warn('속성 접근 오류:', e.message);
+        showTemporaryMessage('페이지의 일부 요소가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.', 'warning');
+    }
+    
+    // 오류 발생 시 상태 정리
+    if (e.message.includes('community_name') || e.message.includes('undefined')) {
+        setTimeout(() => {
+            try {
+                // 크롤링 상태가 비정상인 경우 정리
+                if (isLoading && !currentSocket) {
+                    console.log('비정상 크롤링 상태 감지, 상태 초기화');
+                    resetCrawlingState();
+                }
+            } catch (cleanupError) {
+                console.error('상태 정리 중 오류:', cleanupError);
+            }
+        }, 500);
     }
 });
 
@@ -224,20 +257,40 @@ function hideLanguageDropdown() {
 }
 
 // 언어를 선택하고 UI를 업데이트하는 함수
-function selectLanguage(langCode, langName) {
+function selectLanguage(langCode, langName = null) {
     currentLanguage = langCode;
-    document.getElementById('currentLang').textContent = langName;
     
+    // langName이 제공되지 않은 경우 기본값 설정
+    if (!langName) {
+        const languageNames = {
+            'ko': '한국어',
+            'en': 'English', 
+            'ja': '日本語'
+        };
+        langName = languageNames[langCode] || langCode;
+    }
+    
+    // 안전한 DOM 요소 접근
+    const currentLangElement = document.getElementById('currentLang');
+    if (currentLangElement) {
+        currentLangElement.textContent = langName;
+    }
+    
+    // 언어 옵션 활성화 상태 업데이트
     document.querySelectorAll('.language-option').forEach(option => {
         option.classList.remove('active');
+        // onclick 속성에서 언어 코드를 찾아서 매칭
+        if (option.getAttribute('onclick') && option.getAttribute('onclick').includes(langCode)) {
+            option.classList.add('active');
+        }
     });
-    event.target.classList.add('active');
     
-    updateLabels();
+    updateLabels(window.languages[currentLanguage]);
     hideLanguageDropdown();
     
     console.log(`언어 변경됨: ${langCode} (${langName})`);
 }
+
 
 // ==================== 피드백 및 모달 관리 ====================
 // 피드백 모달을 여는 함수
@@ -733,26 +786,40 @@ function setupEventListeners() {
 
 // DOM 로드 완료 시 초기화를 실행하는 이벤트 리스너
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 DOM 로딩 완료');
+    
+    // 기본 언어를 영어로 설정
     currentLanguage = 'en';
 
     // 언어 버튼 텍스트 초기화
-    document.getElementById('currentLang').textContent = 'English';
+    const currentLangElement = document.getElementById('currentLang');
+    if (currentLangElement) {
+        currentLangElement.textContent = '영어';
+    }
     
     // 언어 옵션 활성화 상태 변경
     document.querySelectorAll('.language-option').forEach(option => {
         option.classList.remove('active');
     });
-    // 영어 옵션을 활성화
-    document.querySelector('[onclick*="en"]').classList.add('active');
     
-    updateLabels(); // 영어 라벨로 업데이트
+    // 한국어 옵션을 활성화
+    const koOption = document.querySelector('[onclick*="eo"]');
+    if (koOption) {
+        koOption.classList.add('active');
+    }
+    
+    // 한국어 라벨로 업데이트
+    if (window.languages && window.languages.en) {
+        updateLabels(window.languages.en);
+    }
 
-    updateLabels();
+    // 기본 초기화
     initializeDefaultShortcuts();
     setupEventListeners();
     initializeDateInputs();
     loadShortcuts();
 
+    // 로고 클릭 이벤트
     const logoImage = document.querySelector('.logo-image');
     if (logoImage) {
         logoImage.addEventListener('click', function() {
@@ -762,6 +829,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
     
+    // API 연결 테스트
     testApiConnection().then(apiConnected => {
         console.log('API 연결 상태:', apiConnected);
     });
@@ -775,7 +843,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.initializeFeedbackSystem();
     }
     
-    // 약간의 지연 후 초기화 (모든 요소가 완전히 로드되도록)
+    // 약간의 지연 후 앱 초기화
     setTimeout(() => {
         if (!initializeApp()) {
             console.error('❌ 앱 초기화 실패');
@@ -784,7 +852,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ready 이벤트 발생
     window.dispatchEvent(new Event('PickPostReady'));
-
 });
 
 // ESC 키로 모달을 닫는 이벤트 리스너
@@ -1897,72 +1964,92 @@ function setLemmyCommunity(community) {
 
 // 크롤링 버튼 상태를 업데이트하는 함수
 function updateCrawlButton() {
-    const boardValue = document.getElementById('boardInput').value.trim();
-    const crawlBtn = document.getElementById('crawlBtn');
-    const lang = window.languages[currentLanguage];
-    
-    let isValid = false;
-    let buttonText = lang.start;
-    
-    if (!currentSite) {
-        buttonText = lang.crawlButtonMessages.siteNotSelected;
-        isValid = false;
-    } else if (!boardValue) {
-        if (currentSite === 'universal') {
-            buttonText = lang.crawlButtonMessages.universalEmpty;
-        } else if (currentSite === 'lemmy') {
-            buttonText = lang.crawlButtonMessages.lemmyEmpty;
+    try {
+        const boardValue = safeGetValue('boardInput', '').trim();
+        const crawlBtn = document.getElementById('crawlBtn');
+        
+        if (!crawlBtn) {
+            console.warn('crawlBtn 요소를 찾을 수 없음');
+            return;
+        }
+        
+        const lang = window.languages && window.languages[currentLanguage] ? 
+                    window.languages[currentLanguage] : 
+                    (window.languages && window.languages.ko ? window.languages.ko : {});
+        
+        let isValid = false;
+        let buttonText = lang.start || '크롤링 시작';
+        
+        if (!currentSite) {
+            buttonText = lang.crawlButtonMessages?.siteNotSelected || '사이트를 선택하세요';
+            isValid = false;
+        } else if (!boardValue) {
+            if (currentSite === 'universal') {
+                buttonText = lang.crawlButtonMessages?.universalEmpty || '웹사이트 URL을 입력하세요';
+            } else if (currentSite === 'lemmy') {
+                buttonText = lang.crawlButtonMessages?.lemmyEmpty || 'Lemmy 커뮤니티를 입력하세요';
+            } else {
+                buttonText = lang.crawlButtonMessages?.boardEmpty || '게시판을 입력하세요';
+            }
+            isValid = false;
         } else {
-            buttonText = lang.crawlButtonMessages.boardEmpty;
-        }
-        isValid = false;
-    } else {
-        switch (currentSite) {
-            case 'universal':
-                isValid = boardValue.startsWith('http://') || 
-                        boardValue.startsWith('https://') ||
-                        (boardValue.includes('.') && boardValue.includes('/'));
-                if (!isValid) {
-                    buttonText = lang.crawlButtonMessages.universalUrlError;
-                }
-                break;
-            
-            case 'lemmy':
-                if (boardValue.includes('@') && boardValue.split('@').length === 2) {
-                    // ✅ 수정: community_name 변수를 올바르게 추출
-                    const [community, instance] = boardValue.split('@');
-                    isValid = community.length > 0 && instance.length > 0;
-                } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
-                    isValid = true;
-                } else if (boardValue.length > 2) {
-                    isValid = true;
-                    // ✅ 수정: community_name을 boardValue로 대체
-                    buttonText = `${boardValue}@lemmy.world로 시도`;
-                } else {
-                    buttonText = lang.crawlButtonMessages.lemmyFormatError;
-                    isValid = false;
-                }
-                break;
+            switch (currentSite) {
+                case 'universal':
+                    isValid = boardValue.startsWith('http://') || 
+                            boardValue.startsWith('https://') ||
+                            (boardValue.includes('.') && boardValue.includes('/'));
+                    if (!isValid) {
+                        buttonText = lang.crawlButtonMessages?.universalUrlError || '올바른 URL을 입력하세요';
+                    }
+                    break;
                 
-            case 'reddit':
-                if (boardValue.includes('reddit.com') && !boardValue.includes('/r/')) {
-                    buttonText = lang.crawlButtonMessages.redditFormatError;
-                    isValid = false;
-                } else {
-                    isValid = true;
-                }
-                break;
-                
-            default:
-                isValid = boardValue.length > 0;
-                break;
+                case 'lemmy':
+                    if (boardValue.includes('@') && boardValue.split('@').length === 2) {
+                        // ✅ 수정: community_name 변수를 올바르게 추출
+                        const [community, instance] = boardValue.split('@');
+                        isValid = community.length > 0 && instance.length > 0;
+                    } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
+                        isValid = true;
+                    } else if (boardValue.length > 2) {
+                        isValid = true;
+                        // ✅ 수정: community_name을 boardValue로 대체
+                        buttonText = `${boardValue}@lemmy.world로 시도`;
+                    } else {
+                        buttonText = lang.crawlButtonMessages?.lemmyFormatError || '형식: community@lemmy.world';
+                        isValid = false;
+                    }
+                    break;
+                    
+                case 'reddit':
+                    if (boardValue.includes('reddit.com') && !boardValue.includes('/r/')) {
+                        buttonText = lang.crawlButtonMessages?.redditFormatError || 'Reddit 형식 오류';
+                        isValid = false;
+                    } else {
+                        isValid = true;
+                    }
+                    break;
+                    
+                default:
+                    isValid = boardValue.length > 0;
+                    break;
+            }
         }
-    }
-    
-    crawlBtn.disabled = !isValid || isLoading;
-    
-    if (!isLoading) {
-        crawlBtn.textContent = buttonText;
+        
+        crawlBtn.disabled = !isValid || isLoading;
+        
+        if (!isLoading) {
+            crawlBtn.textContent = buttonText;
+        }
+        
+    } catch (error) {
+        console.error('updateCrawlButton 실행 중 오류:', error);
+        
+        // 폴백: 기본 상태로 설정
+        const crawlBtn = document.getElementById('crawlBtn');
+        if (crawlBtn && !isLoading) {
+            crawlBtn.textContent = '크롤링 시작';
+            crawlBtn.disabled = false;
+        }
     }
 }
 
@@ -2223,42 +2310,52 @@ function buildLegacyCrawlConfig(boardInput) {
 
 // 임시 메시지를 표시하는 함수
 function showTemporaryMessage(message, type = 'info', variables = {}) {
-    const messageDiv = document.createElement('div');
-    let translatedMessage = message;
-    
-    // 메시지가 언어 키인 경우 번역
-    const lang = window.languages[currentLanguage];
-    if (lang && lang.notifications && lang.notifications[message]) {
-        translatedMessage = lang.notifications[message];
+    try {
+        const messageDiv = document.createElement('div');
+        let translatedMessage = message;
         
-        // 템플릿 변수 치환
-        Object.keys(variables).forEach(key => {
-            translatedMessage = translatedMessage.replace(`{${key}}`, variables[key]);
-        });
-    }
-    
-    // CSS 클래스 적용
-    messageDiv.className = `temporary-message ${type}`;
-    messageDiv.textContent = translatedMessage;
-    
-    document.body.appendChild(messageDiv);
-    
-    // 표시 애니메이션
-    setTimeout(() => {
-        messageDiv.classList.add('show');
-    }, 100);
-    
-    // 숨김 애니메이션 후 제거
-    setTimeout(() => {
-        messageDiv.classList.remove('show');
-        messageDiv.classList.add('hide');
+        // 메시지가 언어 키인 경우 번역
+        const lang = window.languages && window.languages[currentLanguage] ? 
+                    window.languages[currentLanguage] : 
+                    (window.languages && window.languages.ko ? window.languages.ko : {});
         
+        if (lang && lang.notifications && lang.notifications[message]) {
+            translatedMessage = lang.notifications[message];
+            
+            // 템플릿 변수 치환
+            Object.keys(variables).forEach(key => {
+                translatedMessage = translatedMessage.replace(`{${key}}`, variables[key]);
+            });
+        }
+        
+        // CSS 클래스 적용
+        messageDiv.className = `temporary-message ${type}`;
+        messageDiv.textContent = translatedMessage;
+        
+        document.body.appendChild(messageDiv);
+        
+        // 표시 애니메이션
         setTimeout(() => {
-            if (document.body.contains(messageDiv)) {
-                document.body.removeChild(messageDiv);
-            }
-        }, 300);
-    }, 3000);
+            messageDiv.classList.add('show');
+        }, 100);
+        
+        // 숨김 애니메이션 후 제거
+        setTimeout(() => {
+            messageDiv.classList.remove('show');
+            messageDiv.classList.add('hide');
+            
+            setTimeout(() => {
+                if (document.body.contains(messageDiv)) {
+                    document.body.removeChild(messageDiv);
+                }
+            }, 300);
+        }, 3000);
+        
+    } catch (error) {
+        console.error('메시지 표시 중 오류:', error);
+        // 폴백: 기본 alert 사용
+        alert(message);
+    }
 }
 //백엔드에서 처리한 임시 메세지 표시
 function getLocalizedMessage(messageKey, messageData = {}) {
@@ -3432,36 +3529,56 @@ function safeAddEventListener(elementId, event, handler) {
     return false;
 }
 
+
+// 보드 입력 키 이벤트 핸들러
+function handleBoardInputKeyup(e) {
+    // 이미 있는 keydown 이벤트와 별도로 keyup에서 추가 처리
+    if (e.key === 'Enter' && !e.isComposing) {
+        // 한글 입력 완료 후 엔터 처리
+        const value = e.target.value.trim();
+        if (value && currentSite) {
+            updateCrawlButton();
+        }
+    }
+}
+
 // 초기화 함수에서 DOM 요소 존재 확인
 function initializeApp() {
     console.log('🚀 앱 초기화 시작');
     
-    // 필수 DOM 요소들 존재 확인
-    const requiredElements = [
-        'boardInput', 'crawlBtn', 'siteInput', 
-        'minViews', 'minRecommend', 'minComments',
-        'sortMethod', 'timePeriod'
-    ];
-    
-    const missingElements = requiredElements.filter(id => !document.getElementById(id));
-    
-    if (missingElements.length > 0) {
-        console.error('❌ 필수 DOM 요소들이 누락됨:', missingElements);
-        showTemporaryMessage('페이지 로딩이 완전하지 않습니다. 페이지를 새로고침해주세요.', 'error');
+    try {
+        // 필수 DOM 요소들 존재 확인
+        const requiredElements = [
+            'boardInput', 'crawlBtn', 'siteInput', 
+            'minViews', 'minRecommend', 'minComments',
+            'sortMethod', 'timePeriod'
+        ];
+        
+        const missingElements = requiredElements.filter(id => !document.getElementById(id));
+        
+        if (missingElements.length > 0) {
+            console.error('❌ 필수 DOM 요소들이 누락됨:', missingElements);
+            showTemporaryMessage('페이지 로딩이 완전하지 않습니다. 페이지를 새로고침해주세요.', 'error');
+            return false;
+        }
+        
+        console.log('✅ 모든 필수 DOM 요소 확인 완료');
+        
+        // 이벤트 리스너들 안전하게 추가
+        safeAddEventListener('boardInput', 'input', updateCrawlButton);
+        safeAddEventListener('boardInput', 'keyup', handleBoardInputKeyup);
+        
+        // 언어 설정 (기본값: 한국어)
+        selectLanguage('ko', '한국어');
+        
+        console.log('✅ 앱 초기화 완료');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ 앱 초기화 중 오류:', error);
+        showTemporaryMessage('앱 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
         return false;
     }
-    
-    console.log('✅ 모든 필수 DOM 요소 확인 완료');
-    
-    // 이벤트 리스너들 안전하게 추가
-    safeAddEventListener('boardInput', 'input', updateCrawlButton);
-    safeAddEventListener('boardInput', 'keyup', handleBoardInputKeyup);
-    
-    // 언어 설정
-    selectLanguage('ko');
-    
-    console.log('✅ 앱 초기화 완료');
-    return true;
 }
 
 // URL에서 사이트명을 추출하는 함수
