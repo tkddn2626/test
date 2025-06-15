@@ -50,7 +50,7 @@
         }
         
         // 프로덕션 환경 - HTTPS/WSS 사용
-        const RENDER_DOMAIN = 'pickpost.onrender.com';
+        const RENDER_DOMAIN = 'testfdd.onrender.com';
         
         return {
             API_BASE_URL: `https://${RENDER_DOMAIN}`,
