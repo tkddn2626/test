@@ -2282,24 +2282,25 @@
     }
 
     // 🔥 통합 엔드포인트용 설정 생성
-    // ✅ 올바른 buildCrawlConfig 함수
     function buildCrawlConfig(boardInput) {
         const selectedLangs = getSelectedLanguages();
+        
+        // ✅ 실제 HTML ID와 일치하도록 수정
         const sort = document.getElementById('sortMethod')?.value || 'recent';
-        const range = getSelectedRange();
         const timeFilter = document.getElementById('timePeriod')?.value || 'day';
+        const range = getSelectedRange();
         
         return {
             // 핵심 입력
             input: boardInput,
             site: currentSite || 'auto',
             
-            // 크롤링 옵션 (HTML ID와 일치)
+            // ✅ 크롤링 옵션 (올바른 필드명 사용)
             sort: sort,
             start: range.start,
             end: range.end,
             min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-            min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'), // minLikes → minRecommend
+            min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'), // minRecommend 사용
             min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
             time_filter: timeFilter,
             start_date: document.getElementById('startDate')?.value || null,
@@ -2326,20 +2327,21 @@
     function buildLegacyCrawlConfig(boardInput) {
         const selectedLangs = getSelectedLanguages();
         const sort = document.getElementById('sortMethod')?.value || 'recent';
+        const timeFilter = document.getElementById('timePeriod')?.value || 'day';
         const range = getSelectedRange();
         
         return {
             // 레거시 필드명
-            board: boardInput,  // 레거시는 'board' 사용
+            board: boardInput,
             
-            // 표준화된 필드들
+            // ✅ 필터 옵션들 (정확한 필드명)
             sort: sort,
             start: range.start,
             end: range.end,
             min_views: parseInt(document.getElementById('minViews')?.value || '0'),
             min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
             min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-            time_filter: document.getElementById('timePeriod')?.value || 'day',
+            time_filter: timeFilter,
             start_date: document.getElementById('startDate')?.value || null,
             end_date: document.getElementById('endDate')?.value || null,
             
@@ -2484,17 +2486,27 @@
                 const data = JSON.parse(event.data);
                 console.log(`📨 메시지 수신 (${endpoint}):`, data);
 
-                // 🔥 통합 엔드포인트와 레거시 엔드포인트 모두 지원
-                if (data.error) {
+                // 🔥 메시지 타입별 처리 (백엔드 messages.py와 호환)
+                if (data.message_type === 'progress') {
+                    handleProgressMessage(data);
+                } else if (data.message_type === 'status') {
+                    handleStatusMessage(data);
+                } else if (data.message_type === 'error') {
+                    handleErrorMessage(data);
+                } else if (data.message_type === 'complete') {
+                    handleCompleteMessage(data);
+                }
+                // 레거시 형태 지원
+                else if (data.error) {
                     handleCrawlError(data.error, endpoint);
                 } else if (data.done) {
                     handleCrawlComplete(data, endpoint);
                 } else if (data.progress !== undefined) {
-                    handleCrawlProgress(data, endpoint);
+                    // 🔥 레거시 진행률 메시지 처리
+                    handleLegacyProgress(data, endpoint);
                 } else if (data.status) {
                     handleCrawlStatus(data, endpoint);
                 } else if (data.data) {
-                    // 점진적 데이터 수신 처리
                     handlePartialResults(data, endpoint);
                 } else {
                     console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
@@ -2573,32 +2585,148 @@
         showTemporaryMessage(errorMessage, 'error');
         resetCrawlingState();
     }
-    // 진행률 처리 (통합)
-    function handleCrawlProgress(data, endpoint) {
+    function setupWebSocketMessageHandlers(ws, endpoint) {
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log(`📨 메시지 수신 (${endpoint}):`, data);
+
+                // 🔥 메시지 타입별 처리 (백엔드 messages.py와 호환)
+                if (data.message_type === 'progress') {
+                    handleProgressMessage(data);
+                } else if (data.message_type === 'status') {
+                    handleStatusMessage(data);
+                } else if (data.message_type === 'error') {
+                    handleErrorMessage(data);
+                } else if (data.message_type === 'complete') {
+                    handleCompleteMessage(data);
+                }
+                // 레거시 형태 지원
+                else if (data.error) {
+                    handleCrawlError(data.error, endpoint);
+                } else if (data.done) {
+                    handleCrawlComplete(data, endpoint);
+                } else if (data.progress !== undefined) {
+                    // 🔥 레거시 진행률 메시지 처리
+                    handleLegacyProgress(data, endpoint);
+                } else if (data.status) {
+                    handleCrawlStatus(data, endpoint);
+                } else if (data.data) {
+                    handlePartialResults(data, endpoint);
+                } else {
+                    console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
+                }
+
+            } catch (error) {
+                console.error('메시지 파싱 오류:', error, event.data);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
+            showTemporaryMessage(`연결 오류가 발생했습니다 (${endpoint})`, 'error');
+        };
+
+        ws.onclose = (event) => {
+            console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
+            
+            if (isLoading && event.code !== 1000) {
+                showTemporaryMessage(`연결이 예기치 않게 종료되었습니다 (${endpoint})`, 'error');
+                resetCrawlingState();
+            }
+        };
+
+
+        function handleStatusMessage(data) {
+            const step = data.step || 'unknown';
+            const site = data.site || '';
+            const details = data.details || {};
+            
+            console.log(`ℹ️ 상태: ${step}`);
+            
+            const lang = window.languages[currentLanguage];
+            let message = `상태: ${step}`;
+            
+            if (lang.crawlingStatus && lang.crawlingStatus[step]) {
+                message = lang.crawlingStatus[step]
+                    .replace('{site}', site.toUpperCase());
+                    
+                Object.keys(details).forEach(key => {
+                    message = message.replace(`{${key}}`, details[key]);
+                });
+            }
+            
+            showTemporaryMessage(message, 'info');
+        }
+    }
+
+    function handleErrorMessage(data) {
+        const errorCode = data.error_code || 'unknown_error';
+        const errorDetail = data.error_detail || '';
+        const site = data.site || '';
+        
+        console.error(`❌ 오류: ${errorCode}`);
+        
+        const lang = window.languages[currentLanguage];
+        let message = `오류가 발생했습니다: ${errorCode}`;
+        
+        if (lang.errors && lang.errors[errorCode]) {
+            message = lang.errors[errorCode]
+                .replace('{site}', site.toUpperCase())
+                .replace('{detail}', errorDetail);
+        }
+        
+        showTemporaryMessage(message, 'error');
+        resetCrawlingState();
+    }
+
+    function handleCompleteMessage(data) {
+        const totalCount = data.total_count || 0;
+        const site = data.site || '';
+        const board = data.board || '';
+        const startRank = data.start_rank || 1;
+        const endRank = data.end_rank || totalCount;
+        
+        console.log(`✅ 완료: ${totalCount}개 게시물`);
+        
+        // 결과 데이터 저장
+        if (data.data && data.data.length > 0) {
+            crawlResults = data.data;
+            displayResults(data.data);
+        }
+        
+        const lang = window.languages[currentLanguage];
+        let message = `크롤링 완료: ${totalCount}개 게시물`;
+        
+        if (lang.crawling && lang.crawling.complete) {
+            message = lang.crawling.complete
+                .replace('{site}', site.toUpperCase())
+                .replace('{board}', board)
+                .replace('{count}', totalCount)
+                .replace('{start}', startRank)
+                .replace('{end}', endRank);
+        }
+        
+        showTemporaryMessage(message, 'success');
+        resetCrawlingState();
+    }
+
+    // 레거시 진행률 메시지 처리 
+    function handleLegacyProgress(data, endpoint) {
         const progress = data.progress || 0;
         let status = data.status || data.message || '처리 중...';
         
         // 레거시 상태 메시지 번역
         status = translateLegacyStatus(status);
         
-        console.log(`📊 진행률 (${endpoint}): ${progress}% - ${status}`);
+        console.log(`📊 레거시 진행률 (${endpoint}): ${progress}% - ${status}`);
         
-        // 진행률 업데이트
         updateProgress(progress, status, data.details || {});
         
         // 부분 결과 실시간 표시
         if (data.partial_results && data.partial_results.length > 0) {
             displayPartialResults(data.partial_results);
         }
-    }
-
-    // 상태 메시지 처리 (통합)
-    function handleCrawlStatus(data, endpoint) {
-        const status = data.status || data.message || '상태 업데이트';
-        console.log(`ℹ️ 상태 (${endpoint}): ${status}`);
-        
-        // 상태 표시 영역 업데이트
-        updateStatusDisplay(status);
     }
 
     // 부분 결과 처리 (실시간 업데이트)
@@ -2638,55 +2766,77 @@
     }
 
     function updateUIForCrawlStart() {
-    // 기존 결과 클리어
-    crawlResults = [];
-    const resultsContainer = document.getElementById('resultsContainer');
-    if (resultsContainer) {
-        resultsContainer.innerHTML = '';
+        // 기존 결과 클리어
+        crawlResults = [];
+        const resultsContainer = document.getElementById('resultsContainer') || 
+                                document.getElementById('results');
+        if (resultsContainer) {
+            resultsContainer.innerHTML = '';
+        }
+        
+        // 크롤링 버튼 상태 변경
+        const crawlBtn = document.getElementById('crawlBtn');
+        if (crawlBtn) {
+            crawlBtn.disabled = true;
+            const lang = window.languages[currentLanguage];
+            crawlBtn.textContent = lang?.crawlingStatus?.inProgress || '크롤링 중...';
+        }
+        
+        // 🔥 진행률 표시 시작
+        showProgress();
+        
+        // 취소 버튼 활성화
+        showCancelButton();
+        
+        console.log('🚀 크롤링 UI 준비 완료');
     }
     
-    // 크롤링 버튼 상태 변경
-    const crawlBtn = document.getElementById('crawlBtn'); // searchButton → crawlBtn
-    if (crawlBtn) {
-        crawlBtn.disabled = true;
-        const lang = window.languages[currentLanguage];
-        crawlBtn.textContent = lang?.crawlingStatus?.inProgress || '크롤링 중...';
-    }
-    
-    // 진행률 표시
-    showProgress();
-    
-    // 취소 버튼 활성화
-    showCancelButton();
-    }
-
     function resetCrawlingState() {
         isLoading = false;
         
-        // 검색 버튼 복원
-        const searchButton = document.getElementById('searchButton');
-        if (searchButton) {
-            searchButton.disabled = false;
-            searchButton.textContent = '검색 시작';
+        // 크롤링 버튼 복원
+        const crawlBtn = document.getElementById('crawlBtn');
+        if (crawlBtn) {
+            crawlBtn.disabled = false;
+            const lang = window.languages[currentLanguage];
+            crawlBtn.textContent = lang?.start || '크롤링 시작';
         }
         
         // 진행률 바 숨김
-        showProgressBar(false);
+        hideProgress();
         
         // 취소 버튼 숨김
-        const cancelButton = document.getElementById('cancelButton');
-        if (cancelButton) {
-            cancelButton.style.display = 'none';
-        }
+        hideCancelButton();
         
         // WebSocket 연결 정리
         if (currentSocket) {
             currentSocket.close();
             currentSocket = null;
         }
+        
+        console.log('🔄 크롤링 상태 초기화 완료');
+    }
+   
+    function debugCrawlConfig() {
+        const config = buildCrawlConfig(document.getElementById('boardInput').value);
+        console.log('🔍 현재 크롤링 설정:', config);
+        
+        // 필터 값들 확인
+        console.log('📊 필터 설정:', {
+            sort: document.getElementById('sortMethod')?.value,
+            timeFilter: document.getElementById('timePeriod')?.value,
+            minViews: document.getElementById('minViews')?.value,
+            minRecommend: document.getElementById('minRecommend')?.value,
+            minComments: document.getElementById('minComments')?.value,
+            startRank: document.getElementById('startRank')?.value,
+            endRank: document.getElementById('endRank')?.value,
+            startDate: document.getElementById('startDate')?.value,
+            endDate: document.getElementById('endDate')?.value
+        });
+        
+        return config;
     }
 
-   
 
     // 🔥 사이트별 엔드포인트 지원 (레거시 호환성)
     // 필요시 기존 사이트별 함수들도 통합 엔드포인트를 우선 사용하도록 업데이트
@@ -2965,34 +3115,64 @@
     // 진행 상황을 표시하는 함수
     function showProgress() {
         const progressContainer = document.getElementById('progressContainer');
-        progressContainer.classList.add('show');
-        document.getElementById('progressDetails').style.display = 'flex';
-        updateProgress(0);
+        if (progressContainer) {
+            progressContainer.classList.add('show');
+            progressContainer.style.display = 'block';
+        }
+        
+        const progressDetails = document.getElementById('progressDetails');
+        if (progressDetails) {
+            progressDetails.style.display = 'flex';
+        }
+        
+        updateProgress(0, '크롤링 준비 중...');
     }
 
     // 진행 상황을 숨기는 함수
     function hideProgress() {
         const progressContainer = document.getElementById('progressContainer');
-        progressContainer.classList.remove('show');
-        document.getElementById('progressDetails').style.display = 'none';
+        if (progressContainer) {
+            progressContainer.classList.remove('show');
+            progressContainer.style.display = 'none';
+        }
+        
+        const progressDetails = document.getElementById('progressDetails');
+        if (progressDetails) {
+            progressDetails.style.display = 'none';
+        }
     }
 
     // 진행 상황을 업데이트하는 함수
     function updateProgress(progress, message, details = {}) {
-        const progressBar = document.getElementById('progress-bar');
-        const progressText = document.getElementById('progress-text');
-        const progressDetails = document.getElementById('progress-details');
+        // 진행률 컨테이너 표시
+        const progressContainer = document.getElementById('progressContainer');
+        if (progressContainer) {
+            progressContainer.classList.add('show');
+        }
+        
+        // 진행률 바 업데이트
+        const progressBar = document.getElementById('progress-bar') || 
+                            document.querySelector('.progress-bar') ||
+                            document.querySelector('[id*="progress"]');
         
         if (progressBar) {
             progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
             progressBar.setAttribute('aria-valuenow', progress);
         }
         
+        // 진행률 텍스트 업데이트
+        const progressText = document.getElementById('progress-text') || 
+                            document.getElementById('progressText') ||
+                            document.querySelector('.progress-text');
+                            
         if (progressText) {
-            progressText.textContent = message;
+            progressText.textContent = message || `${progress}%`;
         }
         
-        // 상세 정보 표시 (선택적)
+        // 상세 정보 표시
+        const progressDetails = document.getElementById('progress-details') || 
+                            document.getElementById('progressDetails');
+                            
         if (progressDetails && Object.keys(details).length > 0) {
             const detailsText = Object.entries(details)
                 .map(([key, value]) => `${key}: ${value}`)
@@ -3002,8 +3182,9 @@
         } else if (progressDetails) {
             progressDetails.style.display = 'none';
         }
+        
+        console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
     }
-
     // 결과를 초기화하는 함수
     function clearResults() {
         const container = document.getElementById('resultsContainer');
@@ -3496,9 +3677,10 @@
 
     // 선택된 범위 가져오기
     function getSelectedRange() {
+        const isAdvanced = document.getElementById('advancedSearch')?.checked;
         return {
-            start: parseInt(document.getElementById('startPost')?.value || '1'),
-            end: parseInt(document.getElementById('endPost')?.value || '20')
+            start: parseInt(document.getElementById(isAdvanced ? 'startRankAdv' : 'startRank')?.value || '1'),
+            end: parseInt(document.getElementById(isAdvanced ? 'endRankAdv' : 'endRank')?.value || '20')
         };
     }
 
@@ -3519,6 +3701,8 @@
     window.downloadExcel = downloadExcel;
     window.goBack = goBack;
     window.toggleAdvancedSearch = toggleAdvancedSearch;
+    window.debugCrawlConfig = debugCrawlConfig;
+    window.debugProgress = (progress, message) => updateProgress(progress, message);
 
     // 모달 관련
     window.openBugReportModal = openBugReportModal;
