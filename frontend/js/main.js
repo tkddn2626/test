@@ -168,178 +168,30 @@
     }
 
     // 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
-    function updateLabels() {
-        const lang = window.languages?.[currentLanguage] || window.languages?.ko || {};
+    function updateProgress(progress, message, details = {}) {
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const progressDetails = document.getElementById('progress-details');
         
-        function safeUpdateText(selector, text) {
-            const el = document.querySelector(selector) || document.getElementById(selector);
-            if (!el || text === undefined) return false;
-            // badge 스팬만 따로 보관
-            const badge = el.querySelector('#announcementBadge');
-            el.textContent = text;
-            if (badge) el.appendChild(badge);
-            return true;
-            }
-
-        try {
-            const currentPolicies = window.policies?.[currentLanguage];
-            if (currentPolicies?.privacy && currentPolicies?.business) {
-                const privacyModal = document.getElementById('privacyModal');
-                if (privacyModal?.classList.contains('show')) {
-                    const titleEl = document.getElementById('privacyModalTitle');
-                    const contentEl = document.getElementById('privacyModalContent');
-                    if (titleEl) titleEl.textContent = currentPolicies.privacy.title;
-                    if (contentEl) contentEl.innerHTML = currentPolicies.privacy.content;
-                }
-                
-                const businessModal = document.getElementById('businessModal');
-                if (businessModal?.classList.contains('show')) {
-                    const titleEl = document.getElementById('businessModalTitle');
-                    const contentEl = document.getElementById('businessModalContent');
-                    if (titleEl) titleEl.textContent = currentPolicies.business.title;
-                    if (contentEl) contentEl.innerHTML = currentPolicies.business.content;
-                }
-                
-                const termsModal = document.getElementById('termsModal');
-                if (termsModal?.classList.contains('show')) {
-                    const titleEl = document.getElementById('termsModalTitle');
-                    const contentEl = document.getElementById('termsModalContent');
-                    if (titleEl) titleEl.textContent = currentPolicies.terms.title;
-                    if (contentEl) contentEl.innerHTML = currentPolicies.terms.content;
-                }
-            }
-        } catch (error) {
-            console.warn('모달 업데이트 중 오류:', error);
+        if (progressBar) {
+            progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
         }
         
-        function safeUpdatePlaceholder(selector, placeholder) {
-            const element = document.querySelector(selector) || document.getElementById(selector);
-            if (element && placeholder !== undefined) {
-                element.placeholder = placeholder;
-                return true;
-            }
-            return false;
+        if (progressText) {
+            progressText.textContent = message;
         }
         
-        safeUpdateText('crawlBtn', lang.start);
-        safeUpdateText('cancelBtn', lang.cancel);
-        safeUpdateText('downloadBtn', lang.download);
-        
-        safeUpdatePlaceholder('siteInput', lang.sitePlaceholder);
-        
-        if (currentSite) {
-            updateBoardPlaceholder(currentSite);
-        } else {
-            safeUpdatePlaceholder('boardInput', lang.boardPlaceholders.default);
+        // 상세 정보 표시 (선택적)
+        if (progressDetails && Object.keys(details).length > 0) {
+            const detailsText = Object.entries(details)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(' | ');
+            progressDetails.textContent = detailsText;
+            progressDetails.style.display = 'block';
+        } else if (progressDetails) {
+            progressDetails.style.display = 'none';
         }
-        
-        safeUpdatePlaceholder('shortcutNameInput', lang.shortcutNamePlaceholder);
-        safeUpdatePlaceholder('shortcutUrlInput', lang.shortcutUrlPlaceholder);
-        
-        safeUpdateText('minViewsLabel', lang.minViews);
-        safeUpdateText('minRecommendLabel', lang.minRecommend);
-        safeUpdateText('minCommentsLabel', lang.minComments);
-        safeUpdateText('startRankLabel', lang.startRank);
-        safeUpdateText('endRankLabel', lang.endRank);
-        safeUpdateText('sortMethodLabel', lang.sortMethod);
-        safeUpdateText('timePeriodLabel', lang.timePeriod);
-        safeUpdateText('advancedSearchLabel', lang.advancedSearch);
-        
-        safeUpdateText('privacyLink', lang.privacy);
-        safeUpdateText('termsLink', lang.terms); 
-        safeUpdateText('bugReportLink', lang.feedback);
-        safeUpdateText('businessLink', lang.business);
-        safeUpdateText('shortcutModalHeader', lang.shortcutModalTitle);
-        safeUpdateText('bugReportTitleText', lang.feedbackTitle);
-        safeUpdateText('bugReportDescLabel', lang.feedbackDescLabel);
-        safeUpdateText('screenshotTitle', lang.fileAttachTitle);
-        safeUpdateText('bugReportWarningText', lang.warningTitle);
-        safeUpdateText('bugReportWarningDetail', lang.warningDetail);
-        safeUpdateText('bugReportCancelBtn', lang.cancel);
-        safeUpdateText('bugReportSubmitBtn', lang.submit);
-
-        // 진행 상황 라벨 업데이트
-        safeUpdateText('postsLabel', lang.crawlingStatus?.found || '개 수집');
-        safeUpdateText('pageLabel', lang.crawlingStatus?.page || '페이지');
-        
-        // progressEta 초기 텍스트 설정
-        const progressEta = document.getElementById('progressEta');
-        if (progressEta && !isLoading) {
-            progressEta.textContent = (lang.crawlingStatus?.timeRemaining || '예상 시간') + ': ' + (lang.resultTexts?.calculating || '계산 중...');
-        }
-        
-
-        const startDateLabel = document.getElementById('startDateLabel');
-        const endDateLabel = document.getElementById('endDateLabel');
-        if (startDateLabel) startDateLabel.textContent = lang.startDate + ':';
-        if (endDateLabel) endDateLabel.textContent = lang.endDate + ':';
-        
-        const backButton = document.querySelector('.back-button');
-        if (backButton) backButton.title = lang.backBtn;
-        
-        const timePeriodSelect = document.getElementById('timePeriod');
-        if (timePeriodSelect && timePeriodSelect.options) {
-            const options = timePeriodSelect.options;
-            if (options[0]) options[0].text = lang.hour;
-            if (options[1]) options[1].text = lang.day;
-            if (options[2]) options[2].text = lang.week;
-            if (options[3]) options[3].text = lang.month;
-            if (options[4]) options[4].text = lang.year;
-            if (options[5]) options[5].text = lang.all;
-            if (options[6]) options[6].text = lang.custom;
-        }
-        
-        const shortcutModal = document.getElementById('shortcutModal');
-        if (shortcutModal) {
-            const header = shortcutModal.querySelector('.shortcut-modal-header');
-            if (header) header.textContent = lang.shortcutModalTitle;
-            
-            const buttons = shortcutModal.querySelectorAll('.shortcut-modal-buttons .btn');
-            if (buttons.length >= 2) {
-                buttons[0].textContent = lang.cancel;
-                buttons[1].textContent = lang.save;  
-            }
-        }
-
-        const screenshotBtnText = document.getElementById('screenshotBtnText');
-        if (screenshotBtnText && !screenshotBtnText.textContent.includes('✓')) {
-            screenshotBtnText.textContent = lang.fileAttach;
-        }
-
-        if (currentSite) {
-            loadSiteSortOptions(currentSite, currentSite === 'universal' ? document.getElementById('boardInput')?.value : null);
-        }
-
-        updateCrawlButton();
-        
-        // 진행 상황 관련 텍스트 업데이트
-        if (isLoading) {
-            // 진행 중일 때도 언어 변경 반영
-            const progressText = document.getElementById('progressText');
-            const lang = window.languages[currentLanguage];
-            
-            if (progressText && progressText.textContent.includes('%')) {
-                // 퍼센트 표시는 그대로 두고, 상태 텍스트만 업데이트는 별도 처리
-            }
-            
-            // 라벨들 업데이트
-            const postsLabel = document.getElementById('postsLabel');
-            const pageLabel = document.getElementById('pageLabel');
-            const progressEta = document.getElementById('progressEta');
-            
-            if (postsLabel) postsLabel.textContent = lang.crawlingStatus?.found || '개 수집';
-            if (pageLabel) pageLabel.textContent = lang.crawlingStatus?.page || '페이지';
-            if (progressEta && !progressEta.textContent.includes('0sec')) {
-                progressEta.textContent = (lang.crawlingStatus?.timeRemaining || '예상 시간') + ': ' + (lang.resultTexts?.calculating || '계산 중...');
-            }
-        }
-
-        try {
-            loadShortcuts();
-        } catch (error) {
-            console.error('바로가기 로드 오류:', error);
-        }
-        console.log(`언어 변경 완료: ${currentLanguage}`);
     }
 
     // 언어 드롭다운을 표시/숨김하는 함수
@@ -2388,24 +2240,14 @@
                     return;
                 }
 
-                if (data.progress !== undefined) {
-                    let translatedStatus = data.status; // 기본값
-                    
-                    // 🔥 새로운 방식: status_key가 있으면 번역 처리
-                    if (data.status_key) {
-                        translatedStatus = getTranslatedStatus(data.status_key, data.status_data);
-                    }
-                    // 🔥 기존 방식: 하드코딩된 메시지들도 처리 (하위 호환)
-                    else if (data.status) {
-                        translatedStatus = translateLegacyStatus(data.status);
-                    }
-                    
-                    updateProgress(
-                        data.progress, 
-                        translatedStatus, 
-                        data.found_posts || data.total_found || 0,
-                        data.current_page || data.page || 1
-                    );
+                if (data.message_type === 'progress') {
+                    handleProgressMessage(data);
+                } else if (data.message_type === 'status') {
+                    handleStatusMessage(data);
+                } else if (data.message_type === 'error') {
+                    handleErrorMessage(data);
+                } else if (data.message_type === 'complete') {
+                    handleCompleteMessage(data);
                 }
                 
                 // 에러 메시지도 같은 방식으로 처리
@@ -2562,25 +2404,22 @@
         }, 3000);
     }
     //백엔드에서 처리한 임시 메세지 표시
-    function formatCrawlMessage(messageKey, messageData) {
+    function getLocalizedMessage(messageKey, messageData = {}) {
         const lang = window.languages[currentLanguage];
+        const keyParts = messageKey.split('.');
         
-        // 언어팩에서 템플릿 가져오기
-        let template = lang.messages?.crawl?.[messageKey];
+        let template = lang;
+        for (const part of keyParts) {
+            template = template?.[part];
+            if (!template) break;
+        }
         
         if (!template) {
-            console.warn(`메시지 템플릿을 찾을 수 없음: ${messageKey} (언어: ${currentLanguage})`);
-            return `Message template not found: ${messageKey}`;
+            // 폴백: 기존 구조에서 찾기
+            template = findInLegacyStructure(messageKey, lang);
         }
         
-        // 템플릿 변수 치환
-        if (messageData && typeof template === 'string') {
-            Object.keys(messageData).forEach(key => {
-                template = template.replace(new RegExp(`\\{${key}\\}`, 'g'), messageData[key]);
-            });
-        }
-        
-        return template;
+        return formatTemplate(template, messageData);
     }
 
     // 백엔드에서 처리하는 progress-message 메시지 템플릿을 실제 텍스트로 변환하는 함수
@@ -2637,6 +2476,99 @@
         }
         
         return status;
+    }
+
+    // 1. 진행률 메시지 처리
+    function handleProgressMessage(data) {
+        const progress = data.progress || 0;
+        const step = data.step || 'unknown';
+        const site = data.site || '';
+        const board = data.board || '';
+        const details = data.details || {};
+        
+        // 언어팩에서 적절한 메시지 가져오기
+        const messageKey = `crawlingSteps.${step}`;
+        const translatedMessage = getLocalizedMessage(messageKey, {
+            site: site.toUpperCase(),
+            board: board,
+            ...details
+        });
+        
+        updateProgress(progress, translatedMessage);
+    }
+
+    // 2. 상태 메시지 처리
+    function handleStatusMessage(data) {
+        const step = data.step || 'unknown';
+        const site = data.site || '';
+        const details = data.details || {};
+        
+        const messageKey = `crawlingStatus.${step}`;
+        const translatedMessage = getLocalizedMessage(messageKey, {
+            site: site.toUpperCase(),
+            ...details
+        });
+        
+        showTemporaryMessage(translatedMessage, 'info');
+    }
+
+    // 3. 에러 메시지 처리
+    function handleErrorMessage(data) {
+        const errorCode = data.error_code || 'unknown_error';
+        const errorDetail = data.error_detail || '';
+        const site = data.site || '';
+        
+        const messageKey = `errors.${errorCode}`;
+        const translatedMessage = getLocalizedMessage(messageKey, {
+            site: site.toUpperCase(),
+            detail: errorDetail
+        });
+        
+        showTemporaryMessage(translatedMessage, 'error');
+        handleCrawlingEnd();
+    }
+
+    // 4. 완료 메시지 처리
+    function handleCompleteMessage(data) {
+        const totalCount = data.total_count || 0;
+        const site = data.site || '';
+        const board = data.board || '';
+        const startRank = data.start_rank || 1;
+        const endRank = data.end_rank || totalCount;
+        
+        const messageKey = 'crawling.complete';
+        const translatedMessage = getLocalizedMessage(messageKey, {
+            site: site.toUpperCase(),
+            board: board,
+            count: totalCount,
+            start: startRank,
+            end: endRank
+        });
+        
+        showTemporaryMessage(translatedMessage, 'success');
+        handleCrawlingSuccess(data);
+    }
+
+    function handleCrawlingEnd() {
+        hideProgress();
+        isLoading = false;
+        updateCrawlButton();
+        hideCancelButton();
+        
+        if (currentSocket) {
+            currentSocket.close();
+            currentSocket = null;
+        }
+    }
+
+    function handleCrawlingSuccess(data) {
+        // 결과 데이터 저장
+        if (data.data && data.data.length > 0) {
+            crawlResults = data.data;
+            showDownloadButton();
+        }
+        
+        handleCrawlingEnd();
     }
 
     // 검색 인터페이스가 보이도록 보장하는 함수
@@ -3205,50 +3137,30 @@
     }
 
     // 강화된 에러 메시지를 표시하는 함수
-    function showEnhancedError(message, details = null) {
-        const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            border: 2px solid #d93025;
-            border-radius: 8px;
-            padding: 20px;
-            max-width: 400px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            z-index: 10002;
-            font-family: arial, sans-serif;
-        `;
+    function showEnhancedError(title, details, suggestions = []) {
+        const lang = window.languages[currentLanguage];
         
-        errorDiv.innerHTML = `
-            <div style="color: #d93025; font-weight: bold; margin-bottom: 10px;">
-                ❌ 오류 발생
-            </div>
-            <div style="color: #202124; margin-bottom: 15px;">
-                ${message}
-            </div>
-            ${details ? `<div style="color: #5f6368; font-size: 12px; margin-bottom: 15px;">${details}</div>` : ''}
-            <button onclick="this.parentElement.remove()" style="
-                background: #1a73e8;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                cursor: pointer;
-                float: right;
-            ">확인</button>
-            <div style="clear: both;"></div>
-        `;
+        // 기본 에러 메시지 표시
+        showTemporaryMessage(title, 'error');
         
-        document.body.appendChild(errorDiv);
+        // 상세 에러 정보 콘솔 출력
+        console.error('Enhanced Error:', {
+            title,
+            details,
+            suggestions,
+            timestamp: new Date().toISOString(),
+            language: currentLanguage
+        });
         
-        setTimeout(() => {
-            if (document.body.contains(errorDiv)) {
-                errorDiv.remove();
-            }
-        }, 5000);
+        // 제안사항이 있으면 추가 메시지 표시
+        if (suggestions.length > 0) {
+            setTimeout(() => {
+                const suggestionMessage = getLocalizedMessage('errors.suggestions', {
+                    suggestions: suggestions.join(', ')
+                });
+                showTemporaryMessage(suggestionMessage, 'info');
+            }, 2000);
+        }
     }
 
     // 사이트를 자동으로 감지하는 함수
