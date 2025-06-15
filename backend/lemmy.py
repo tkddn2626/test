@@ -16,7 +16,7 @@ from functools import lru_cache
 import hashlib
 
 # 🔥 통합 메시지 시스템 import
-from core.utils import (
+from core.messages import (
     create_progress_message, create_error_message, create_complete_message,
     create_collecting_message, create_filtering_message, create_translation_message,
     CrawlStep, SiteType, ErrorCode, SuccessType, quick_progress, quick_error,
