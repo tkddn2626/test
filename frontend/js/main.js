@@ -28,60 +28,37 @@ window.addEventListener('error', function(e) {
         timestamp: new Date().toISOString()
     });
     
-    // ✅ 수정: 더 구체적인 에러 처리
-    if (e.message.includes('community_name is not defined')) {
-        console.warn('🔧 community_name 변수 오류 - 자동 복구 시도');
-        
-        // Lemmy 관련 변수들 안전하게 초기화
-        window.community_name = '';
-        window.lemmy_instance = '';
-        
-        setTimeout(() => {
-            try {
-                updateCrawlButton();
-                console.log('✅ Lemmy 변수 초기화 및 버튼 상태 복구 완료');
-            } catch (fixError) {
-                console.error('❌ 복구 시도 실패:', fixError);
-            }
-        }, 100);
-        
-        showTemporaryMessage('Input validation error fixed. Please try again.', 'info');
-        
-    } else if (e.message.includes('Cannot read properties of undefined') || 
-               e.message.includes('Cannot read property')) {
-        console.warn('🔧 undefined 속성 접근 오류 - DOM 요소 체크');
-        
-        // DOM 요소들이 로드되었는지 재확인
-        setTimeout(() => {
-            const missingElements = checkRequiredElements();
-            if (missingElements.length > 0) {
-                console.error('❌ 누락된 DOM 요소들:', missingElements);
-                showTemporaryMessage('Some page elements are still loading. Please refresh if the issue persists.', 'warning');
-            }
-        }, 200);
-        
-    } else if (e.message.includes('data is not defined')) {
-        showTemporaryMessage('Data processing error. Please try again.', 'error');
-        
-    } else {
-        // 일반적인 오류 처리
-        showTemporaryMessage('A temporary error occurred. Please try again.', 'warning');
-    }
+    // 구체적인 에러 처리
+    handleSpecificErrors(e);
     
     // 오류 발생 시 상태 정리
-    if (e.message.includes('community_name') || e.message.includes('undefined')) {
-        setTimeout(() => {
-            try {
-                if (isLoading && !currentSocket) {
-                    console.log('🧹 비정상 크롤링 상태 감지, 자동 정리');
-                    resetCrawlingState();
-                }
-            } catch (cleanupError) {
-                console.error('❌ 상태 정리 중 오류:', cleanupError);
+    setTimeout(() => {
+        try {
+            if (isLoading && !currentSocket) {
+                console.log('🧹 비정상 크롤링 상태 감지, 자동 정리');
+                resetCrawlingState();
             }
-        }, 500);
-    }
+        } catch (cleanupError) {
+            console.error('❌ 상태 정리 중 오류:', cleanupError);
+        }
+    }, 500);
 });
+
+function handleSpecificErrors(e) {
+    if (e.message.includes('community_name is not defined')) {
+        console.warn('🔧 community_name 변수 오류 - 자동 복구 시도');
+        window.community_name = '';
+        window.lemmy_instance = '';
+        showTemporaryMessage('Input validation error fixed. Please try again.', 'info');
+        
+    } else if (e.message.includes('Cannot read properties of undefined')) {
+        console.warn('🔧 undefined 속성 접근 오류 - DOM 요소 체크');
+        setTimeout(checkAndRepairDOMElements, 200);
+        
+    } else {
+        showTemporaryMessage('A temporary error occurred. Please try again.', 'warning');
+    }
+}
 
 // 필수 DOM 요소들 존재 확인
 function checkRequiredElements() {
@@ -1522,88 +1499,44 @@ function updateBoardPlaceholder(site) {
 
 // 사이트별 정렬 옵션을 로드하는 함수
 async function loadSiteSortOptions(site, url = null) {
-    const sortSelect = document.getElementById('sortMethod');
-    const lang = window.languages[currentLanguage];
+    const sortSelect = safeGetElement('sortMethod');
+    const lang = getSafeLanguagePack();
     
-    if (site === 'reddit') {
-        sortSelect.innerHTML = `
-            <option value="new">${lang.sortOptions.reddit.new}</option>
-            <option value="top">${lang.sortOptions.reddit.top}</option>
-            <option value="hot">${lang.sortOptions.reddit.hot}</option>
-            <option value="best">${lang.sortOptions.reddit.best}</option>
-            <option value="rising">${lang.sortOptions.reddit.rising}</option>
-        `;
-        sortSelect.value = "new";
-        
-    } else if (site === 'lemmy') {
-        sortSelect.innerHTML = `
-            <option value="New">${lang.sortOptions.lemmy.New}</option>
-            <option value="Hot">${lang.sortOptions.lemmy.Hot}</option>
-            <option value="Active">${lang.sortOptions.lemmy.Active}</option>
-            <option value="TopDay">${lang.sortOptions.lemmy.TopDay}</option>
-            <option value="TopWeek">${lang.sortOptions.lemmy.TopWeek}</option>
-            <option value="TopMonth">${lang.sortOptions.lemmy.TopMonth}</option>
-            <option value="TopYear">${lang.sortOptions.lemmy.TopYear}</option>
-            <option value="TopAll">${lang.sortOptions.lemmy.TopAll}</option>
-            <option value="MostComments">${lang.sortOptions.lemmy.MostComments}</option>
-        `;
-        sortSelect.value = "New";
-        
-    } else if (site === 'dcinside') {
-        sortSelect.innerHTML = `
-            <option value="recent">${lang.sortOptions.other.recent}</option>
-            <option value="popular">${lang.sortOptions.other.popular}</option>
-            <option value="recommend">${lang.sortOptions.other.recommend}</option>
-            <option value="comments">${lang.sortOptions.other.comments}</option>
-        `;
-        sortSelect.value = "recent";
-        
-    } else if (site === 'blind') {
-        sortSelect.innerHTML = `
-            <option value="recent">${lang.sortOptions.other.recent}</option>
-            <option value="popular">${lang.sortOptions.other.popular}</option>
-            <option value="recommend">${lang.sortOptions.other.recommend}</option>
-            <option value="comments">${lang.sortOptions.other.comments}</option>
-        `;
-        sortSelect.value = "recent";
-        
-    } else if (site === 'bbc') {
-        sortSelect.innerHTML = `
-            <option value="recent">${lang.sortOptions.other.recent}</option>
-            <option value="popular">${lang.sortOptions.other.popular}</option>
-        `;
-        sortSelect.value = "recent";
-        
-    } else if (site === 'universal' && url) {
-        try {
-            const detectedSortOptions = await detectSiteSortOptions(url);
-            if (detectedSortOptions && detectedSortOptions.length > 0) {
-                sortSelect.innerHTML = detectedSortOptions.map(option => 
+    if (!sortSelect) {
+        console.warn('sortMethod 요소를 찾을 수 없습니다');
+        return;
+    }
+    
+    try {
+        if (site === 'reddit') {
+            sortSelect.innerHTML = `
+                <option value="new">${lang.sortOptions?.reddit?.new || 'New'}</option>
+                <option value="top">${lang.sortOptions?.reddit?.top || 'Top'}</option>
+                <option value="hot">${lang.sortOptions?.reddit?.hot || 'Hot'}</option>
+                <option value="best">${lang.sortOptions?.reddit?.best || 'Best'}</option>
+                <option value="rising">${lang.sortOptions?.reddit?.rising || 'Rising'}</option>
+            `;
+            sortSelect.value = "new";
+        } else if (site === 'universal' && url) {
+            const detectedOptions = await detectSiteSortOptions(url);
+            if (detectedOptions?.length > 0) {
+                sortSelect.innerHTML = detectedOptions.map(option => 
                     `<option value="${option.value}">${option.label}</option>`
                 ).join('');
-                
-                if (detectedSortOptions.length > 0) {
-                    sortSelect.value = detectedSortOptions[0].value;
-                }
+                sortSelect.value = detectedOptions[0].value;
             } else {
                 useDefaultSortOptions(sortSelect, lang);
             }
-        } catch (error) {
+        } else {
             useDefaultSortOptions(sortSelect, lang);
         }
-    } else {
-        sortSelect.innerHTML = `
-            <option value="recent">${lang.sortOptions.other.recent}</option>
-            <option value="popular">${lang.sortOptions.other.popular}</option>
-            <option value="recommend">${lang.sortOptions.other.recommend}</option>
-            <option value="comments">${lang.sortOptions.other.comments}</option>
-        `;
-        sortSelect.value = "recent";
+        
+        sortSelect.dispatchEvent(new Event('change'));
+    } catch (error) {
+        console.error('정렬 옵션 로드 오류:', error);
+        useDefaultSortOptions(sortSelect, lang);
     }
-    
-    sortSelect.dispatchEvent(new Event('change'));
 }
-
 // 기본 정렬 옵션을 사용하는 함수
 function useDefaultSortOptions(sortSelect, lang) {
     sortSelect.innerHTML = `
@@ -2028,7 +1961,6 @@ function setLemmyCommunity(community) {
 // 크롤링 버튼 상태를 업데이트하는 함수
 function updateCrawlButton() {
     try {
-        // ✅ 수정: 안전한 DOM 요소 접근
         const boardInput = safeGetElement('boardInput');
         const crawlBtn = safeGetElement('crawlBtn');
         
@@ -2037,15 +1969,12 @@ function updateCrawlButton() {
             return;
         }
         
-        const boardValue = safeGetValue('boardInput', '');
-        
-        // ✅ 수정: 안전한 언어팩 접근
+        const boardValue = boardInput.value?.trim() || '';
         const lang = getSafeLanguagePack();
         
         let isValid = false;
         let buttonText = lang.start || 'Start Crawling';
         
-        // ✅ 수정: currentSite 안전성 체크
         if (!currentSite) {
             buttonText = lang.crawlButtonMessages?.siteNotSelected || 'Select a site';
             isValid = false;
@@ -2053,7 +1982,6 @@ function updateCrawlButton() {
             buttonText = getSiteSpecificEmptyMessage(currentSite, lang);
             isValid = false;
         } else {
-            // 사이트별 유효성 검사
             const validation = validateSiteInput(currentSite, boardValue, lang);
             isValid = validation.isValid;
             if (!isValid) {
@@ -2061,7 +1989,6 @@ function updateCrawlButton() {
             }
         }
         
-        // ✅ 수정: 안전한 버튼 상태 업데이트
         crawlBtn.disabled = !isValid || isLoading;
         
         if (!isLoading) {
@@ -2494,40 +2421,12 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
 
             // 신규 메시지 시스템 처리
             if (data.message_type) {
-                switch (data.message_type) {
-                    case 'progress':
-                        handleProgressMessage(data);
-                        break;
-                    case 'status':
-                        handleStatusMessage(data);
-                        break;
-                    case 'error':
-                        handleErrorMessage(data);
-                        break;
-                    case 'complete':
-                        handleCompleteMessage(data);
-                        break;
-                    default:
-                        console.log(`🔸 알 수 없는 메시지 타입: ${data.message_type}`);
-                        break;
-                }
+                handleNewMessageSystem(data);
                 return;
             }
 
             // 레거시 시스템 처리 (하위 호환성)
-            if (data.error) {
-                handleLegacyError(data.error, endpoint);
-            } else if (data.done) {
-                handleLegacyComplete(data, endpoint);
-            } else if (data.progress !== undefined) {
-                handleLegacyProgress(data, endpoint);
-            } else if (data.status) {
-                handleLegacyStatus(data, endpoint);
-            } else if (data.data) {
-                handlePartialResults(data, endpoint);
-            } else {
-                console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
-            }
+            handleLegacyMessageSystem(data, endpoint);
 
         } catch (error) {
             console.error('메시지 파싱 오류:', error, event.data);
@@ -3344,14 +3243,17 @@ function initializeApp() {
     console.log('🚀 앱 초기화 시작');
     
     try {
-        // 필수 DOM 요소들 존재 확인
+        // 1. 전역 변수 초기화
+        initializeGlobalVariables();
+        
+        // 2. 필수 DOM 요소들 존재 확인
         const requiredElements = [
             'boardInput', 'crawlBtn', 'siteInput', 
             'minViews', 'minRecommend', 'minComments',
             'sortMethod', 'timePeriod'
         ];
         
-        const missingElements = requiredElements.filter(id => !document.getElementById(id));
+        const missingElements = requiredElements.filter(id => !safeGetElement(id));
         
         if (missingElements.length > 0) {
             console.error('❌ 필수 DOM 요소들이 누락됨:', missingElements);
@@ -3359,14 +3261,11 @@ function initializeApp() {
             return false;
         }
         
-        console.log('✅ 모든 필수 DOM 요소 확인 완료');
+        // 3. 이벤트 리스너들 안전하게 추가
+        setupSafeEventListeners();
         
-        // 이벤트 리스너들 안전하게 추가
-        safeAddEventListener('boardInput', 'input', updateCrawlButton);
-        safeAddEventListener('boardInput', 'keyup', handleBoardInputKeyup);
-        
-        // ✅ 수정: 언어 설정 (기본값: 영어)
-        selectLanguage('en', 'English');  // 'ko', '한국어' → 'en', 'English'
+        // 4. 언어 설정 (기본값: 영어)
+        selectLanguage('en', 'English');
         
         console.log('✅ 앱 초기화 완료');
         return true;
@@ -3376,6 +3275,24 @@ function initializeApp() {
         showTemporaryMessage('앱 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
         return false;
     }
+}
+
+function setupSafeEventListeners() {
+    // 기존 이벤트 리스너들을 안전하게 추가
+    safeAddEventListener('boardInput', 'input', updateCrawlButton);
+    safeAddEventListener('boardInput', 'keyup', handleBoardInputKeyup);
+    
+    // 입력 요소들에 대한 이벤트 리스너
+    const inputElements = [
+        'minViews', 'minRecommend', 'startRank', 'endRank', 
+        'startRankAdv', 'endRankAdv', 'minComments',
+        'sortMethod', 'startDate', 'endDate'
+    ];
+    
+    inputElements.forEach(elementId => {
+        safeAddEventListener(elementId, 'input', updateCrawlButton);
+        safeAddEventListener(elementId, 'change', updateCrawlButton);
+    });
 }
 
 // URL에서 사이트명을 추출하는 함수
@@ -3570,7 +3487,24 @@ function getSelectedRange() {
 
 console.log('✅ 통합 엔드포인트 지원 main.js 로드 완료');
 
-// 안전한 언어팩 가져오기
+// ✅ 안전한 전역 변수 초기화
+function initializeGlobalVariables() {
+    // Lemmy 전용 변수들 안전하게 초기화
+    if (typeof window.community_name === 'undefined') {
+        window.community_name = '';
+    }
+    if (typeof window.lemmy_instance === 'undefined') {
+        window.lemmy_instance = '';
+    }
+    
+    // 기타 필요한 전역 변수들
+    if (typeof window.languages === 'undefined') {
+        console.error('언어팩이 로드되지 않았습니다');
+        window.languages = { en: { start: 'Start Crawling' } }; // 폴백
+    }
+}
+
+// ✅ 안전한 언어팩 접근
 function getSafeLanguagePack() {
     try {
         return window.languages?.[currentLanguage] || 
@@ -3670,6 +3604,7 @@ function safeGetElement(elementId) {
         const element = document.getElementById(elementId);
         if (!element) {
             console.warn(`❌ 요소를 찾을 수 없음: ${elementId}`);
+            return null;
         }
         return element;
     } catch (error) {
