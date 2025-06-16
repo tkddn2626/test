@@ -3432,7 +3432,6 @@ window.cancelCrawling = cancelCrawling;
 window.downloadExcel = downloadExcel;
 window.goBack = goBack;
 window.toggleAdvancedSearch = toggleAdvancedSearch;
-window.debugCrawlConfig = debugCrawlConfig;
 window.debugProgress = (progress, message) => updateProgress(progress, message);
 
 // 모달 관련
