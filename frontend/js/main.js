@@ -19,8 +19,6 @@ let currentCrawlId = null;
 
 let community_name = '';
 let lemmy_instance = '';
-let buildLegacyConfig = null;
-let showTemporaryMessage = null;
 
 // 전역 오류 처리기
 window.addEventListener('error', function(e) {
@@ -2158,14 +2156,10 @@ async function startCrawling() {
         
         updateUIForCrawlStart();
         
-        // ✅ 통합 크롤링 엔드포인트 사용 (우선)
-        console.log('🔥 통합 엔드포인트 시도...');
-        const config = buildCrawlConfig(boardInput);
-        
         // 🔥 1단계: 통합 엔드포인트 시도
         try {
             console.log('🔥 통합 엔드포인트 시도...');
-            const config = buildCrawlConfig(board);
+            const config = buildCrawlConfig(boardInput);
             currentSocket = await createWebSocketWithRetry('crawl', config);
             console.log('✅ 통합 엔드포인트 연결 성공');
             
@@ -2174,18 +2168,19 @@ async function startCrawling() {
             
             // 🔥 2단계: 레거시 엔드포인트로 폴백
             const legacyEndpoint = determineLegacyEndpoint(currentSite);
-            const legacyConfig = buildLegacyConfig(board);
+            const legacyConfig = buildLegacyCrawlConfig(boardInput);
             currentSocket = await createWebSocketWithRetry(legacyEndpoint, legacyConfig);
             console.log('✅ 레거시 엔드포인트 연결 성공');
         }
         
     } catch (error) {
         console.error('❌ 모든 연결 방법 실패:', error);
-        showTemporaryMessage('서버 연결에 실패했습니다.', 'error');
+        showMessage('서버 연결에 실패했습니다.', 'error');
         resetCrawlingState();
     }
 }
 
+// 레거시 엔드포인트 결정 함수
 function determineLegacyEndpoint(site) {
     const endpointMap = {
         'reddit': 'reddit-crawl',
@@ -2198,6 +2193,7 @@ function determineLegacyEndpoint(site) {
     
     return endpointMap[site] || 'auto-crawl';
 }
+
 
 async function startUnifiedCrawling(boardInput) {
     try {
@@ -2260,49 +2256,20 @@ function buildCrawlConfig(boardInput) {
         language: currentLanguage || 'en'
     };
 }
+
 // 레거시 auto-crawl용 설정 생성 
 function buildLegacyCrawlConfig(boardInput) {
-    const selectedLangs = getSelectedLanguages();
-    const sort = document.getElementById('sortMethod')?.value || 'recent';
-    const timeFilter = document.getElementById('timePeriod')?.value || 'day';
-    const range = getSelectedRange();
+    const config = buildCrawlConfig(boardInput);
     
-    return {
-        // 레거시 필드명
-        board: boardInput,
-        
-        // ✅ 필터 옵션들 (정확한 필드명)
-        sort: sort,
-        start: range.start,
-        end: range.end,
-        min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-        min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
-        min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-        time_filter: timeFilter,
-        start_date: document.getElementById('startDate')?.value || null,
-        end_date: document.getElementById('endDate')?.value || null,
-        
-        translate: selectedLangs.length > 0,
-        target_languages: selectedLangs,
-        
-        debug: {
-            frontend_version: '2.0.0',
-            endpoint_type: 'legacy_auto',
-            fallback: true
-        }
+    // 레거시 전용 필드 추가
+    config.debug = {
+        frontend_version: '2.0.0',
+        endpoint_type: 'legacy_auto',
+        fallback: true
     };
+    
+    return config;
 }
-
-function showTemporaryMessage(message, type = 'info', options = {}) {
-    // 기존 showMessage 함수 사용
-    if (typeof showMessage === 'function') {
-        showMessage(message, type, options);
-    } else {
-        console.warn('메시지 표시 함수 없음:', message);
-        alert(message);  // 임시 폴백
-    }
-}
-
 
 // 백엔드에서 처리하는 progress-message 메시지 템플릿을 실제 텍스트로 변환하는 함수
 function formatMessage(template, data = {}) {
@@ -2365,24 +2332,46 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
             const data = JSON.parse(event.data);
             console.log(`📨 메시지 수신 (${endpoint}):`, data);
 
-            // 중단 처리 (최우선)
+            // 중단 처리
             if (data.cancelled) {
                 showMessage('크롤링이 취소되었습니다.', 'info');
                 resetCrawlingState();
                 return;
             }
 
-            // 신규 메시지 시스템 처리
-            if (data.message_type) {
-                handleNewMessageSystem(data);
+            // 에러 처리
+            if (data.error || data.error_key) {
+                const errorMsg = data.error_detail || data.error || '크롤링 중 오류가 발생했습니다.';
+                showMessage(errorMsg, 'error');
+                resetCrawlingState();
                 return;
             }
 
-            // 레거시 시스템 처리 (하위 호환성)
-            handleLegacyMessageSystem(data, endpoint);
+            // 완료 처리
+            if (data.done) {
+                const results = data.data || data.results || [];
+                if (results.length > 0) {
+                    crawlResults = results;
+                    displayResults(results);
+                    enableDownloadButtons();
+                    showMessage(`크롤링 완료: ${results.length}개 게시물`, 'success');
+                } else {
+                    showMessage('결과가 없습니다.', 'warning');
+                }
+                resetCrawlingState();
+                return;
+            }
+
+            // 진행률 처리
+            if (data.progress !== undefined) {
+                const progress = Math.max(0, Math.min(100, data.progress));
+                const status = data.status || data.message || '처리 중...';
+                updateProgress(progress, status);
+                return;
+            }
 
         } catch (error) {
-            console.error('메시지 파싱 오류:', error, event.data);
+            console.error('메시지 파싱 오류:', error);
             showMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
         }
     };
@@ -2390,11 +2379,11 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
     ws.onerror = (error) => {
         console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
         showMessage('연결 오류가 발생했습니다', 'error');
+        resetCrawlingState();
     };
 
     ws.onclose = (event) => {
-        console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
-        
+        console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code);
         if (isLoading && event.code !== 1000) {
             showMessage('연결이 예기치 않게 종료되었습니다', 'error');
             resetCrawlingState();
@@ -3048,6 +3037,7 @@ function showMessage(message, type = 'info', options = {}) {
     }
 }
 
+
 // ✅ 하나의 통합된 WebSocket 메시지 핸들러만 유지
 function setupWebSocketMessageHandlers(ws, endpoint) {
     ws.onmessage = (event) => {
@@ -3113,9 +3103,6 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
         }
     };
 }
-
-
-// ❌ 삭제: handleWebSocketMessage, handleNewMessageSystem, handleLegacyMessageSystem 등
 
 // ==================== 유틸리티 함수 ====================
 // DOM 요소를 안전하게 쿼리하는 함수
@@ -3565,4 +3552,3 @@ window.PickPostGlobals = {
     extractSiteName,
     updateLabels
 };
-ㄴ
