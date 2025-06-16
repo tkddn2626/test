@@ -43,6 +43,9 @@ PORT = int(os.getenv("PORT", 8000))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
 
+# 전역 변수 초기화
+endpoint_manager = None
+
 # ==================== 로깅 설정 ====================
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper()),
