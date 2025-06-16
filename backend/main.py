@@ -33,6 +33,8 @@ import time
 from fastapi import HTTPException
 import logging
 
+
+
 # ==================== 환경 설정 및 초기화 ====================
 load_dotenv()
 
@@ -175,11 +177,20 @@ async def crawl_bbc_board_with_cancel_check(board_url: str, crawl_id=None, **kwa
     return await crawl_bbc_board(board_url=board_url, **kwargs)
 
 async def crawl_lemmy_board_with_cancel_check(*args, crawl_id=None, **kwargs):
-    """Lemmy 크롤링에 취소 확인 추가"""
     if crawl_id and crawl_manager.is_cancelled(crawl_id):
         raise asyncio.CancelledError("크롤링이 취소되었습니다")
     
+    # 🔥 수정: 새로운 lemmy.py 함수 시그니처에 맞게 수정
     kwargs.pop('crawl_id', None)
+    
+    # enforce_date_limit와 start_index, end_index 파라미터 추가
+    if 'enforce_date_limit' not in kwargs:
+        kwargs['enforce_date_limit'] = False
+    if 'start_index' not in kwargs:
+        kwargs['start_index'] = kwargs.pop('start', 1)
+    if 'end_index' not in kwargs:
+        kwargs['end_index'] = kwargs.pop('end', 20)
+        
     return await crawl_lemmy_board(*args, **kwargs)
 
 # ==================== 애플리케이션 생명주기 관리 ====================
@@ -268,17 +279,26 @@ app.add_middleware(
 
 # ==================== 자동 엔드포인트 시스템 초기화 ====================
 def initialize_endpoint_system():
-    """자동 엔드포인트 시스템 초기화"""
     global endpoint_manager
     try:
+        if not CORE_MODULES_AVAILABLE:
+            logger.warning("core 모듈이 없어 자동 엔드포인트 시스템 건너뛰기")
+            return False
+            
         from core.endpoints import create_simple_endpoint_manager
         endpoint_manager = create_simple_endpoint_manager(app, crawl_manager)
         logger.info("✅ 자동 엔드포인트 시스템 초기화 완료")
         return True
+    except ImportError as e:
+        logger.error(f"❌ core.endpoints 모듈 없음: {e}")
+        return False
     except Exception as e:
         logger.error(f"❌ 자동 엔드포인트 시스템 실패: {e}")
         return False
-
+# FastAPI 앱 시작 후 즉시 호출
+if __name__ == "__main__":
+    if not initialize_endpoint_system():
+        logger.warning("자동 엔드포인트 실패 - 수동 엔드포인트 사용")
 # 즉시 초기화 시도
 try:
     initialize_endpoint_system()
@@ -664,24 +684,6 @@ if endpoint_manager is None:
             actual_start_date, actual_end_date = calculate_actual_dates(
                 time_filter, start_date_input, end_date_input
             )
-            
-            # AutoCrawler 인스턴스 생성 및 설정
-            auto_crawler = AutoCrawler()
-            
-            # 크롤링 설정 구성
-            crawl_config = {
-                'websocket': websocket,
-                'sort': sort,
-                'start_index': start_index,
-                'end_index': end_index,
-                'min_views': min_views,
-                'min_likes': min_likes,
-                'min_comments': min_comments,
-                'time_filter': time_filter,
-                'start_date': actual_start_date,
-                'end_date': actual_end_date,
-                'crawl_id': crawl_id
-            }
 
             # 사이트 감지 진행률 업데이트
             await websocket.send_json(create_localized_message(
@@ -692,10 +694,37 @@ if endpoint_manager is None:
             ))
 
             check_cancelled()
+                        
+            if CORE_MODULES_AVAILABLE:
+                try:
+                    auto_crawler = AutoCrawler()
+                    
+                    # 크롤링 설정 구성
+                    crawl_config = {
+                        'websocket': websocket,
+                        'sort': sort,
+                        'start_index': start_index,
+                        'end_index': end_index,
+                        'min_views': min_views,
+                        'min_likes': min_likes,
+                        'min_comments': min_comments,
+                        'time_filter': time_filter,
+                        'start_date': actual_start_date,
+                        'end_date': actual_end_date,
+                        'crawl_id': crawl_id
+                    }
 
-            # 통합 크롤링 실행
-            raw_posts = await auto_crawler.crawl(input_data, **crawl_config)
-            
+                    # 통합 크롤링 실행
+                    raw_posts = await auto_crawler.crawl(input_data, **crawl_config)
+                    
+                except Exception as auto_error:
+                    logger.error(f"AutoCrawler 오류: {auto_error}")
+                    # 폴백: 개별 크롤러 사용
+                    raw_posts = await fallback_crawl(input_data, crawl_config)
+            else:
+                # 폴백: 개별 크롤러 사용
+                raw_posts = await fallback_crawl(input_data, crawl_config)
+
             if not raw_posts:
                 await websocket.send_json(create_error_message(
                     error_key="no_posts_found",
