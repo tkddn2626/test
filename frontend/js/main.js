@@ -2293,24 +2293,6 @@ function buildLegacyCrawlConfig(boardInput) {
     };
 }
 
-function buildLegacyConfig(boardInput) {
-    const isAdvanced = document.getElementById('advancedSearch')?.checked || false;
-    
-    return {
-        board: boardInput,
-        sort: document.getElementById('sortMethod')?.value || 'recent',
-        start: parseInt(document.getElementById(isAdvanced ? 'startRankAdv' : 'startRank')?.value || '1'),
-        end: parseInt(document.getElementById(isAdvanced ? 'endRankAdv' : 'endRank')?.value || '20'),
-        min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-        min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
-        min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-        time_filter: document.getElementById('timePeriod')?.value || 'day',
-        start_date: document.getElementById('startDate')?.value || null,
-        end_date: document.getElementById('endDate')?.value || null,
-        language: currentLanguage || 'en'
-    };
-}
-
 function showTemporaryMessage(message, type = 'info', options = {}) {
     // 기존 showMessage 함수 사용
     if (typeof showMessage === 'function') {
@@ -3583,4 +3565,4 @@ window.PickPostGlobals = {
     extractSiteName,
     updateLabels
 };
-        
+ㄴ
