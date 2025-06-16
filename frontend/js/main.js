@@ -23,40 +23,39 @@ window.addEventListener('error', function(e) {
         message: e.message,
         filename: e.filename,
         lineno: e.lineno,
-        colno: e.colno,
-        error: e.error,
         timestamp: new Date().toISOString()
     });
     
-    // 구체적인 에러 처리
-    handleSpecificErrors(e);
-    
-    // 오류 발생 시 상태 정리
-    setTimeout(() => {
-        try {
-            if (isLoading && !currentSocket) {
-                console.log('🧹 비정상 크롤링 상태 감지, 자동 정리');
-                resetCrawlingState();
-            }
-        } catch (cleanupError) {
-            console.error('❌ 상태 정리 중 오류:', cleanupError);
-        }
-    }, 500);
+    // 간단한 복구 로직만 유지
+    if (e.message.includes('community_name')) {
+        window.community_name = '';
+        window.lemmy_instance = '';
+        showMessage('Input validation error fixed. Please try again.', 'info');
+    } else if (e.message.includes('Cannot read properties of undefined')) {
+        showMessage('페이지를 새로고침해주세요.', 'warning');
+    } else {
+        showMessage('일시적인 오류가 발생했습니다.', 'warning');
+    }
 });
+
+//언어 감지 함수
+function get_user_language(config) {  // async 제거
+    return config.get ? config.get("language", "en") : (config.language || "en");
+}
 
 function handleSpecificErrors(e) {
     if (e.message.includes('community_name is not defined')) {
         console.warn('🔧 community_name 변수 오류 - 자동 복구 시도');
         window.community_name = '';
         window.lemmy_instance = '';
-        showTemporaryMessage('Input validation error fixed. Please try again.', 'info');
+        showMessage('Input validation error fixed. Please try again.', 'info');
         
     } else if (e.message.includes('Cannot read properties of undefined')) {
         console.warn('🔧 undefined 속성 접근 오류 - DOM 요소 체크');
         setTimeout(checkAndRepairDOMElements, 200);
         
     } else {
-        showTemporaryMessage('A temporary error occurred. Please try again.', 'warning');
+        showMessage('A temporary error occurred. Please try again.', 'warning');
     }
 }
 
@@ -97,7 +96,7 @@ function getApiConfig() {
 }
 
 // WebSocket 연결을 재시도 로직과 함께 생성하는 함수
-async function createWebSocketWithRetry(endpoint, config, maxRetries = 3) {
+async function createWebSocketWithRetry(endpoint, config, maxRetries = 2) {
     const { WS_BASE_URL } = getApiConfig();
     
     for (let retry = 0; retry < maxRetries; retry++) {
@@ -107,12 +106,14 @@ async function createWebSocketWithRetry(endpoint, config, maxRetries = 3) {
             const wsUrl = `${WS_BASE_URL}/ws/${endpoint}`;
             const ws = new WebSocket(wsUrl);
             
-            // 연결 타임아웃을 더 짧게 설정
+            // 간단한 타임아웃
             const timeout = setTimeout(() => {
-                ws.close();
-            }, 5000); // 10초 → 5초로 단축
+                if (ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            }, 10000);
             
-            await new Promise((resolve, reject) => {
+            return new Promise((resolve, reject) => {
                 ws.onopen = () => {
                     clearTimeout(timeout);
                     console.log(`✅ WebSocket 연결 성공: ${endpoint}`);
@@ -121,81 +122,38 @@ async function createWebSocketWithRetry(endpoint, config, maxRetries = 3) {
                     ws.send(JSON.stringify(config));
                     console.log('📤 크롤링 설정 전송:', config);
                     
-                    resolve();
+                    // 메시지 핸들러 설정
+                    setupWebSocketMessageHandlers(ws, endpoint);
+                    
+                    resolve(ws);
                 };
 
                 ws.onerror = (error) => {
                     clearTimeout(timeout);
                     console.error(`❌ WebSocket 연결 오류 (${endpoint}):`, error);
-                    reject(new Error(`연결 실패 (${endpoint})`));
+                    reject(new Error(`연결 실패: ${endpoint}`));
                 };
 
                 ws.onclose = (event) => {
                     clearTimeout(timeout);
                     if (event.code !== 1000) {
-                        reject(new Error(`연결 종료 (${endpoint}): ${event.code}`));
+                        reject(new Error(`연결 종료: ${event.code}`));
                     }
                 };
             });
 
-            // 메시지 핸들러 설정
-            setupWebSocketMessageHandlers(ws, endpoint);
-            
-            return ws;
-
         } catch (error) {
-            console.warn(`연결 실패 ${retry + 1}/${maxRetries} (${endpoint}):`, error.message);
+            console.warn(`연결 실패 ${retry + 1}/${maxRetries}:`, error.message);
             
             if (retry === maxRetries - 1) {
                 throw error;
             }
             
-            // 지수적 백오프 (1초, 2초, 4초)
-            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retry)));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
 }
 
-
-// API 연결 상태를 테스트하는 함수
-async function testApiConnection() {
-    try {
-        console.log('API 연결 테스트 시작...');
-        const response = await fetch(`${API_BASE_URL}/health`);
-        const data = await response.json();
-        console.log('API 연결 성공:', data);
-        return true;
-    } catch (error) {
-        console.error('API 연결 실패:', error);
-        return false;
-    }
-}
-
-// WebSocket 연결 상태를 테스트하는 함수
-function testWebSocketConnection() {
-    return new Promise((resolve) => {
-        console.log('WebSocket 연결 테스트 시작...');
-        const testWs = new WebSocket(`${WS_BASE_URL}/ws/auto-crawl`);
-        
-        testWs.onopen = () => {
-            console.log('WebSocket 연결 성공');
-            testWs.close();
-            resolve(true);
-        };
-        
-        testWs.onerror = (error) => {
-            console.error('WebSocket 연결 실패:', error);
-            resolve(false);
-        };
-        
-        setTimeout(() => {
-            if (testWs.readyState === WebSocket.CONNECTING) {
-                testWs.close();
-                resolve(false);
-            }
-        }, 5000);
-    });
-}
 
 // API 설정을 전역 변수로 저장
 const { API_BASE_URL, WS_BASE_URL } = getApiConfig();
@@ -209,17 +167,20 @@ function getLabels() {
 
 // 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
 function updateLabels(lang) {
-    // 언어 팩이 없는 경우를 위한 안전장치
     if (!lang) {
         console.warn('언어 팩이 없습니다. 영어로 폴백합니다.');
         lang = window.languages?.en || {};
     }
     
-    // ✅ 수정: 안전한 텍스트 설정 사용
-    safeSetText('crawlBtn', lang.start || 'Start Crawling');
-    safeSetText('cancelBtn', lang.cancel || 'Cancel');
-    safeSetText('downloadBtn', lang.download || 'Download');
+    // ✅ safeSetText 대신 직접 안전하게 설정
+    const crawlBtn = safeGetElement('crawlBtn');
+    if (crawlBtn) crawlBtn.textContent = lang.start || 'Start Crawling';
     
+    const cancelBtn = safeGetElement('cancelBtn');
+    if (cancelBtn) cancelBtn.textContent = lang.cancel || 'Cancel';
+    
+    const downloadBtn = safeGetElement('downloadBtn');
+    if (downloadBtn) downloadBtn.textContent = lang.download || 'Download';
     // 플레이스홀더 안전하게 설정
     function safePlaceholder(elementId, placeholder) {
         const element = document.getElementById(elementId);
@@ -433,7 +394,7 @@ function submitBugReport() {
     const lang = window.languages[currentLanguage];
     
     if (!description) {
-        showTemporaryMessage('feedback_required', 'error');
+        showMessage('feedback_required', 'error');
         document.getElementById('bugReportDescription').focus();
         return;
     }
@@ -476,7 +437,7 @@ function submitBugReport() {
     console.log('피드백 신고:', bugReport);
     
     setTimeout(() => {
-        showTemporaryMessage(lang.messages.feedback.success || '피드백이 전송되었습니다. 감사합니다!', 'success');
+        showMessage(lang.messages.feedback.success || '피드백이 전송되었습니다. 감사합니다!', 'success');
         
         closeBugReportModal();
         
@@ -511,15 +472,15 @@ function handleFileUpload(event) {
         const maxSize = 5 * 1024 * 1024;
         
         if (file.size > maxSize) {
-            const lang = labels[currentLanguage];
-            showTemporaryMessage('file_too_large', 'error');
+            const lang = window.languages[currentLanguage];
+            showMessage('file_too_large', 'error', { translate: true });
             
             event.target.value = '';
             return;
         }
 
         if (!file.type.startsWith('image/')) {
-            showTemporaryMessage('invalid_file_type', 'error');
+            showMessage('invalid_file_type', 'error');
             
             event.target.value = '';
             return;
@@ -663,8 +624,6 @@ function setupEventListeners() {
         hideSiteAutocomplete();
     });
 
-    let originalBoardValue = '';
-    
     function showSiteHelp(site) {
         if (site === 'lemmy') {
             showLemmyHelp();
@@ -719,7 +678,8 @@ function setupEventListeners() {
                 moveToNextInput();
             }
         } else if (e.key === 'Escape') {
-            this.value = originalBoardValue;
+            // ✅ 수정: originalBoardValue 대신 빈 문자열
+            this.value = '';
             hideAutocomplete();
         } else {
             handleKeyNavigation(e);
@@ -793,38 +753,31 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📄 DOM 로딩 완료');
     
-    // ✅ 수정: 기본 언어를 영어로 설정 (이미 올바름)
     currentLanguage = 'en';
 
-    // 언어 버튼 텍스트 초기화
     const currentLangElement = document.getElementById('currentLang');
     if (currentLangElement) {
-        currentLangElement.textContent = 'English';  // ✅ 수정: '영어' → 'English'
+        currentLangElement.textContent = 'English';
     }
     
-    // 언어 옵션 활성화 상태 변경
     document.querySelectorAll('.language-option').forEach(option => {
         option.classList.remove('active');
     });
     
-    // ✅ 수정: 영어 옵션을 활성화 (잘못된 셀렉터 수정)
-    const enOption = document.querySelector('[onclick*="en"]');  // 'eo' → 'en'
+    const enOption = document.querySelector('[onclick*="en"]');
     if (enOption) {
         enOption.classList.add('active');
     }
     
-    // ✅ 수정: 영어 라벨로 업데이트
     if (window.languages && window.languages.en) {
         updateLabels(window.languages.en);
     }
 
-    // 나머지 초기화 코드들...
     initializeDefaultShortcuts();
     setupEventListeners();
     initializeDateInputs();
     loadShortcuts();
 
-    // 로고 클릭 이벤트
     const logoImage = document.querySelector('.logo-image');
     if (logoImage) {
         logoImage.addEventListener('click', function() {
@@ -834,28 +787,24 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
     
-    // API 연결 테스트
-    testApiConnection().then(apiConnected => {
-        console.log('API 연결 상태:', apiConnected);
-    });
-    
-    testWebSocketConnection().then(wsConnected => {
-        console.log('WebSocket 연결 상태:', wsConnected);
-    });
+    // ❌ 삭제: 존재하지 않는 함수들
+    // testApiConnection().then(apiConnected => {
+    //     console.log('API 연결 상태:', apiConnected);
+    // });
+    // testWebSocketConnection().then(wsConnected => {
+    //     console.log('WebSocket 연결 상태:', wsConnected);
+    // });
 
-    // 피드백 시스템 초기화
     if (window.initializeFeedbackSystem) {
         window.initializeFeedbackSystem();
     }
     
-    // 약간의 지연 후 앱 초기화
     setTimeout(() => {
         if (!initializeApp()) {
             console.error('❌ 앱 초기화 실패');
         }
     }, 100);
 
-    // ready 이벤트 발생
     window.dispatchEvent(new Event('PickPostReady'));
 });
 // ESC 키로 모달을 닫는 이벤트 리스너
@@ -1081,6 +1030,20 @@ function safeSetBoardInput(value) {
     setTimeout(() => {
         isProgrammaticInput = false;
     }, 0);
+}
+
+function safeSetText(elementId, text) {
+    try {
+        const element = safeGetElement(elementId);
+        if (element && text !== undefined && text !== null) {
+            element.textContent = String(text);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.warn(`텍스트 설정 실패 (${elementId}):`, error);
+        return false;
+    }
 }
 
 // 시간 선택을 처리하는 함수
@@ -1466,7 +1429,7 @@ function selectSite(site, extractedURL = null) {
         
     } catch (error) {
         console.error('❌ selectSite 실행 중 오류:', error);
-        showTemporaryMessage('사이트 선택 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
+        showMessage('사이트 선택 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
     }
 }
 
@@ -2150,9 +2113,9 @@ async function startCrawling() {
         return;
     }
 
-    const boardInput = document.getElementById('boardInput').value.trim();
+    const boardInput = safeGetValue('boardInput');
     if (!boardInput) {
-        showTemporaryMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
+        showMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
         return;
     }
 
@@ -2161,15 +2124,14 @@ async function startCrawling() {
         searchInitiated = true;
         crawlStartTime = Date.now();
         
-        // UI 상태 업데이트
         updateUIForCrawlStart();
         
-        // 🚀 통합 엔드포인트로 크롤링 시작
+        // 🔥 단순화된 크롤링 시작
         await startUnifiedCrawling(boardInput);
         
     } catch (error) {
         console.error('크롤링 시작 오류:', error);
-        showTemporaryMessage(`크롤링 시작 중 오류가 발생했습니다: ${error.message}`, 'error');
+        showMessage(`크롤링 중 오류: ${error.message}`, 'error');
         resetCrawlingState();
     }
 }
@@ -2202,23 +2164,26 @@ async function startUnifiedCrawling(boardInput) {
 // 🔥 통합 엔드포인트용 설정 생성
 function buildCrawlConfig(boardInput) {
     const selectedLangs = getSelectedLanguages();
-    
-    // ✅ 수정: 안전한 값 접근 사용
     const sort = safeGetValue('sortMethod', 'recent');
     const timeFilter = safeGetValue('timePeriod', 'day');
     const range = getSelectedRange();
     
     return {
-        // 핵심 입력
+        // 통합 엔드포인트용
         input: boardInput,
         site: currentSite || 'auto',
         
-        // ✅ 크롤링 옵션 (안전한 접근)
+        // 호환성을 위한 필드들
+        board: boardInput,  // 레거시 호환
+        
+        // 크롤링 옵션
         sort: sort,
         start: range.start,
         end: range.end,
+        start_index: range.start,  // 백엔드 호환
+        end_index: range.end,      // 백엔드 호환
         min_views: parseInt(safeGetValue('minViews', '0')),
-        min_likes: parseInt(safeGetValue('minRecommend', '0')), // minRecommend 사용
+        min_likes: parseInt(safeGetValue('minRecommend', '0')),
         min_comments: parseInt(safeGetValue('minComments', '0')),
         time_filter: timeFilter,
         start_date: safeGetValue('startDate') || null,
@@ -2226,7 +2191,10 @@ function buildCrawlConfig(boardInput) {
         
         // 번역 옵션
         translate: selectedLangs.length > 0,
-        target_languages: selectedLangs
+        target_languages: selectedLangs,
+        
+        // 언어 설정
+        language: currentLanguage || 'en'
     };
 }
 // 레거시 auto-crawl용 설정 생성 
@@ -2262,94 +2230,6 @@ function buildLegacyCrawlConfig(boardInput) {
     };
 }
 
-// 임시 메시지를 표시하는 함수
-function showTemporaryMessage(message, type = 'info', variables = {}) {
-    try {
-        const messageDiv = document.createElement('div');
-        let translatedMessage = message;
-        
-        // ✅ 수정: 메시지가 언어 키인 경우 번역 (영어 우선, 한국어 폴백)
-        const lang = window.languages && window.languages[currentLanguage] ? 
-                    window.languages[currentLanguage] : 
-                    (window.languages && window.languages.en ? 
-                     window.languages.en : 
-                     window.languages.ko);  // 영어가 없으면 한국어로 폴백
-        
-        if (lang && lang.notifications && lang.notifications[message]) {
-            translatedMessage = lang.notifications[message];
-            
-            // 템플릿 변수 치환
-            Object.keys(variables).forEach(key => {
-                translatedMessage = translatedMessage.replace(`{${key}}`, variables[key]);
-            });
-        }
-        
-        // CSS 클래스 적용
-        messageDiv.className = `temporary-message ${type}`;
-        messageDiv.textContent = translatedMessage;
-        
-        document.body.appendChild(messageDiv);
-        
-        // 표시 애니메이션
-        setTimeout(() => {
-            messageDiv.classList.add('show');
-        }, 100);
-        
-        // 숨김 애니메이션 후 제거
-        setTimeout(() => {
-            messageDiv.classList.remove('show');
-            messageDiv.classList.add('hide');
-            
-            setTimeout(() => {
-                if (document.body.contains(messageDiv)) {
-                    document.body.removeChild(messageDiv);
-                }
-            }, 300);
-        }, 3000);
-        
-    } catch (error) {
-        console.error('메시지 표시 중 오류:', error);
-        // 폴백: 기본 alert 사용
-        alert(message);
-    }
-}
-//백엔드에서 처리한 임시 메세지 표시
-function getLocalizedMessage(messageKey, messageData = {}) {
-    // ✅ 수정: 영어 우선, 한국어 폴백
-    const lang = window.languages && window.languages[currentLanguage] ? 
-                window.languages[currentLanguage] : 
-                (window.languages && window.languages.en ? 
-                 window.languages.en : 
-                 window.languages.ko);
-    
-    const keyParts = messageKey.split('.');
-    
-    // 중첩된 객체에서 메시지 템플릿 찾기
-    let template = lang;
-    for (const part of keyParts) {
-        template = template?.[part];
-        if (!template) break;
-    }
-    
-    if (!template) {
-        console.warn(`메시지 템플릿을 찾을 수 없음: ${messageKey} (언어: ${currentLanguage})`);
-        // 키의 마지막 부분을 기본값으로 사용
-        return keyParts[keyParts.length - 1] || messageKey;
-    }
-    
-    // 템플릿 변수 치환
-    if (typeof template === 'string' && messageData) {
-        Object.keys(messageData).forEach(key => {
-            const value = messageData[key];
-            if (value !== null && value !== undefined && value !== '') {
-                const placeholder = new RegExp(`\\{${key}\\}`, 'g');
-                template = template.replace(placeholder, value);
-            }
-        });
-    }
-    
-    return template;
-}
 
 // 백엔드에서 처리하는 progress-message 메시지 템플릿을 실제 텍스트로 변환하는 함수
 function formatMessage(template, data = {}) {
@@ -2414,7 +2294,7 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
 
             // 중단 처리 (최우선)
             if (data.cancelled) {
-                showTemporaryMessage('크롤링이 취소되었습니다.', 'info');
+                showMessage('크롤링이 취소되었습니다.', 'info');
                 resetCrawlingState();
                 return;
             }
@@ -2430,20 +2310,20 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
 
         } catch (error) {
             console.error('메시지 파싱 오류:', error, event.data);
-            showTemporaryMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
+            showMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
         }
     };
 
     ws.onerror = (error) => {
         console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
-        showTemporaryMessage('연결 오류가 발생했습니다', 'error');
+        showMessage('연결 오류가 발생했습니다', 'error');
     };
 
     ws.onclose = (event) => {
         console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code, event.reason);
         
         if (isLoading && event.code !== 1000) {
-            showTemporaryMessage('연결이 예기치 않게 종료되었습니다', 'error');
+            showMessage('연결이 예기치 않게 종료되었습니다', 'error');
             resetCrawlingState();
         }
     };
@@ -2469,13 +2349,13 @@ function handleCrawlComplete(data, endpoint) {
         displayResults(results);
         
         const elapsed = crawlStartTime ? ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
-        showTemporaryMessage(`${summary} (${elapsed}초)`, 'success');
+        showMessage(`${summary} (${elapsed}초)`, 'success');
         
         // 다운로드 버튼 활성화
         enableDownloadButtons();
         
     } else {
-        showTemporaryMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
+        showMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
     }
     
     resetCrawlingState();
@@ -2499,7 +2379,7 @@ function handleCrawlError(error, endpoint) {
         errorMessage = lang?.errors?.unknown || '알 수 없는 오류가 발생했습니다';
     }
     
-    showTemporaryMessage(errorMessage, 'error');
+    showMessage(errorMessage, 'error');
     resetCrawlingState();
 }
 
@@ -2516,7 +2396,7 @@ function handleErrorMessage(data) {
         detail: errorDetail
     });
     
-    showTemporaryMessage(translatedMessage, 'error');
+    showMessage(translatedMessage, 'error');
     resetCrawlingState();
 }
 
@@ -2541,7 +2421,7 @@ function handleLegacyProgress(data, endpoint) {
 function handleLegacyMessage(data, endpoint) {
     // 중단 메시지 처리
     if (data.cancelled) {
-        showTemporaryMessage('크롤링이 취소되었습니다.', 'info');
+        showMessage('크롤링이 취소되었습니다.', 'info');
         resetCrawlingState();
         return;
     }
@@ -2577,78 +2457,6 @@ function handleLegacyMessage(data, endpoint) {
     }
 
     console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
-}
-// 레거시 에러 처리
-function handleLegacyError(error, endpoint) {
-    console.error(`❌ 레거시 오류 (${endpoint}):`, error);
-    
-    const lang = window.languages[currentLanguage];
-    let errorMessage;
-    
-    if (typeof error === 'string') {
-        errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error}`;
-    } else if (error.message) {
-        errorMessage = `${lang?.errors?.general || '크롤링 중 오류가 발생했습니다'}: ${error.message}`;
-    } else {
-        errorMessage = lang?.errors?.unknown || '알 수 없는 오류가 발생했습니다';
-    }
-    
-    showTemporaryMessage(errorMessage, 'error');
-    resetCrawlingState();
-}
-// 레거시 완료 처리
-function handleLegacyComplete(data, endpoint) {
-    console.log(`✅ 레거시 완료 (${endpoint}):`, data);
-    
-    let results = data.data || data.results || [];
-    let summary = data.summary || `크롤링 완료: ${results.length}개 게시물`;
-    
-    // 자동 감지 정보 표시
-    if (data.detected_site) {
-        console.log(`🎯 자동 감지된 사이트: ${data.detected_site}`);
-        summary += ` (감지: ${data.detected_site})`;
-    }
-    
-    if (results.length > 0) {
-        crawlResults = results;
-        displayResults(results);
-        enableDownloadButtons();
-        
-        const elapsed = crawlStartTime ?
-            ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
-        showTemporaryMessage(`${summary} (${elapsed}초)`, 'success');
-    } else {
-        showTemporaryMessage('크롤링이 완료되었지만 결과가 없습니다.', 'warning');
-    }
-    
-    resetCrawlingState();
-}
-// 레거시 상태 처리
-function handleLegacyStatus(data, endpoint) {
-    let status = data.status || '상태 업데이트';
-    status = translateLegacyStatus(status);
-    
-    console.log(`ℹ️ 레거시 상태 (${endpoint}): ${status}`);
-    showTemporaryMessage(status, 'info');
-}
-
-// 부분 결과 처리 (실시간 업데이트)
-function handlePartialResults(data, endpoint) {
-    if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-        console.log(`📥 부분 결과 수신 (${endpoint}): ${data.data.length}개`);
-        
-        // 기존 결과와 병합
-        if (!crawlResults) crawlResults = [];
-        
-        // 중복 제거 (ID 기준)
-        const existingIds = new Set(crawlResults.map(item => item.id || item.url));
-        const newResults = data.data.filter(item => !existingIds.has(item.id || item.url));
-        
-        if (newResults.length > 0) {
-            crawlResults = crawlResults.concat(newResults);
-            displayPartialResults(newResults);
-        }
-    }
 }
 
 // UI 업데이트 함수들...
@@ -2726,27 +2534,6 @@ function resetCrawlingState() {
     }
 }
 
-function debugCrawlConfig() {
-    const config = buildCrawlConfig(document.getElementById('boardInput').value);
-    console.log('🔍 현재 크롤링 설정:', config);
-    
-    // 필터 값들 확인
-    console.log('📊 필터 설정:', {
-        sort: document.getElementById('sortMethod')?.value,
-        timeFilter: document.getElementById('timePeriod')?.value,
-        minViews: document.getElementById('minViews')?.value,
-        minRecommend: document.getElementById('minRecommend')?.value,
-        minComments: document.getElementById('minComments')?.value,
-        startRank: document.getElementById('startRank')?.value,
-        endRank: document.getElementById('endRank')?.value,
-        startDate: document.getElementById('startDate')?.value,
-        endDate: document.getElementById('endDate')?.value
-    });
-    
-    return config;
-}
-
-
 // 🔥 사이트별 엔드포인트 지원 (레거시 호환성)
 // 필요시 기존 사이트별 함수들도 통합 엔드포인트를 우선 사용하도록 업데이트
 
@@ -2819,7 +2606,7 @@ function handleStatusMessage(data) {
         ...details
     });
     
-    showTemporaryMessage(translatedMessage, 'info');
+    showMessage(translatedMessage, 'info');
 }
 
 // 완료 메시지 처리
@@ -2851,7 +2638,7 @@ function handleCompleteMessage(data) {
     const elapsed = crawlStartTime ? 
         ((Date.now() - crawlStartTime) / 1000).toFixed(1) : '?';
     
-    showTemporaryMessage(`${translatedMessage} (${elapsed}초)`, 'success');
+    showMessage(`${translatedMessage} (${elapsed}초)`, 'success');
     resetCrawlingState();
 }
 
@@ -2934,56 +2721,9 @@ function cancelCrawling() {
     updateProgress(0);
     
     const lang = window.languages[currentLanguage];
-    showTemporaryMessage(lang.crawlingStatus?.cancelled || '크롤링이 취소되었습니다.', 'info');
+    showMessage(lang.crawlingStatus?.cancelled || '크롤링이 취소되었습니다.', 'info');
     
     currentCrawlId = null;
-}
-
-// WebSocket 메시지 처리의 안전한 속성 접근
-function handleWebSocketMessage(data) {
-    try {
-        // ✅ 수정: 안전한 속성 접근
-        const messageType = data.message_type || data.type || 'unknown';
-        const progress = data.progress || 0;
-        const step = data.step || '';
-        const site = data.site || '';
-        const board = data.board || '';
-        
-        console.log('📨 WebSocket 메시지:', {
-            type: messageType,
-            progress: progress,
-            step: step,
-            site: site,
-            board: board
-        });
-        
-        switch (messageType) {
-            case 'progress':
-                updateProgress(progress, step, { site, board });
-                break;
-                
-            case 'status':
-                updateStatus(step, { site, board });
-                break;
-                
-            case 'error':
-                const errorMsg = data.error_detail || data.error || data.message || '알 수 없는 오류';
-                showError(errorMsg);
-                break;
-                
-            case 'complete':
-                const results = data.data || data.results || [];
-                handleCrawlComplete(results);
-                break;
-                
-            default:
-                console.warn('처리되지 않은 메시지 타입:', messageType, data);
-        }
-        
-    } catch (error) {
-        console.error('WebSocket 메시지 처리 오류:', error, data);
-        showTemporaryMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
-    }
 }
 
 // 백엔드에 취소 요청을 보내는 함수
@@ -3024,7 +2764,7 @@ window.addEventListener('beforeunload', function() {
 // Excel 파일을 다운로드하는 함수
 function downloadExcel() {
     if (crawlResults.length === 0) {
-        showTemporaryMessage('no_data', 'error');
+        showMessage('no_data', 'error');
         return;
     }
 
@@ -3067,7 +2807,7 @@ function downloadExcel() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         
-        showTemporaryMessage('download_success', 'success', { filename: filename });
+        showMessage('download_success', 'success', { filename: filename });
     }
 }
 
@@ -3184,12 +2924,125 @@ function displayResults(results, startIndex = 1) {
         const completeText = lang.crawlingStatus?.complete || 'Collection complete';
         const foundText = lang.crawlingStatus?.found || ' posts found';
         const successMsg = `${completeText}! ${results.length}${foundText}`;
-        showTemporaryMessage(successMsg, 'success');
+        showMessage(successMsg, 'success');
     }, 500);
     
     // 나머지 displayResults 로직은 동일...
     // (기존 코드 유지)
 }
+
+// ✅ 메시지 표시 함수들을 하나로 통합
+function showMessage(message, type = 'info', options = {}) {
+    try {
+        const messageDiv = document.createElement('div');
+        let displayMessage = message;
+        
+        // 언어 키인 경우 번역
+        if (options.translate && window.languages) {
+            const lang = window.languages[currentLanguage] || window.languages.en || window.languages.ko;
+            if (lang.notifications && lang.notifications[message]) {
+                displayMessage = lang.notifications[message];
+                
+                // 변수 치환
+                if (options.variables) {
+                    Object.keys(options.variables).forEach(key => {
+                        displayMessage = displayMessage.replace(`{${key}}`, options.variables[key]);
+                    });
+                }
+            }
+        }
+        
+        messageDiv.className = `temporary-message ${type}`;
+        messageDiv.textContent = displayMessage;
+        
+        document.body.appendChild(messageDiv);
+        
+        setTimeout(() => messageDiv.classList.add('show'), 100);
+        
+        setTimeout(() => {
+            messageDiv.classList.remove('show');
+            messageDiv.classList.add('hide');
+            setTimeout(() => {
+                if (document.body.contains(messageDiv)) {
+                    document.body.removeChild(messageDiv);
+                }
+            }, 300);
+        }, options.duration || 3000);
+        
+    } catch (error) {
+        console.error('메시지 표시 중 오류:', error);
+        alert(message); // 폴백
+    }
+}
+
+// ✅ 하나의 통합된 WebSocket 메시지 핸들러만 유지
+function setupWebSocketMessageHandlers(ws, endpoint) {
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            console.log(`📨 메시지 수신 (${endpoint}):`, data);
+
+            // 취소 처리
+            if (data.cancelled) {
+                showMessage('크롤링이 취소되었습니다.', 'info');
+                resetCrawlingState();
+                return;
+            }
+
+            // 에러 처리
+            if (data.error || data.error_key) {
+                const errorMsg = data.error_detail || data.error || '크롤링 중 오류가 발생했습니다.';
+                showMessage(errorMsg, 'error');
+                resetCrawlingState();
+                return;
+            }
+
+            // 완료 처리
+            if (data.done) {
+                const results = data.data || data.results || [];
+                if (results.length > 0) {
+                    crawlResults = results;
+                    displayResults(results);
+                    enableDownloadButtons();
+                    showMessage(`크롤링 완료: ${results.length}개 게시물`, 'success');
+                } else {
+                    showMessage('결과가 없습니다.', 'warning');
+                }
+                resetCrawlingState();
+                return;
+            }
+
+            // 진행률 처리
+            if (data.progress !== undefined) {
+                const progress = Math.max(0, Math.min(100, data.progress));
+                const status = data.status || data.message || '처리 중...';
+                updateProgress(progress, status);
+                return;
+            }
+
+        } catch (error) {
+            console.error('메시지 파싱 오류:', error);
+            showMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
+        showMessage('연결 오류가 발생했습니다', 'error');
+        resetCrawlingState();
+    };
+
+    ws.onclose = (event) => {
+        console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code);
+        if (isLoading && event.code !== 1000) {
+            showMessage('연결이 예기치 않게 종료되었습니다', 'error');
+            resetCrawlingState();
+        }
+    };
+}
+
+// ❌ 삭제: handleWebSocketMessage, handleNewMessageSystem, handleLegacyMessageSystem 등
+
 // ==================== 유틸리티 함수 ====================
 // DOM 요소를 안전하게 쿼리하는 함수
 function safeQuerySelector(selector) {
@@ -3257,7 +3110,7 @@ function initializeApp() {
         
         if (missingElements.length > 0) {
             console.error('❌ 필수 DOM 요소들이 누락됨:', missingElements);
-            showTemporaryMessage('페이지 로딩이 완전하지 않습니다. 페이지를 새로고침해주세요.', 'error');
+            showMessage('페이지 로딩이 완전하지 않습니다. 페이지를 새로고침해주세요.', 'error');
             return false;
         }
         
@@ -3272,7 +3125,7 @@ function initializeApp() {
         
     } catch (error) {
         console.error('❌ 앱 초기화 중 오류:', error);
-        showTemporaryMessage('앱 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
+        showMessage('앱 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
         return false;
     }
 }
@@ -3329,32 +3182,6 @@ function extractSiteName(url) {
     }
 }
 
-// 강화된 에러 메시지를 표시하는 함수
-function showEnhancedError(title, details, suggestions = []) {
-    const lang = window.languages[currentLanguage];
-    
-    // 기본 에러 메시지 표시
-    showTemporaryMessage(title, 'error');
-    
-    // 상세 에러 정보 콘솔 출력
-    console.error('Enhanced Error:', {
-        title,
-        details,
-        suggestions,
-        timestamp: new Date().toISOString(),
-        language: currentLanguage
-    });
-    
-    // 제안사항이 있으면 추가 메시지 표시
-    if (suggestions.length > 0) {
-        setTimeout(() => {
-            const suggestionMessage = getLocalizedMessage('errors.suggestions', {
-                suggestions: suggestions.join(', ')
-            });
-            showTemporaryMessage(suggestionMessage, 'info');
-        }, 2000);
-    }
-}
 // 사이트를 자동으로 감지하는 함수
 function enhancedSiteDetection(input) {
     const patterns = [
@@ -3417,17 +3244,6 @@ function validateInput(site, boardInput) {
     return errors;
 }
 
-// 디버깅을 위한 콘솔 명령어
-window.debugCrawl = {
-    getCurrentId: () => currentCrawlId,
-    forceCancel: () => cancelCrawling(),
-    getStatus: () => ({
-        isLoading,
-        currentSite,
-        currentCrawlId,
-        socketStatus: currentSocket ? 'connected' : 'disconnected'
-    })
-};
 
 console.log('디버깅 명령어: window.debugCrawl.getStatus(), window.debugCrawl.forceCancel()');
 
@@ -3582,21 +3398,6 @@ function validateSiteInput(site, boardValue, lang) {
 //  안전한 DOM 요소 접근을 위한 헬퍼 함수
 // ============================================================================
 
-// 안전한 텍스트 설정 함수
-function safeSetText(elementId, text) {
-    try {
-        const element = safeGetElement(elementId);
-        if (element && text !== undefined && text !== null) {
-            element.textContent = String(text);
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.warn(`텍스트 설정 실패 (${elementId}):`, error);
-        return false;
-    }
-}
-
 
 // 안전한 값 가져오기 함수
 function safeGetElement(elementId) {
@@ -3615,29 +3416,9 @@ function safeGetElement(elementId) {
 
 // 안전한 값 가져오기 (수정된 버전)
 function safeGetValue(elementId, defaultValue = '') {
-    try {
-        const element = safeGetElement(elementId);
-        return element?.value?.trim() || defaultValue;
-    } catch (error) {
-        console.warn(`값 가져오기 실패 (${elementId}):`, error);
-        return defaultValue;
-    }
+    const element = safeGetElement(elementId);
+    return element?.value?.trim() || defaultValue;
 }
-
-// 안전한 속성 설정 함수
-function safeSetAttribute(elementId, attribute, value) {
-    try {
-        const element = document.getElementById(elementId);
-        if (element && value !== undefined && value !== null) {
-            element.setAttribute(attribute, value);
-            return true;
-        }
-    } catch (error) {
-        console.warn(`속성 설정 실패 (${elementId}.${attribute}):`, error);
-    }
-    return false;
-}
-
 
 // ========================================
 // HTML onclick 함수들을 전역으로 노출
@@ -3707,7 +3488,7 @@ window.PickPostGlobals = {
     WS_BASE_URL,
     
     // 유틸리티 함수
-    showTemporaryMessage,
+    showMessage,
     extractSiteName,
     updateLabels
 };
