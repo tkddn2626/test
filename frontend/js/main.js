@@ -17,6 +17,11 @@ let isMouseDownOnAutocomplete = false;
 let isProgrammaticInput = false;
 let currentCrawlId = null;
 
+let community_name = '';
+let lemmy_instance = '';
+let buildLegacyConfig = null;
+let showTemporaryMessage = null;
+
 // 전역 오류 처리기
 window.addEventListener('error', function(e) {
     console.error('🚨 전역 JavaScript 오류:', {
@@ -776,7 +781,7 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.warn('언어팩이 로드되지 않았습니다');
     }
-
+    initializeLemmyVariables();
     initializeDefaultShortcuts();
     setupEventListeners();
     initializeDateInputs();
@@ -796,6 +801,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     window.dispatchEvent(new Event('PickPostReady'));
+    
 });
 // ESC 키로 모달을 닫는 이벤트 리스너
 document.addEventListener('keydown', function(e) {
@@ -1425,7 +1431,14 @@ function selectSite(site, extractedURL = null) {
     }, 300);
 }
 
-console.log('✅ main.js 기능 복구 완료');
+function initializeLemmyVariables() {
+    if (typeof window.community_name === 'undefined') {
+        window.community_name = '';
+    }
+    if (typeof window.lemmy_instance === 'undefined') {
+        window.lemmy_instance = '';
+    }
+}
 
 // 사이트 버튼 상태 업데이트 (분리된 함수)
 function updateSiteButtonStates(selectedSite) {
@@ -2211,43 +2224,6 @@ async function startUnifiedCrawling(boardInput) {
     }
 }
 
-function buildCrawlConfig(boardInput) {
-    const sort = document.getElementById('sortMethod')?.value || 'recent';
-    const timeFilter = document.getElementById('timePeriod')?.value || 'day';
-    const range = getSelectedRange();
-    
-    return {
-        input: boardInput,  // 통합 엔드포인트용
-        board: boardInput,  // 레거시 호환
-        sort: document.getElementById('sortMethod')?.value || 'recent',
-        start: getStartRank(),
-        end: getEndRank(),
-        min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-        min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
-        time_filter: document.getElementById('timePeriod')?.value || 'day',
-        language: currentLanguage
-    };
-}
-
-function buildLegacyCrawlConfig(boardInput) {
-    const sort = document.getElementById('sortMethod')?.value || 'recent';
-    const timeFilter = document.getElementById('timePeriod')?.value || 'day';
-    const range = getSelectedRange();
-    
-    return {
-        board: boardInput,
-        sort: sort,
-        start: range.start,
-        end: range.end,
-        min_views: parseInt(document.getElementById('minViews')?.value || '0'),
-        min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
-        min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-        time_filter: timeFilter,
-        start_date: document.getElementById('startDate')?.value || null,
-        end_date: document.getElementById('endDate')?.value || null
-    };
-}
-
 // 🔥 통합 엔드포인트용 설정 생성
 function buildCrawlConfig(boardInput) {
     const selectedLangs = getSelectedLanguages();
@@ -2315,6 +2291,34 @@ function buildLegacyCrawlConfig(boardInput) {
             fallback: true
         }
     };
+}
+
+function buildLegacyConfig(boardInput) {
+    const isAdvanced = document.getElementById('advancedSearch')?.checked || false;
+    
+    return {
+        board: boardInput,
+        sort: document.getElementById('sortMethod')?.value || 'recent',
+        start: parseInt(document.getElementById(isAdvanced ? 'startRankAdv' : 'startRank')?.value || '1'),
+        end: parseInt(document.getElementById(isAdvanced ? 'endRankAdv' : 'endRank')?.value || '20'),
+        min_views: parseInt(document.getElementById('minViews')?.value || '0'),
+        min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
+        min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
+        time_filter: document.getElementById('timePeriod')?.value || 'day',
+        start_date: document.getElementById('startDate')?.value || null,
+        end_date: document.getElementById('endDate')?.value || null,
+        language: currentLanguage || 'en'
+    };
+}
+
+function showTemporaryMessage(message, type = 'info', options = {}) {
+    // 기존 showMessage 함수 사용
+    if (typeof showMessage === 'function') {
+        showMessage(message, type, options);
+    } else {
+        console.warn('메시지 표시 함수 없음:', message);
+        alert(message);  // 임시 폴백
+    }
 }
 
 
