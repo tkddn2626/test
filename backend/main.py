@@ -817,7 +817,10 @@ async def crawl_auto_socket(websocket: WebSocket):
         # 초기 데이터 수신 및 언어 설정
         try:
             init_data = await websocket.receive_json()
-            user_lang = get_user_language(init_data)  # async 제거
+            def get_user_language(config: Dict) -> str:
+                """동기 버전으로 변경"""
+                return config.get("language", "en")
+
         except Exception as conn_error:
             if "ConnectionClosed" in str(type(conn_error).__name__):
                 logger.warning(f"🔌 WebSocket 연결이 초기화 중 종료됨: {crawl_id}")
