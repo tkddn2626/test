@@ -1,4 +1,4 @@
-// PickPost 언어팩 - 완성된 버전
+// PickPost 언어팩 - 정리된 완전한 버전
 const languages = {
     ko: {
         // ==================== 기본 UI 요소 ====================
@@ -54,6 +54,31 @@ const languages = {
             custom: "사용자 지정"
         },
         
+        // ==================== 정렬 옵션 ====================
+        sortOptions: {
+            latest: "최신순",
+            popular: "인기순",
+            views: "조회수순",
+            comments: "댓글순",
+            
+            // Reddit 전용 추가
+            reddit: {
+                new: "새 글",
+                top: "인기글",
+                hot: "핫한 글",
+                best: "베스트",
+                rising: "떠오르는 글"
+            },
+            
+            // 기타 사이트용 추가
+            other: {
+                popular: "인기순",
+                recommend: "추천순", 
+                recent: "최신순",
+                comments: "댓글순"
+            }
+        },
+        
         // ==================== 결과 표시 ====================
         views: "조회수",
         likes: "추천수", 
@@ -63,25 +88,26 @@ const languages = {
         translation: "번역",
         fail: "(번역 실패)",
         
-        // ==================== 크롤링 진행 상태 ====================
-        crawlingSteps: {
-            initializing: "크롤링 준비 중...",
-            detecting_site: "사이트 분석 중...",
-            connecting: "{site} 연결 중...",
-            collecting: "{site}에서 게시물 수집 중... ({page}페이지)",
-            filtering: "조건에 맞는 게시물 필터링 중... ({matched}/{total})",
-            processing: "데이터 처리 중...",
-            translating: "번역 진행 중... ({current}/{total})",
-            finalizing: "결과 정리 중...",
-            complete: "완료"
+        resultTexts: {
+            noResults: "검색 결과가 없습니다",
+            resultsCount: "{count}개의 결과를 찾았습니다",
+            showing: "{start}-{end} / {total}",
+            loadMore: "더 보기"
         },
         
-        crawlingStatus: {
-            metadata_processing: "메타데이터 처리 중...",
-            collecting_posts: "게시물 수집 중...",
-            analyzing_content: "컨텐츠 분석 중...",
-            filtering_results: "결과 필터링 중...",
-            preparing_translation: "번역 준비 중...",
+        // ==================== 새로운 크롤링 진행 상태 ====================
+        crawlingProgress: {
+            // 기본 진행 단계
+            site_detecting: "사이트 분석 중...",
+            site_connecting: "{site}에 연결 중...",
+            posts_collecting: "{site}에서 게시물 수집 중...",
+            posts_filtering: "조건에 맞는 게시물 필터링 중... ({matched}/{total})",
+            posts_processing: "데이터 처리 중...",
+            translation_preparing: "번역 준비 중... ({count}개 게시물)",
+            translation_progress: "번역 진행 중... ({current}/{total})",
+            finalizing: "결과 정리 중...",
+            
+            // 사이트별 특화 메시지
             reddit_analyzing: "Reddit 데이터 분석 중...",
             dcinside_parsing: "디시인사이드 파싱 중...",
             blind_processing: "블라인드 처리 중...",
@@ -89,14 +115,61 @@ const languages = {
             lemmy_connecting: "Lemmy 서버 연결 중...",
             universal_parsing: "웹페이지 구조 분석 중...",
             
-            found: "개 발견",
-            page: "페이지",
-            timeRemaining: "예상 시간"
+            // 상세 상태
+            board_analyzing: "{board} 게시판 분석 중...",
+            page_collecting: "페이지 {page} 수집 중...",
+            content_parsing: "컨텐츠 파싱 중...",
+            metadata_processing: "메타데이터 처리 중...",
+            filtering_by_criteria: "설정 조건으로 필터링 중...",
+            preparing_results: "결과 준비 중..."
         },
         
         // ==================== 완료 메시지 ====================
-        crawling: {
-            complete: "{site} {board}에서 {count}개 게시물 수집 완료 ({start}-{end}위)"
+        completionMessages: {
+            unified_complete: "{input}에서 {count}개 게시물 발견 (사이트: {site})",
+            legacy_complete: "크롤링 완료: {count}개 게시물",
+            crawl_complete: "{site} {board}에서 {count}개 게시물 수집 완료 ({start}-{end}위)",
+            translation_complete: "번역 완료: {count}개 게시물을 처리했습니다",
+            reddit_complete: "Reddit {board}에서 {count}개 게시물 수집 완료",
+            dcinside_complete: "디시인사이드 {board} 갤러리에서 {count}개 게시물 수집 완료",
+            blind_complete: "블라인드 {board}에서 {count}개 게시물 수집 완료",
+            bbc_complete: "BBC {section}에서 {count}개 뉴스 수집 완료",
+            lemmy_complete: "Lemmy {board}에서 {count}개 게시물 수집 완료",
+            universal_complete: "{input}에서 {count}개 게시물 수집 완료",
+            analysis_complete: "사이트 분석 완료: {site} 감지됨"
+        },
+        
+        // ==================== 에러 메시지 ====================
+        errorMessages: {
+            empty_input: "크롤링할 사이트나 게시판을 입력해주세요",
+            site_detection_failed: "사이트를 감지할 수 없습니다: {input}",
+            unsupported_site: "지원하지 않는 사이트입니다: {site}",
+            connection_failed: "{site} 연결에 실패했습니다",
+            no_posts_found: "{site} {board}에서 조건에 맞는 게시물을 찾을 수 없습니다",
+            crawling_timeout: "크롤링 시간이 초과되었습니다 ({site})",
+            invalid_board: "올바르지 않은 게시판입니다: {board}",
+            crawling_error: "크롤링 중 오류가 발생했습니다: {error}",
+            translation_failed: "번역 중 오류가 발생했습니다",
+            analysis_failed: "사이트 분석에 실패했습니다: {error}",
+            rate_limited: "요청 제한에 걸렸습니다. 잠시 후 시도해주세요",
+            network_error: "네트워크 연결에 문제가 있습니다",
+            server_error: "서버 오류가 발생했습니다",
+            permission_denied: "접근 권한이 없습니다",
+            invalid_credentials: "인증 정보가 올바르지 않습니다",
+            quota_exceeded: "일일 사용량을 초과했습니다",
+            general: "크롤링 중 오류가 발생했습니다",
+            unknown: "알 수 없는 오류가 발생했습니다",
+            invalid_url: "올바르지 않은 URL입니다",
+            site_not_found: "사이트를 찾을 수 없습니다",
+            timeout: "요청 시간이 초과되었습니다",
+            invalid_bbc_url: "올바른 BBC 뉴스 URL을 입력해주세요"
+        },
+        
+        // ==================== 취소 메시지 ====================
+        cancellationMessages: {
+            crawl_cancelled: "크롤링이 취소되었습니다",
+            cancelling: "크롤링을 취소하는 중...",
+            cancel_requested: "취소 요청이 전송되었습니다"
         },
         
         // ==================== 버튼 메시지 ====================
@@ -107,21 +180,27 @@ const languages = {
             universalUrlError: "올바른 URL을 입력하세요",
             lemmyEmpty: "커뮤니티를 입력하세요",
             lemmyFormatError: "올바른 Lemmy 형식을 입력하세요",
-            redditFormatError: "올바른 Reddit 형식을 입력하세요"
+            redditFormatError: "올바른 Reddit 형식을 입력하세요",
+            crawling: "크롤링 중...",
+            connecting: "연결 중...",
+            analyzing: "분석 중..."
         },
         
-        // ==================== 에러 메시지 ====================
-        errors: {
-            general: "크롤링 중 오류가 발생했습니다",
-            unknown: "알 수 없는 오류가 발생했습니다",
-            connection_failed: "서버 연결에 실패했습니다",
-            invalid_url: "올바르지 않은 URL입니다",
-            site_not_found: "사이트를 찾을 수 없습니다",
-            no_posts_found: "조건에 맞는 게시물이 없습니다",
-            timeout: "요청 시간이 초과되었습니다",
-            rate_limited: "요청 제한에 걸렸습니다. 잠시 후 시도하세요",
-            invalid_bbc_url: "올바른 BBC 뉴스 URL을 입력해주세요",
-            crawling_error: "크롤링 처리 중 오류가 발생했습니다"
+        // ==================== 크롤링 상태 표시 (UI용) ====================
+        crawlingStatus: {
+            found: "개 발견",
+            page: "페이지",
+            timeRemaining: "예상 시간",
+            inProgress: "크롤링 중...",
+            cancelled: "크롤링이 취소되었습니다."
+        },
+        
+        // ==================== 알림 메시지 ====================
+        notifications: {
+            file_too_large: "파일 크기는 5MB 이하로 제한됩니다",
+            invalid_file_type: "이미지 파일만 업로드할 수 있습니다",
+            no_data: "다운로드할 데이터가 없습니다",
+            download_success: "파일이 다운로드되었습니다: {filename}"
         },
         
         // ==================== 피드백 시스템 ====================
@@ -139,15 +218,6 @@ const languages = {
                 required: "피드백 내용을 입력해주세요",
                 sending: "전송 중..."
             }
-        },
-        
-        // ==================== 일반 알림 ====================
-        notifications: {
-            connection_failed: "서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요",
-            file_too_large: "파일 크기는 5MB 이하로 제한됩니다",
-            invalid_file_type: "이미지 파일만 업로드할 수 있습니다",
-            no_data: "다운로드할 데이터가 없습니다",
-            download_success: "파일이 다운로드되었습니다: {filename}"
         },
         
         // ==================== 공지사항 ====================
@@ -177,7 +247,23 @@ const languages = {
         privacy: "개인정보처리방침",
         terms: "약관",
         feedback: "피드백",
-        business: "비즈니스"
+        business: "비즈니스",
+        
+        // ==================== 도움말 텍스트 ====================
+        helpTexts: {
+            lemmyHelp: {
+                title: "Lemmy 커뮤니티 형식",
+                description: "커뮤니티명@인스턴스 형식으로 입력하세요\n예시: technology@lemmy.world",
+                examples: {
+                    technology: "기술 관련 토론",
+                    asklemmy: "Lemmy 커뮤니티에 질문하기"
+                }
+            },
+            universalHelp: {
+                title: "범용 크롤러 사용법",
+                description: "크롤링할 웹사이트의 완전한 URL을 입력하세요\n예시: https://example.com/forum"
+            }
+        }
     },
 
     // ==================== 일본어 ====================
@@ -235,6 +321,31 @@ const languages = {
             custom: "カスタム範囲"
         },
         
+        // ==================== 정렬 옵션 ====================
+        sortOptions: {
+            latest: "最新順",
+            popular: "人気順",
+            views: "閲覧数順",
+            comments: "コメント順",
+            
+            // Reddit 전용 추가
+            reddit: {
+                new: "新着",
+                top: "人気投稿",
+                hot: "ホット",
+                best: "ベスト",
+                rising: "急上昇"
+            },
+            
+            // 기타 사이트용 추가
+            other: {
+                popular: "人気順",
+                recommend: "推奨順", 
+                recent: "最新順",
+                comments: "コメント順"
+            }
+        },
+        
         // ==================== 결과 표시 ====================
         views: "閲覧数",
         likes: "推奨数",
@@ -244,25 +355,26 @@ const languages = {
         translation: "翻訳",
         fail: "(翻訳失敗)",
         
-        // ==================== 크롤링 진행 상태 ====================
-        crawlingSteps: {
-            initializing: "クロール準備中...",
-            detecting_site: "サイト分析中...",
-            connecting: "{site}に接続中...",
-            collecting: "{site}から投稿を収集中... ({page}ページ)",
-            filtering: "条件に合う投稿をフィルタリング中... ({matched}/{total})",
-            processing: "データ処理中...",
-            translating: "翻訳進行中... ({current}/{total})",
-            finalizing: "結果整理中...",
-            complete: "完了"
+        resultTexts: {
+            noResults: "検索結果がありません",
+            resultsCount: "{count}件の結果が見つかりました",
+            showing: "{start}-{end} / {total}",
+            loadMore: "もっと見る"
         },
         
-        crawlingStatus: {
-            metadata_processing: "メタデータ処理中...",
-            collecting_posts: "投稿収集中...",
-            analyzing_content: "コンテンツ分析中...",
-            filtering_results: "結果フィルタリング中...",
-            preparing_translation: "翻訳準備中...",
+        // ==================== 새로운 크롤링 진행 상태 ====================
+        crawlingProgress: {
+            // 기본 진행 단계
+            site_detecting: "サイト分析中...",
+            site_connecting: "{site}に接続中...",
+            posts_collecting: "{site}から投稿を収集中...",
+            posts_filtering: "条件に合う投稿をフィルタリング中... ({matched}/{total})",
+            posts_processing: "データ処理中...",
+            translation_preparing: "翻訳準備中... ({count}個の投稿)",
+            translation_progress: "翻訳進行中... ({current}/{total})",
+            finalizing: "結果整理中...",
+            
+            // 사이트별 특화 메시지
             reddit_analyzing: "Redditデータ分析中...",
             dcinside_parsing: "DCインサイド解析中...",
             blind_processing: "Blind処理中...",
@@ -270,14 +382,61 @@ const languages = {
             lemmy_connecting: "Lemmyサーバー接続中...",
             universal_parsing: "ウェブページ構造分析中...",
             
-            found: "件発見",
-            page: "ページ",
-            timeRemaining: "予想時間"
+            // 상세 상태
+            board_analyzing: "{board}掲示板分析中...",
+            page_collecting: "ページ{page}収集中...",
+            content_parsing: "コンテンツ解析中...",
+            metadata_processing: "メタデータ処理中...",
+            filtering_by_criteria: "設定条件でフィルタリング中...",
+            preparing_results: "結果準備中..."
         },
         
         // ==================== 완료 메시지 ====================
-        crawling: {
-            complete: "{site} {board}から{count}個の投稿を収集完了 ({start}-{end}位)"
+        completionMessages: {
+            unified_complete: "{input}から{count}個の投稿を発見 (サイト: {site})",
+            legacy_complete: "クロール完了: {count}個の投稿",
+            crawl_complete: "{site} {board}から{count}個の投稿を収集完了 ({start}-{end}位)",
+            translation_complete: "翻訳完了: {count}個の投稿を処理しました",
+            reddit_complete: "Reddit {board}から{count}個の投稿を収集完了",
+            dcinside_complete: "DCインサイド {board}ギャラリーから{count}個の投稿を収集完了",
+            blind_complete: "Blind {board}から{count}個の投稿を収集完了",
+            bbc_complete: "BBC {section}から{count}個のニュースを収集完了",
+            lemmy_complete: "Lemmy {board}から{count}個の投稿を収集完了",
+            universal_complete: "{input}から{count}個の投稿を収集完了",
+            analysis_complete: "サイト分析完了: {site}を検出しました"
+        },
+        
+        // ==================== 에러 메시지 ====================
+        errorMessages: {
+            empty_input: "クロールするサイトや掲示板を入力してください",
+            site_detection_failed: "サイトを検出できません: {input}",
+            unsupported_site: "サポートしていないサイトです: {site}",
+            connection_failed: "{site}への接続に失敗しました",
+            no_posts_found: "{site} {board}で条件に合う投稿が見つかりません",
+            crawling_timeout: "クロールがタイムアウトしました ({site})",
+            invalid_board: "正しくない掲示板です: {board}",
+            crawling_error: "クロール中にエラーが発生しました: {error}",
+            translation_failed: "翻訳中にエラーが発生しました",
+            analysis_failed: "サイト分析に失敗しました: {error}",
+            rate_limited: "リクエスト制限にかかりました。しばらく後に試してください",
+            network_error: "ネットワーク接続に問題があります",
+            server_error: "サーバーエラーが発生しました",
+            permission_denied: "アクセス権限がありません",
+            invalid_credentials: "認証情報が正しくありません",
+            quota_exceeded: "日次使用量を超過しました",
+            general: "クロール中にエラーが発生しました",
+            unknown: "不明なエラーが発生しました",
+            invalid_url: "正しくないURLです",
+            site_not_found: "サイトが見つかりません",
+            timeout: "リクエストタイムアウトです",
+            invalid_bbc_url: "正しいBBC ニュースURLを入力してください"
+        },
+        
+        // ==================== 취소 메시지 ====================
+        cancellationMessages: {
+            crawl_cancelled: "クロールがキャンセルされました",
+            cancelling: "クロールをキャンセル中...",
+            cancel_requested: "キャンセルリクエストが送信されました"
         },
         
         // ==================== 버튼 메시지 ====================
@@ -288,21 +447,27 @@ const languages = {
             universalUrlError: "正しいURLを入力してください", 
             lemmyEmpty: "コミュニティを入力してください",
             lemmyFormatError: "正しいLemmy形式を入力してください",
-            redditFormatError: "正しいReddit形式を入力してください"
+            redditFormatError: "正しいReddit形式を入力してください",
+            crawling: "クロール中...",
+            connecting: "接続中...",
+            analyzing: "分析中..."
         },
         
-        // ==================== 에러 메시지 ====================
-        errors: {
-            general: "クロール中にエラーが発生しました",
-            unknown: "不明なエラーが発生しました",
-            connection_failed: "サーバー接続に失敗しました",
-            invalid_url: "正しくないURLです",
-            site_not_found: "サイトが見つかりません",
-            no_posts_found: "条件に合う投稿がありません",
-            timeout: "リクエストタイムアウトです",
-            rate_limited: "リクエスト制限にかかりました。しばらく後に試してください",
-            invalid_bbc_url: "正しいBBC ニュースURLを入力してください",
-            crawling_error: "クロール処理中にエラーが発生しました"
+        // ==================== 크롤링 상태 표시 (UI용) ====================
+        crawlingStatus: {
+            found: "件発見",
+            page: "ページ",
+            timeRemaining: "予想時間",
+            inProgress: "クロール中...",
+            cancelled: "クロールがキャンセルされました。"
+        },
+        
+        // ==================== 알림 메시지 ====================
+        notifications: {
+            file_too_large: "ファイルサイズは5MB以下に制限されています",
+            invalid_file_type: "画像ファイルのみアップロードできます",
+            no_data: "ダウンロードするデータがありません",
+            download_success: "ファイルがダウンロードされました: {filename}"
         },
         
         // ==================== 피드백 시스템 ====================
@@ -320,15 +485,6 @@ const languages = {
                 required: "フィードバック内容を入力してください",
                 sending: "送信中..."
             }
-        },
-        
-        // ==================== 일반 알림 ====================
-        notifications: {
-            connection_failed: "サーバーへの接続に失敗しました。しばらくしてから再試行してください",
-            file_too_large: "ファイルサイズは5MB以下に制限されています",
-            invalid_file_type: "画像ファイルのみアップロードできます",
-            no_data: "ダウンロードするデータがありません",
-            download_success: "ファイルがダウンロードされました: {filename}"
         },
         
         // ==================== 공지사항 ====================
@@ -358,7 +514,23 @@ const languages = {
         privacy: "プライバシーポリシー",
         terms: "利用規約",
         feedback: "フィードバック",
-        business: "ビジネス"
+        business: "ビジネス",
+        
+        // ==================== 도움말 텍스트 ====================
+        helpTexts: {
+            lemmyHelp: {
+                title: "Lemmyコミュニティ形式",
+                description: "コミュニティ名@インスタンス形式で入力してください\n例: technology@lemmy.world",
+                examples: {
+                    technology: "技術関連ディスカッション",
+                    asklemmy: "Lemmyコミュニティに質問"
+                }
+            },
+            universalHelp: {
+                title: "汎用クローラー使用方法",
+                description: "クロールするウェブサイトの完全なURLを入力してください\n例: https://example.com/forum"
+            }
+        }
     },
     
     // ==================== 영어 ====================
@@ -416,6 +588,31 @@ const languages = {
             custom: "Custom Range"
         },
         
+        // ==================== 정렬 옵션 ====================
+        sortOptions: {
+            latest: "Latest",
+            popular: "Popular",
+            views: "Most Viewed",
+            comments: "Most Comments",
+            
+            // Reddit 전용 추가
+            reddit: {
+                new: "New",
+                top: "Top",
+                hot: "Hot",
+                best: "Best",
+                rising: "Rising"
+            },
+            
+            // 기타 사이트용 추가
+            other: {
+                popular: "Popular",
+                recommend: "Recommended", 
+                recent: "Recent",
+                comments: "Most Comments"
+            }
+        },
+        
         // ==================== 결과 표시 ====================
         views: "Views",
         likes: "Likes",
@@ -425,40 +622,88 @@ const languages = {
         translation: "Translation",
         fail: "(Translation Failed)",
         
-        // ==================== 크롤링 진행 상태 ====================
-        crawlingSteps: {
-            initializing: "Preparing crawl...",
-            detecting_site: "Analyzing site...",
-            connecting: "Connecting to {site}...",
-            collecting: "Collecting posts from {site}... (Page {page})",
-            filtering: "Filtering posts by criteria... ({matched}/{total})",
-            processing: "Processing data...",
-            translating: "Translating... ({current}/{total})",
-            finalizing: "Finalizing results...",
-            complete: "Complete"
+        resultTexts: {
+            noResults: "No search results found",
+            resultsCount: "Found {count} results",
+            showing: "{start}-{end} / {total}",
+            loadMore: "Load More"
         },
         
-        crawlingStatus: {
-            metadata_processing: "Processing metadata...",
-            collecting_posts: "Collecting posts...",
-            analyzing_content: "Analyzing content...",
-            filtering_results: "Filtering results...",
-            preparing_translation: "Preparing translation...",
+        // ==================== 새로운 크롤링 진행 상태 ====================
+        crawlingProgress: {
+            // 기본 진행 단계
+            site_detecting: "Analyzing site...",
+            site_connecting: "Connecting to {site}...",
+            posts_collecting: "Collecting posts from {site}...",
+            posts_filtering: "Filtering posts by criteria... ({matched}/{total})",
+            posts_processing: "Processing data...",
+            translation_preparing: "Preparing translation... ({count} posts)",
+            translation_progress: "Translating... ({current}/{total})",
+            finalizing: "Finalizing results...",
+            
+            // 사이트별 특화 메시지
             reddit_analyzing: "Analyzing Reddit data...",
             dcinside_parsing: "Parsing DCInside...",
             blind_processing: "Processing Blind...",
             bbc_fetching: "Fetching BBC news...",
-            lemmy_connecting: "Connecting to Lemmy...",
+            lemmy_connecting: "Connecting to Lemmy server...",
             universal_parsing: "Analyzing webpage structure...",
             
-            found: "found",
-            page: "page",
-            timeRemaining: "estimated time"
+            // 상세 상태
+            board_analyzing: "Analyzing {board} board...",
+            page_collecting: "Collecting page {page}...",
+            content_parsing: "Parsing content...",
+            metadata_processing: "Processing metadata...",
+            filtering_by_criteria: "Filtering by set criteria...",
+            preparing_results: "Preparing results..."
         },
         
         // ==================== 완료 메시지 ====================
-        crawling: {
-            complete: "Collected {count} posts from {site} {board} (Rank {start}-{end})"
+        completionMessages: {
+            unified_complete: "Found {count} posts from {input} (Site: {site})",
+            legacy_complete: "Crawling complete: {count} posts",
+            crawl_complete: "Collected {count} posts from {site} {board} (Rank {start}-{end})",
+            translation_complete: "Translation complete: processed {count} posts",
+            reddit_complete: "Collected {count} posts from Reddit {board}",
+            dcinside_complete: "Collected {count} posts from DCInside {board} gallery",
+            blind_complete: "Collected {count} posts from Blind {board}",
+            bbc_complete: "Collected {count} news from BBC {section}",
+            lemmy_complete: "Collected {count} posts from Lemmy {board}",
+            universal_complete: "Collected {count} posts from {input}",
+            analysis_complete: "Site analysis complete: detected {site}"
+        },
+        
+        // ==================== 에러 메시지 ====================
+        errorMessages: {
+            empty_input: "Please enter a site or board to crawl",
+            site_detection_failed: "Cannot detect site: {input}",
+            unsupported_site: "Unsupported site: {site}",
+            connection_failed: "Failed to connect to {site}",
+            no_posts_found: "No posts found matching criteria in {site} {board}",
+            crawling_timeout: "Crawling timeout ({site})",
+            invalid_board: "Invalid board: {board}",
+            crawling_error: "Error occurred during crawling: {error}",
+            translation_failed: "Error occurred during translation",
+            analysis_failed: "Site analysis failed: {error}",
+            rate_limited: "Rate limited. Please try again later",
+            network_error: "Network connection problem",
+            server_error: "Server error occurred",
+            permission_denied: "Access permission denied",
+            invalid_credentials: "Invalid authentication credentials",
+            quota_exceeded: "Daily usage quota exceeded",
+            general: "An error occurred during crawling",
+            unknown: "Unknown error occurred",
+            invalid_url: "Invalid URL",
+            site_not_found: "Site not found",
+            timeout: "Request timeout",
+            invalid_bbc_url: "Please enter a valid BBC news URL"
+        },
+        
+        // ==================== 취소 메시지 ====================
+        cancellationMessages: {
+            crawl_cancelled: "Crawling has been cancelled",
+            cancelling: "Cancelling crawl...",
+            cancel_requested: "Cancel request sent"
         },
         
         // ==================== 버튼 메시지 ====================
@@ -469,21 +714,27 @@ const languages = {
             universalUrlError: "Enter valid URL",
             lemmyEmpty: "Enter community",
             lemmyFormatError: "Enter valid Lemmy format",
-            redditFormatError: "Enter valid Reddit format"
+            redditFormatError: "Enter valid Reddit format",
+            crawling: "Crawling...",
+            connecting: "Connecting...",
+            analyzing: "Analyzing..."
         },
         
-        // ==================== 에러 메시지 ====================
-        errors: {
-            general: "An error occurred during crawling",
-            unknown: "Unknown error occurred",
-            connection_failed: "Failed to connect to server",
-            invalid_url: "Invalid URL",
-            site_not_found: "Site not found",
-            no_posts_found: "No posts found matching criteria",
-            timeout: "Request timeout",
-            rate_limited: "Rate limited. Please try again later",
-            invalid_bbc_url: "Please enter a valid BBC news URL",
-            crawling_error: "An error occurred during crawling process"
+        // ==================== 크롤링 상태 표시 (UI용) ====================
+        crawlingStatus: {
+            found: "found",
+            page: "page",
+            timeRemaining: "estimated time",
+            inProgress: "Crawling...",
+            cancelled: "Crawling has been cancelled."
+        },
+        
+        // ==================== 알림 메시지 ====================
+        notifications: {
+            file_too_large: "File size is limited to 5MB or less",
+            invalid_file_type: "Only image files can be uploaded",
+            no_data: "No data to download",
+            download_success: "File downloaded: {filename}"
         },
         
         // ==================== 피드백 시스템 ====================
@@ -501,15 +752,6 @@ const languages = {
                 required: "Please enter feedback content",
                 sending: "Sending..."
             }
-        },
-        
-        // ==================== 일반 알림 ====================
-        notifications: {
-            connection_failed: "Failed to connect to server. Please try again later",
-            file_too_large: "File size is limited to 5MB or less",
-            invalid_file_type: "Only image files can be uploaded",
-            no_data: "No data to download",
-            download_success: "File downloaded: {filename}"
         },
         
         // ==================== 공지사항 ====================
@@ -539,7 +781,23 @@ const languages = {
         privacy: "Privacy Policy",
         terms: "Terms of Service",
         feedback: "Feedback",
-        business: "Business"
+        business: "Business",
+        
+        // ==================== 도움말 텍스트 ====================
+        helpTexts: {
+            lemmyHelp: {
+                title: "Lemmy Community Format",
+                description: "Enter community name in format: community@instance\nExample: technology@lemmy.world",
+                examples: {
+                    technology: "Technology discussions",
+                    asklemmy: "Ask the Lemmy community"
+                }
+            },
+            universalHelp: {
+                title: "Universal Crawler Usage",
+                description: "Enter the complete URL of the website to crawl\nExample: https://example.com/forum"
+            }
+        }
     }
 };
 
@@ -614,7 +872,7 @@ const policies = {
                 <p>PickPostは法令に基づく個人情報保有・利用期間または情報主体から個人情報を収集する際に同意を得た個人情報保有・利用期間内で個人情報を処理・保有します。</p>
                 
                 <h3>3. 個人情報の第三者提供</h3>
-                <p>PickPostは情報主体の個人情報を個人情報の処理目的で明示した範囲内でのみ処理し、情報主体の同意、法律の特別な規定など個人情報保護法第17条に該당する場合にのみ個人情報を第三者に提供します。</p>
+                <p>PickPostは情報主体の個人情報を個人情報の処理目的で明示した範囲内でのみ処理し、情報主体の同意、法律の特別な規定など個人情報保護法第17条に該当する場合にのみ個人情報を第三者に提供します。</p>
                 
                 <h3>4. 情報主体の権利・義務およびその行使方法</h3>
                 <p>情報主体はPickPostに対していつでも以下の各号の個人情報保護関連権利を行使することができます：</p>
@@ -705,6 +963,72 @@ const policies = {
         }
     }
 };
+
+// ==================== 유틸리티 함수 ====================
+
+// 메시지 템플릿 처리 함수
+function getLocalizedMessage(messageKey, templateData = {}, language = null) {
+    const lang = language || currentLanguage || 'en';
+    const languagePack = window.languages[lang] || window.languages.en;
+    
+    let template = '';
+    
+    // 키 경로 탐색 (예: "crawlingProgress.site_detecting")
+    const keyParts = messageKey.split('.');
+    let current = languagePack;
+    
+    for (const part of keyParts) {
+        if (current && current[part]) {
+            current = current[part];
+        } else {
+            console.warn(`Missing translation key: ${messageKey} for language: ${lang}`);
+            // 영어 폴백
+            if (lang !== 'en') {
+                return getLocalizedMessage(messageKey, templateData, 'en');
+            }
+            return messageKey; // 최종 폴백
+        }
+    }
+    
+    template = current;
+    
+    // 템플릿 변수 치환
+    if (templateData && typeof templateData === 'object') {
+        Object.keys(templateData).forEach(key => {
+            const placeholder = new RegExp(`\\{${key}\\}`, 'g');
+            template = template.replace(placeholder, templateData[key] || '');
+        });
+    }
+    
+    return template;
+}
+
+// 진행률 메시지 생성 함수
+function createProgressMessage(statusKey, statusData = {}) {
+    return getLocalizedMessage(`crawlingProgress.${statusKey}`, statusData);
+}
+
+// 완료 메시지 생성 함수
+function createCompletionMessage(completionKey, completionData = {}) {
+    return getLocalizedMessage(`completionMessages.${completionKey}`, completionData);
+}
+
+// 에러 메시지 생성 함수
+function createErrorMessage(errorKey, errorData = {}) {
+    return getLocalizedMessage(`errorMessages.${errorKey}`, errorData);
+}
+
+// 취소 메시지 생성 함수
+function createCancellationMessage(cancellationKey) {
+    return getLocalizedMessage(`cancellationMessages.${cancellationKey}`);
+}
+
+// 전역 함수로 노출
+window.getLocalizedMessage = getLocalizedMessage;
+window.createProgressMessage = createProgressMessage;
+window.createCompletionMessage = createCompletionMessage;
+window.createErrorMessage = createErrorMessage;
+window.createCancellationMessage = createCancellationMessage;
 
 // ==================== 전역 변수 설정 ====================
 window.languages = languages;
