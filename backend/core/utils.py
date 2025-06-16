@@ -12,33 +12,27 @@ logger = logging.getLogger(__name__)
 
 # ==================== 다국어 지원 메시지 시스템 ====================
 
-def create_localized_message(progress: int, status_key: str, lang: str = 'en', 
-                           status_data: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
-    """다국어 지원 WebSocket 메시지 생성"""
-    message = {
+def create_localized_message(progress: int, status_key: str, lang: str = 'ko', 
+                           status_data: Optional[Dict] = None, **kwargs):
+    return {
         "progress": progress,
         "status_key": status_key,
         "status_data": status_data or {},
-        "language": lang
+        "language": lang,
+        **kwargs
     }
-    message.update(kwargs)
-    return message
 
-def create_error_message(error_key: str, lang: str = 'en', 
-                        error_data: Optional[Dict] = None) -> Dict[str, Any]:
-    """다국어 지원 에러 메시지 생성"""
+def create_error_message(error_key: str, lang: str = 'en', error_data: Optional[Dict] = None):
     return {
         "error_key": error_key,
         "error_data": error_data or {},
         "language": lang
     }
 
-def create_message_response(message_key: str, lang: str = 'en', **data) -> Dict[str, Any]:
-    """번역 가능한 메시지 응답 생성 (다국어 지원)"""
+def create_message_response(message_key: str, lang: str = 'en', **data):
     return {
         "message_key": message_key,
         "message_data": data,
-        "message_type": "crawl",
         "language": lang
     }
 
@@ -48,43 +42,17 @@ async def get_user_language(init_data: Dict) -> str:
 
 # ==================== 날짜 계산 유틸리티 ====================
 
-def calculate_actual_dates(time_filter: str, start_date_input: Optional[str] = None, 
-                          end_date_input: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
-    """시간 필터를 실제 날짜로 변환하는 함수"""
-    now = datetime.now()
-    
+def calculate_actual_dates(time_filter: str, start_date_input=None, end_date_input=None):
+    from datetime import datetime, timedelta
     if time_filter == 'custom' and start_date_input and end_date_input:
         return start_date_input, end_date_input
-        
-    elif time_filter == 'hour':
-        start_date = now.strftime('%Y-%m-%d')
-        end_date = now.strftime('%Y-%m-%d')
-        
     elif time_filter == 'day':
-        start_date = now.strftime('%Y-%m-%d')
-        end_date = now.strftime('%Y-%m-%d')
-        
-    elif time_filter == 'week':
-        start_dt = now - timedelta(days=7)
-        start_date = start_dt.strftime('%Y-%m-%d')
-        end_date = now.strftime('%Y-%m-%d')
-        
-    elif time_filter == 'month':
-        start_dt = now - timedelta(days=30)
-        start_date = start_dt.strftime('%Y-%m-%d')
-        end_date = now.strftime('%Y-%m-%d')
-        
-    elif time_filter == 'year':
-        start_dt = now - timedelta(days=365)
-        start_date = start_dt.strftime('%Y-%m-%d')
-        end_date = now.strftime('%Y-%m-%d')
-        
-    else:
-        return None, None
-    
-    logger.debug(f"📅 시간 필터 '{time_filter}' → 날짜 범위: {start_date} ~ {end_date}")
-    
-    return start_date, end_date
+        now = datetime.now()
+        return now.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+    return None, None
+
+
+calculate_actual_dates_for_lemmy = calculate_actual_dates
 
 def calculate_actual_dates_for_lemmy(time_filter: str, start_date_input: Optional[str] = None, 
                                     end_date_input: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
