@@ -74,11 +74,7 @@ function checkRequiredElements() {
 // 환경별 API 설정을 반환하는 함수
 function getApiConfig() {
     const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
     
-    console.log('현재 환경:', { hostname, protocol });
-
-    // 개발 환경
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
         return {
             API_BASE_URL: 'http://localhost:8000',
@@ -86,15 +82,14 @@ function getApiConfig() {
         };
     }
     
-    // ✅ 올바른 프로덕션 도메인 사용
-    const RENDER_DOMAIN = 'test-1-zm0k.onrender.com';  // 콘솔에서 확인된 실제 도메인
+    // 🔥 현재 배포된 정확한 도메인 사용
+    const RENDER_DOMAIN = 'test-1-zm0k.onrender.com';
     
     return {
         API_BASE_URL: `https://${RENDER_DOMAIN}`,
         WS_BASE_URL: `wss://${RENDER_DOMAIN}`
     };
 }
-
 
 // WebSocket 연결을 재시도 로직과 함께 생성하는 함수
 async function createWebSocketWithRetry(endpoint, config, maxRetries = 2) {
@@ -2154,23 +2149,41 @@ async function startCrawling() {
         console.log('🔥 통합 엔드포인트 시도...');
         const config = buildCrawlConfig(boardInput);
         
+        // 🔥 1단계: 통합 엔드포인트 시도
         try {
+            console.log('🔥 통합 엔드포인트 시도...');
+            const config = buildCrawlConfig(board);
             currentSocket = await createWebSocketWithRetry('crawl', config);
             console.log('✅ 통합 엔드포인트 연결 성공');
-        } catch (unifiedError) {
-            console.warn('⚠️ 통합 엔드포인트 실패, auto-crawl로 폴백:', unifiedError);
             
-            // 레거시 auto-crawl로 폴백
-            const legacyConfig = buildLegacyCrawlConfig(boardInput);
-            currentSocket = await createWebSocketWithRetry('auto-crawl', legacyConfig);
-            console.log('✅ 레거시 auto-crawl 연결 성공');
+        } catch (unifiedError) {
+            console.warn('⚠️ 통합 엔드포인트 실패, 레거시로 폴백:', unifiedError);
+            
+            // 🔥 2단계: 레거시 엔드포인트로 폴백
+            const legacyEndpoint = determineLegacyEndpoint(currentSite);
+            const legacyConfig = buildLegacyConfig(board);
+            currentSocket = await createWebSocketWithRetry(legacyEndpoint, legacyConfig);
+            console.log('✅ 레거시 엔드포인트 연결 성공');
         }
         
     } catch (error) {
-        console.error('크롤링 시작 오류:', error);
-        showMessage(`크롤링 중 오류: ${error.message}`, 'error');
+        console.error('❌ 모든 연결 방법 실패:', error);
+        showTemporaryMessage('서버 연결에 실패했습니다.', 'error');
         resetCrawlingState();
     }
+}
+
+function determineLegacyEndpoint(site) {
+    const endpointMap = {
+        'reddit': 'reddit-crawl',
+        'dcinside': 'dcinside-crawl',
+        'blind': 'blind-crawl', 
+        'bbc': 'bbc-crawl',
+        'lemmy': 'lemmy-crawl',
+        'universal': 'universal-crawl'
+    };
+    
+    return endpointMap[site] || 'auto-crawl';
 }
 
 async function startUnifiedCrawling(boardInput) {
@@ -2206,18 +2219,13 @@ function buildCrawlConfig(boardInput) {
     return {
         input: boardInput,  // 통합 엔드포인트용
         board: boardInput,  // 레거시 호환
-        sort: sort,
-        start: range.start,
-        end: range.end,
-        start_index: range.start,
-        end_index: range.end,
+        sort: document.getElementById('sortMethod')?.value || 'recent',
+        start: getStartRank(),
+        end: getEndRank(),
         min_views: parseInt(document.getElementById('minViews')?.value || '0'),
         min_likes: parseInt(document.getElementById('minRecommend')?.value || '0'),
-        min_comments: parseInt(document.getElementById('minComments')?.value || '0'),
-        time_filter: timeFilter,
-        start_date: document.getElementById('startDate')?.value || null,
-        end_date: document.getElementById('endDate')?.value || null,
-        language: currentLanguage || 'en'
+        time_filter: document.getElementById('timePeriod')?.value || 'day',
+        language: currentLanguage
     };
 }
 
