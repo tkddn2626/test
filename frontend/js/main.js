@@ -19,39 +19,53 @@ let currentCrawlId = null;
 
 // 전역 오류 처리기
 window.addEventListener('error', function(e) {
-    console.error('전역 JavaScript 오류:', {
+    console.error('🚨 전역 JavaScript 오류:', {
         message: e.message,
         filename: e.filename,
         lineno: e.lineno,
         colno: e.colno,
-        error: e.error
+        error: e.error,
+        timestamp: new Date().toISOString()
     });
     
-    // ✅ 수정: 오류 메시지를 영어로
+    // ✅ 수정: 더 구체적인 에러 처리
     if (e.message.includes('community_name is not defined')) {
-        console.warn('community_name 변수 오류 감지 - 크롤링 버튼 업데이트');
+        console.warn('🔧 community_name 변수 오류 - 자동 복구 시도');
+        
+        // Lemmy 관련 변수들 안전하게 초기화
+        window.community_name = '';
+        window.lemmy_instance = '';
         
         setTimeout(() => {
             try {
                 updateCrawlButton();
-                console.log('✅ 크롤링 버튼 상태 복구 완료');
+                console.log('✅ Lemmy 변수 초기화 및 버튼 상태 복구 완료');
             } catch (fixError) {
-                console.error('크롤링 버튼 복구 실패:', fixError);
+                console.error('❌ 복구 시도 실패:', fixError);
             }
         }, 100);
         
-        showTemporaryMessage('Input validation error occurred. Button state has been restored.', 'warning');
+        showTemporaryMessage('Input validation error fixed. Please try again.', 'info');
         
-    } else if (e.message.includes('Cannot read properties of undefined')) {
-        console.warn('undefined 속성 접근 오류 감지');
-        showTemporaryMessage('A temporary UI error occurred. Please try again in a moment.', 'error');
+    } else if (e.message.includes('Cannot read properties of undefined') || 
+               e.message.includes('Cannot read property')) {
+        console.warn('🔧 undefined 속성 접근 오류 - DOM 요소 체크');
+        
+        // DOM 요소들이 로드되었는지 재확인
+        setTimeout(() => {
+            const missingElements = checkRequiredElements();
+            if (missingElements.length > 0) {
+                console.error('❌ 누락된 DOM 요소들:', missingElements);
+                showTemporaryMessage('Some page elements are still loading. Please refresh if the issue persists.', 'warning');
+            }
+        }, 200);
         
     } else if (e.message.includes('data is not defined')) {
-        showTemporaryMessage('A temporary data processing error occurred. Please try again.', 'error');
+        showTemporaryMessage('Data processing error. Please try again.', 'error');
         
-    } else if (e.message.includes('Cannot read property') || e.message.includes('Cannot read properties')) {
-        console.warn('속성 접근 오류:', e.message);
-        showTemporaryMessage('Some page elements are still loading. Please try again in a moment.', 'warning');
+    } else {
+        // 일반적인 오류 처리
+        showTemporaryMessage('A temporary error occurred. Please try again.', 'warning');
     }
     
     // 오류 발생 시 상태 정리
@@ -59,15 +73,26 @@ window.addEventListener('error', function(e) {
         setTimeout(() => {
             try {
                 if (isLoading && !currentSocket) {
-                    console.log('비정상 크롤링 상태 감지, 상태 초기화');
+                    console.log('🧹 비정상 크롤링 상태 감지, 자동 정리');
                     resetCrawlingState();
                 }
             } catch (cleanupError) {
-                console.error('상태 정리 중 오류:', cleanupError);
+                console.error('❌ 상태 정리 중 오류:', cleanupError);
             }
         }, 500);
     }
 });
+
+// 필수 DOM 요소들 존재 확인
+function checkRequiredElements() {
+    const requiredElements = [
+        'boardInput', 'crawlBtn', 'siteInput', 
+        'minViews', 'minRecommend', 'minComments',
+        'sortMethod', 'timePeriod', 'autocomplete'
+    ];
+    
+    return requiredElements.filter(id => !document.getElementById(id));
+}
 
 // ==================== API 및 환경 설정 ====================
 // 환경별 API 설정을 반환하는 함수
@@ -1411,41 +1436,77 @@ function selectQuickSite(site) {
 // ==================== 사이트 선택 및 설정 ====================
 // 사이트를 선택하고 관련 설정을 적용하는 함수
 function selectSite(site, extractedURL = null) {
-    autocompleteData = [];
-    highlightIndex = -1;
-    const container = document.getElementById('autocomplete');
-    container.innerHTML = '';
-    
-    const boardInput = document.getElementById('boardInput');
-    boardInput.value = '';
-    
-    if (searchInitiated && currentSite === site && !extractedURL) return;
-    
-    currentSite = site;
-    searchInitiated = true;
-    
-    updateBoardPlaceholder(site);
-    
-    document.querySelectorAll('.site-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.site === site) {
-            btn.classList.add('active');
-        }
-    });
-
-    loadSiteSortOptions(site, extractedURL);
-    animateToSearchMode();
-    
-    setTimeout(() => {
-        showBoardSearch();
-        showOptions(site);
+    try {
+        // ✅ 수정: 안전한 초기화
+        autocompleteData = [];
+        highlightIndex = -1;
         
-        if (extractedURL && site === 'universal') {
-            boardInput.value = extractedURL;
-            document.getElementById('clearBoardBtn').style.display = 'flex';
-            updateCrawlButton();
+        const container = safeGetElement('autocomplete');
+        if (container) {
+            container.innerHTML = '';
         }
-    }, 300);
+        
+        const boardInput = safeGetElement('boardInput');
+        if (boardInput) {
+            boardInput.value = '';
+        }
+        
+        // 중복 실행 방지
+        if (searchInitiated && currentSite === site && !extractedURL) {
+            return;
+        }
+        
+        // ✅ 수정: 사이트별 전역 변수 안전하게 초기화
+        currentSite = site;
+        searchInitiated = true;
+        
+        // Lemmy 전용 변수들 초기화 (에러 방지)
+        if (site === 'lemmy') {
+            window.community_name = '';
+            window.lemmy_instance = '';
+        }
+        
+        // UI 업데이트
+        updateBoardPlaceholder(site);
+        updateSiteButtonStates(site);
+        loadSiteSortOptions(site, extractedURL);
+        animateToSearchMode();
+        
+        // 지연된 UI 표시
+        setTimeout(() => {
+            showBoardSearch();
+            showOptions(site);
+            
+            if (extractedURL && site === 'universal' && boardInput) {
+                boardInput.value = extractedURL;
+                const clearBtn = safeGetElement('clearBoardBtn');
+                if (clearBtn) {
+                    clearBtn.style.display = 'flex';
+                }
+                updateCrawlButton();
+            }
+        }, 300);
+        
+    } catch (error) {
+        console.error('❌ selectSite 실행 중 오류:', error);
+        showTemporaryMessage('사이트 선택 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
+    }
+}
+
+// 사이트 버튼 상태 업데이트 (분리된 함수)
+function updateSiteButtonStates(selectedSite) {
+    try {
+        document.querySelectorAll('.site-btn').forEach(btn => {
+            if (btn && btn.classList) {
+                btn.classList.remove('active');
+                if (btn.dataset?.site === selectedSite) {
+                    btn.classList.add('active');
+                }
+            }
+        });
+    } catch (error) {
+        console.warn('사이트 버튼 상태 업데이트 실패:', error);
+    }
 }
 
 // 사이트별 보드 입력창의 placeholder를 업데이트하는 함수
@@ -1967,77 +2028,40 @@ function setLemmyCommunity(community) {
 // 크롤링 버튼 상태를 업데이트하는 함수
 function updateCrawlButton() {
     try {
-        const boardValue = safeGetValue('boardInput', '').trim();
-        const crawlBtn = document.getElementById('crawlBtn');
+        // ✅ 수정: 안전한 DOM 요소 접근
+        const boardInput = safeGetElement('boardInput');
+        const crawlBtn = safeGetElement('crawlBtn');
         
-        if (!crawlBtn) {
-            console.warn('crawlBtn 요소를 찾을 수 없음');
+        if (!boardInput || !crawlBtn) {
+            console.warn('필수 DOM 요소를 찾을 수 없어 크롤링 버튼 업데이트를 건너뜁니다');
             return;
         }
         
-        // ✅ 수정: 영어 우선, 한국어 폴백
-        const lang = window.languages && window.languages[currentLanguage] ? 
-                    window.languages[currentLanguage] : 
-                    (window.languages && window.languages.en ? 
-                     window.languages.en : 
-                     window.languages.ko);
+        const boardValue = safeGetValue('boardInput', '');
+        
+        // ✅ 수정: 안전한 언어팩 접근
+        const lang = getSafeLanguagePack();
         
         let isValid = false;
-        let buttonText = lang.start || 'Start Crawling';  // 기본값을 영어로
+        let buttonText = lang.start || 'Start Crawling';
         
+        // ✅ 수정: currentSite 안전성 체크
         if (!currentSite) {
             buttonText = lang.crawlButtonMessages?.siteNotSelected || 'Select a site';
             isValid = false;
         } else if (!boardValue) {
-            if (currentSite === 'universal') {
-                buttonText = lang.crawlButtonMessages?.universalEmpty || 'Enter website URL';
-            } else if (currentSite === 'lemmy') {
-                buttonText = lang.crawlButtonMessages?.lemmyEmpty || 'Enter Lemmy community';
-            } else {
-                buttonText = lang.crawlButtonMessages?.boardEmpty || 'Enter board name';
-            }
+            buttonText = getSiteSpecificEmptyMessage(currentSite, lang);
             isValid = false;
         } else {
-            switch (currentSite) {
-                case 'universal':
-                    isValid = boardValue.startsWith('http://') || 
-                            boardValue.startsWith('https://') ||
-                            (boardValue.includes('.') && boardValue.includes('/'));
-                    if (!isValid) {
-                        buttonText = lang.crawlButtonMessages?.universalUrlError || 'Enter a valid URL';
-                    }
-                    break;
-                
-                case 'lemmy':
-                    if (boardValue.includes('@') && boardValue.split('@').length === 2) {
-                        const [community, instance] = boardValue.split('@');
-                        isValid = community.length > 0 && instance.length > 0;
-                    } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
-                        isValid = true;
-                    } else if (boardValue.length > 2) {
-                        isValid = true;
-                        buttonText = `Try ${boardValue}@lemmy.world`;
-                    } else {
-                        buttonText = lang.crawlButtonMessages?.lemmyFormatError || 'Format: community@lemmy.world';
-                        isValid = false;
-                    }
-                    break;
-                    
-                case 'reddit':
-                    if (boardValue.includes('reddit.com') && !boardValue.includes('/r/')) {
-                        buttonText = lang.crawlButtonMessages?.redditFormatError || 'Reddit format error';
-                        isValid = false;
-                    } else {
-                        isValid = true;
-                    }
-                    break;
-                    
-                default:
-                    isValid = boardValue.length > 0;
-                    break;
+            // 사이트별 유효성 검사
+            const validation = validateSiteInput(currentSite, boardValue, lang);
+            isValid = validation.isValid;
+            if (!isValid) {
+                buttonText = validation.message;
             }
         }
         
+        // ✅ 수정: 안전한 버튼 상태 업데이트
         crawlBtn.disabled = !isValid || isLoading;
         
         if (!isLoading) {
@@ -2045,12 +2069,12 @@ function updateCrawlButton() {
         }
         
     } catch (error) {
-        console.error('updateCrawlButton 실행 중 오류:', error);
+        console.error('❌ updateCrawlButton 실행 중 오류:', error);
         
         // 폴백: 기본 상태로 설정
-        const crawlBtn = document.getElementById('crawlBtn');
+        const crawlBtn = safeGetElement('crawlBtn');
         if (crawlBtn && !isLoading) {
-            crawlBtn.textContent = 'Start Crawling';  // 영어 기본값
+            crawlBtn.textContent = 'Start Crawling';
             crawlBtn.disabled = false;
         }
     }
@@ -2778,22 +2802,29 @@ function updateUIForCrawlStart() {
 }
 
 function resetCrawlingState() {
-    hideProgress();
-    isLoading = false;
-    updateCrawlButton();
-    hideCancelButton();
-    
-    if (currentSocket) {
-        try {
-            currentSocket.close();
-        } catch (e) {
-            console.warn('WebSocket 종료 중 오류:', e);
+    try {
+        hideProgress();
+        isLoading = false;
+        updateCrawlButton();
+        hideCancelButton();
+        
+        if (currentSocket) {
+            try {
+                currentSocket.close();
+            } catch (e) {
+                console.warn('WebSocket 종료 중 오류:', e);
+            }
+            currentSocket = null;
         }
-        currentSocket = null;
+        
+        currentCrawlId = null;
+        crawlStartTime = null;
+        
+        console.log('🧹 크롤링 상태 정리 완료');
+        
+    } catch (error) {
+        console.error('❌ 크롤링 상태 정리 중 오류:', error);
     }
-    
-    currentCrawlId = null;
-    crawlStartTime = null;
 }
 
 function debugCrawlConfig() {
@@ -3539,6 +3570,80 @@ function getSelectedRange() {
 
 console.log('✅ 통합 엔드포인트 지원 main.js 로드 완료');
 
+// 안전한 언어팩 가져오기
+function getSafeLanguagePack() {
+    try {
+        return window.languages?.[currentLanguage] || 
+               window.languages?.en || 
+               window.languages?.ko || 
+               { start: 'Start Crawling' }; // 최종 폴백
+    } catch (error) {
+        console.warn('언어팩 접근 오류:', error);
+        return { start: 'Start Crawling' };
+    }
+}
+
+// 사이트별 빈 입력 메시지 가져오기
+function getSiteSpecificEmptyMessage(site, lang) {
+    const messages = {
+        'universal': lang.crawlButtonMessages?.universalEmpty || 'Enter website URL',
+        'lemmy': lang.crawlButtonMessages?.lemmyEmpty || 'Enter Lemmy community',
+        'default': lang.crawlButtonMessages?.boardEmpty || 'Enter board name'
+    };
+    
+    return messages[site] || messages.default;
+}
+
+// 사이트별 입력 유효성 검사
+function validateSiteInput(site, boardValue, lang) {
+    switch (site) {
+        case 'universal':
+            const isValidUrl = boardValue.startsWith('http://') || 
+                             boardValue.startsWith('https://') ||
+                             (boardValue.includes('.') && boardValue.includes('/'));
+            
+            return {
+                isValid: isValidUrl,
+                message: isValidUrl ? '' : (lang.crawlButtonMessages?.universalUrlError || 'Enter a valid URL')
+            };
+            
+        case 'lemmy':
+            // ✅ 수정: community_name 변수 사용하지 않고 직접 검증
+            if (boardValue.includes('@') && boardValue.split('@').length === 2) {
+                const [community, instance] = boardValue.split('@');
+                return {
+                    isValid: community.length > 0 && instance.length > 0,
+                    message: ''
+                };
+            } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
+                return { isValid: true, message: '' };
+            } else if (boardValue.length > 2) {
+                return {
+                    isValid: true,
+                    message: `Try ${boardValue}@lemmy.world`
+                };
+            } else {
+                return {
+                    isValid: false,
+                    message: lang.crawlButtonMessages?.lemmyFormatError || 'Format: community@lemmy.world'
+                };
+            }
+            
+        case 'reddit':
+            const hasRedditError = boardValue.includes('reddit.com') && !boardValue.includes('/r/');
+            return {
+                isValid: !hasRedditError,
+                message: hasRedditError ? (lang.crawlButtonMessages?.redditFormatError || 'Reddit format error') : ''
+            };
+            
+        default:
+            return {
+                isValid: boardValue.length > 0,
+                message: ''
+            };
+    }
+}
+
 // ============================================================================
 //  안전한 DOM 요소 접근을 위한 헬퍼 함수
 // ============================================================================
@@ -3546,22 +3651,38 @@ console.log('✅ 통합 엔드포인트 지원 main.js 로드 완료');
 // 안전한 텍스트 설정 함수
 function safeSetText(elementId, text) {
     try {
-        const element = document.getElementById(elementId);
+        const element = safeGetElement(elementId);
         if (element && text !== undefined && text !== null) {
-            element.textContent = text;
+            element.textContent = String(text);
             return true;
         }
+        return false;
     } catch (error) {
         console.warn(`텍스트 설정 실패 (${elementId}):`, error);
+        return false;
     }
-    return false;
 }
 
+
 // 안전한 값 가져오기 함수
-function safeGetValue(elementId, defaultValue = '') {
+function safeGetElement(elementId) {
     try {
         const element = document.getElementById(elementId);
-        return element ? (element.value || defaultValue) : defaultValue;
+        if (!element) {
+            console.warn(`❌ 요소를 찾을 수 없음: ${elementId}`);
+        }
+        return element;
+    } catch (error) {
+        console.error(`❌ 요소 접근 오류 (${elementId}):`, error);
+        return null;
+    }
+}
+
+// 안전한 값 가져오기 (수정된 버전)
+function safeGetValue(elementId, defaultValue = '') {
+    try {
+        const element = safeGetElement(elementId);
+        return element?.value?.trim() || defaultValue;
     } catch (error) {
         console.warn(`값 가져오기 실패 (${elementId}):`, error);
         return defaultValue;
