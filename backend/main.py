@@ -43,9 +43,6 @@ PORT = int(os.getenv("PORT", 8000))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
 
-# 전역 변수 초기화
-endpoint_manager = None
-
 # ==================== 로깅 설정 ====================
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper()),
@@ -214,6 +211,8 @@ async def lifespan(app: FastAPI):
             await cleanup_task
         except asyncio.CancelledError:
             logger.info("✅ 정리 작업 취소 완료")
+#전역 변수 초기화
+endpoint_manager = None
 
 # ==================== FastAPI 앱 초기화 ====================
 app = FastAPI(
@@ -266,6 +265,73 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==================== 자동 엔드포인트 시스템 초기화 ====================
+def initialize_endpoint_system():
+    """자동 엔드포인트 시스템 초기화"""
+    global endpoint_manager
+    try:
+        from core.endpoints import create_simple_endpoint_manager
+        endpoint_manager = create_simple_endpoint_manager(app, crawl_manager)
+        logger.info("✅ 자동 엔드포인트 시스템 초기화 완료")
+        return True
+    except Exception as e:
+        logger.error(f"❌ 자동 엔드포인트 시스템 실패: {e}")
+        return False
+
+# 즉시 초기화 시도
+try:
+    initialize_endpoint_system()
+except Exception as e:
+    logger.warning(f"엔드포인트 시스템 초기화 실패: {e}")
+    endpoint_manager = None
+
+# ==================== 수동 엔드포인트 (endpoint_manager가 None인 경우에만) ====================
+if endpoint_manager is None:
+    logger.warning("⚠️ 자동 엔드포인트 시스템이 비활성화됨 - 수동 엔드포인트 생성")
+    
+    @app.websocket("/ws/crawl")
+    async def manual_unified_crawl_endpoint(websocket: WebSocket):
+        """수동 통합 크롤링 엔드포인트"""
+        origin = websocket.headers.get("origin", "")
+        
+        # Origin 검증
+        if APP_ENV == "production":
+            allowed_patterns = ["netlify.app", "onrender.com"]
+            origin_allowed = any(pattern in origin for pattern in allowed_patterns)
+        else:
+            origin_allowed = True
+            
+        if not origin_allowed:
+            await websocket.close(code=1008, reason="Invalid origin")
+            return
+            
+        await websocket.accept()
+        logger.info(f"🔥 수동 통합 엔드포인트 연결: {origin}")
+        
+        try:
+            config = await websocket.receive_json()
+            input_data = config.get("input", "") or config.get("board", "")
+            
+            # AutoCrawler 사용
+            from core.auto_crawler import AutoCrawler
+            auto_crawler = AutoCrawler()
+            results = await auto_crawler.crawl(input_data, websocket=websocket, **config)
+            
+            await websocket.send_json({
+                "done": True,
+                "data": results,
+                "summary": f"크롤링 완료: {len(results)}개 게시물"
+            })
+            
+        except Exception as e:
+            logger.error(f"❌ 수동 통합 크롤링 오류: {e}")
+            await websocket.send_json({"error": str(e)})
+        finally:
+            await websocket.close()
+
+else:
+    logger.info("✅ 자동 엔드포인트 시스템 활성화됨")
 
 # ==================== 환경변수 검증 ====================
 def validate_environment():
@@ -530,48 +596,7 @@ async def autocomplete(site: str, keyword: str = Query(...)):
         logger.error(f"Autocomplete error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# main.py 350번 라인 이후에 추가
-if endpoint_manager is None:
-    logger.warning("⚠️ 자동 엔드포인트 시스템 비활성화 - 수동 엔드포인트 생성")
-    
-    @app.websocket("/ws/crawl")
-    async def manual_unified_crawl_endpoint(websocket: WebSocket):
-        """수동 통합 크롤링 엔드포인트"""
-        origin = websocket.headers.get("origin", "")
-        
-        # Origin 검증 로직 (기존 코드와 동일)
-        if APP_ENV == "production":
-            allowed_patterns = ["netlify.app", "onrender.com", "test-1-zm0k.onrender.com"]
-            origin_allowed = any(pattern in origin for pattern in allowed_patterns)
-        else:
-            origin_allowed = True
-            
-        if not origin_allowed:
-            await websocket.close(code=1008, reason="Invalid origin")
-            return
-            
-        await websocket.accept()
-        logger.info(f"🔥 수동 통합 엔드포인트 연결: {origin}")
-        
-        try:
-            config = await websocket.receive_json()
-            input_data = config.get("input", "") or config.get("board", "")
-            
-            # AutoCrawler 사용
-            auto_crawler = AutoCrawler()
-            results = await auto_crawler.crawl(input_data, websocket=websocket, **config)
-            
-            await websocket.send_json({
-                "done": True,
-                "data": results,
-                "summary": f"크롤링 완료: {len(results)}개 게시물"
-            })
-            
-        except Exception as e:
-            logger.error(f"❌ 수동 통합 크롤링 오류: {e}")
-            await websocket.send_json({"error": str(e)})
-        finally:
-            await websocket.close()
+
 
 # ==================== 🔥 NEW: 통합 크롤링 엔드포인트 ====================
 # 📝 주의: 자동 엔드포인트 시스템이 성공적으로 초기화된 경우 
@@ -794,19 +819,6 @@ if endpoint_manager is None:
 else:
     logger.info("✅ 자동 엔드포인트 시스템 활성화됨 - 수동 엔드포인트 생략")
 
-
-# ==================== 🔥 자동 엔드포인트 시스템 초기화 ====================
-# 🚨 중요: app과 crawl_manager가 정의된 후에 호출
-def initialize_endpoint_system():
-    global endpoint_manager
-    try:
-        from core.endpoints import create_simple_endpoint_manager
-        endpoint_manager = create_simple_endpoint_manager(app, crawl_manager)
-        logger.info("✅ 자동 엔드포인트 시스템 초기화 완료")
-        return True
-    except Exception as e:
-        logger.error(f"❌ 자동 엔드포인트 시스템 실패: {e}")
-        return False
 
 # FastAPI 앱 초기화 완료 후 호출
 if __name__ == "__main__":
