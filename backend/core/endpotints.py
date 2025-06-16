@@ -15,6 +15,52 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+# endpoints.py 상단에 추가
+import sys
+import os
+from pathlib import Path
+
+# 프로젝트 루트를 Python 경로에 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+class SimpleEndpointManager:
+    def __init__(self, app, crawl_manager):
+        self.app = app
+        self.crawl_manager = crawl_manager
+        self.crawlers = {}
+        
+        # 기존 크롤러 명시적 등록
+        self._register_explicit_crawlers()
+        
+        # 엔드포인트 생성
+        self._create_endpoints()
+    
+    def _register_explicit_crawlers(self):
+        """기존 크롤러들을 명시적으로 등록"""
+        explicit_crawlers = {
+            'reddit': {'module': 'reddit', 'function': 'fetch_posts'},
+            'dcinside': {'module': 'dcinside', 'function': 'crawl_dcinside_board'},
+            'blind': {'module': 'blind', 'function': 'crawl_blind_board'},
+            'bbc': {'module': 'bbc', 'function': 'crawl_bbc_board'},
+            'lemmy': {'module': 'lemmy', 'function': 'crawl_lemmy_board'},
+            'universal': {'module': 'universal', 'function': 'crawl_universal_board'}
+        }
+        
+        for site_type, info in explicit_crawlers.items():
+            try:
+                module = __import__(info['module'])
+                crawl_func = getattr(module, info['function'])
+                
+                self.crawlers[site_type] = {
+                    "crawl_function": crawl_func,
+                    "metadata": {"module_name": info['module']}
+                }
+                logger.info(f"✅ 명시적 크롤러 등록: {site_type}")
+                
+            except Exception as e:
+                logger.warning(f"크롤러 등록 실패 {site_type}: {e}")
+
 # ==================== 🔥 단순한 자동 엔드포인트 매니저 ====================
 
 class SimpleEndpointManager:
