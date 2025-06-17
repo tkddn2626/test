@@ -42,7 +42,7 @@ except ImportError as e:
     logger.error(f"❌ 크롤러 모듈 로드 실패: {e}")
     LEGACY_CRAWLERS_AVAILABLE = False
 
-# main.py에서 더 안전한 코어 모듈 import
+# main.py에서 코어 모듈 부분을 완전히 제거하고 레거시만 사용
 
 import os
 import sys
@@ -52,156 +52,102 @@ from pathlib import Path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
-print("🔥 코어 모듈 로드 시도 (더 안전한 방식)...")
+print("🔥 레거시 시스템만 사용하여 시작...")
 
-# 🔥 1단계: core 패키지 존재 확인
-core_dir = current_dir / "core"
-if not core_dir.exists():
-    print(f"❌ Core 디렉토리 없음: {core_dir}")
-    CORE_MODULES_AVAILABLE = False
-else:
-    print(f"✅ Core 디렉토리 확인: {core_dir}")
-
-# 🔥 2단계: 단계별 안전한 로드
+# 🔥 코어 모듈 완전히 포기하고 직접 구현
 CORE_MODULES_AVAILABLE = False
-SiteDetector = None
+
+# 직접 구현된 폴백 클래스와 함수들
+class SiteDetector:
+    async def detect_site_type(self, input_data: str) -> str:
+        input_lower = input_data.lower()
+        
+        # URL 기반 감지
+        if 'reddit.com' in input_lower or '/r/' in input_lower:
+            return 'reddit'
+        elif any(lemmy_domain in input_lower for lemmy_domain in [
+            'lemmy.world', 'lemmy.ml', 'beehaw.org', 'sh.itjust.works',
+            'feddit.de', 'lemm.ee', 'sopuli.xyz', 'lemmy.ca'
+        ]) or '@lemmy' in input_lower:
+            return 'lemmy'
+        elif 'dcinside.com' in input_lower or 'gall.dcinside' in input_lower:
+            return 'dcinside'
+        elif 'teamblind.com' in input_lower or 'blind.com' in input_lower:
+            return 'blind'
+        elif 'bbc.com' in input_lower or 'bbc.co.uk' in input_lower:
+            return 'bbc'
+        elif input_data.startswith('http'):
+            return 'universal'
+        
+        # 키워드 기반 감지
+        if any(word in input_lower for word in ['reddit', 'subreddit']):
+            return 'reddit'
+        elif any(word in input_lower for word in ['lemmy', '레미']):
+            return 'lemmy'
+        elif any(word in input_lower for word in ['dcinside', 'dc', '디시', '갤러리']):
+            return 'dcinside'
+        elif any(word in input_lower for word in ['blind', '블라인드']):
+            return 'blind'
+        elif any(word in input_lower for word in ['bbc', 'british']):
+            return 'bbc'
+        else:
+            return 'universal'
+    
+    def extract_board_identifier(self, url: str, site_type: str) -> str:
+        if site_type == 'reddit' and '/r/' in url:
+            import re
+            match = re.search(r'/r/([^/]+)', url)
+            return match.group(1) if match else url
+        elif site_type == 'lemmy' and '/c/' in url:
+            parts = url.split('/c/')
+            if len(parts) > 1:
+                from urllib.parse import urlparse
+                try:
+                    domain = urlparse(url).netloc
+                    community = parts[1].split('/')[0]
+                    return f"{community}@{domain}"
+                except:
+                    pass
+        elif site_type == 'dcinside' and '?id=' in url:
+            import re
+            match = re.search(r'[?&]id=([^&]+)', url)
+            return match.group(1) if match else url
+        
+        return url
+
 AutoCrawler = None
-get_user_language = None
-calculate_actual_dates = None
-calculate_actual_dates_for_lemmy = None
 
-try:
-    # 2-1: core 패키지 import
-    import core
-    print("✅ Core 패키지 import 성공")
-    
-    # 2-2: 각 함수 존재 확인 및 로드
-    if hasattr(core, 'get_site_detector'):
-        SiteDetector = core.get_site_detector()
-        if SiteDetector:
-            print("✅ SiteDetector 사용 가능")
-        else:
-            print("❌ SiteDetector 사용 불가 (None 반환)")
-    else:
-        print("❌ core.get_site_detector 함수 없음")
-        
-    if hasattr(core, 'get_auto_crawler'):
-        AutoCrawler = core.get_auto_crawler()
-        if AutoCrawler:
-            print("✅ AutoCrawler 사용 가능")
-        else:
-            print("❌ AutoCrawler 사용 불가 (None 반환)")
-    else:
-        print("❌ core.get_auto_crawler 함수 없음")
-        
-    if hasattr(core, 'get_user_language'):
-        get_user_language = core.get_user_language
-        print("✅ get_user_language 함수 로드")
-    else:
-        print("❌ core.get_user_language 함수 없음")
-        
-    if hasattr(core, 'calculate_actual_dates'):
-        calculate_actual_dates = core.calculate_actual_dates
-        print("✅ calculate_actual_dates 함수 로드")
-    else:
-        print("❌ core.calculate_actual_dates 함수 없음")
-        
-    if hasattr(core, 'calculate_actual_dates_for_lemmy'):
-        calculate_actual_dates_for_lemmy = core.calculate_actual_dates_for_lemmy
-        print("✅ calculate_actual_dates_for_lemmy 함수 로드")
-    else:
-        print("❌ calculate_actual_dates_for_lemmy 함수 없음, 기본 함수 사용")
-        
-    # 2-3: 기본 함수들이 있으면 부분적으로 사용 가능
-    if get_user_language and calculate_actual_dates:
-        CORE_MODULES_AVAILABLE = True
-        print("✅ 코어 모듈 부분 로드 성공")
-    else:
-        print("❌ 필수 함수 부족, 폴백 사용")
-        raise ImportError("필수 함수 부족")
-        
-    # 2-4: 추가 정보 로깅
-    if hasattr(core, 'get_version_info'):
-        try:
-            version_info = core.get_version_info()
-            print(f"📊 Core 버전 정보: {version_info}")
-        except Exception as e:
-            print(f"⚠️ 버전 정보 로드 실패: {e}")
-    
-except Exception as e:
-    print(f"❌ Core 패키지 로드 실패: {e}")
-    print(f"❌ 오류 타입: {type(e).__name__}")
-    CORE_MODULES_AVAILABLE = False
-    
-    # 🔥 완전한 폴백 구현
-    print("🔄 폴백 구현 로드 중...")
-    
-    class SiteDetector:
-        async def detect_site_type(self, input_data: str) -> str:
-            input_lower = input_data.lower()
-            if 'reddit' in input_lower or '/r/' in input_lower:
-                return 'reddit'
-            elif 'lemmy' in input_lower or '@lemmy' in input_lower:
-                return 'lemmy'
-            elif 'dcinside' in input_lower or 'gall.dcinside' in input_lower:
-                return 'dcinside'
-            elif 'teamblind.com' in input_lower or 'blind.com' in input_lower:
-                return 'blind'
-            elif 'bbc.com' in input_lower or 'bbc.co.uk' in input_lower:
-                return 'bbc'
-            elif input_data.startswith('http'):
-                return 'universal'
-            else:
-                return 'universal'
-        
-        def extract_board_identifier(self, url: str, site_type: str) -> str:
-            if site_type == 'reddit' and '/r/' in url:
-                import re
-                match = re.search(r'/r/([^/]+)', url)
-                return match.group(1) if match else url
-            elif site_type == 'lemmy' and '/c/' in url:
-                parts = url.split('/c/')
-                if len(parts) > 1:
-                    from urllib.parse import urlparse
-                    try:
-                        domain = urlparse(url).netloc
-                        community = parts[1].split('/')[0]
-                        return f"{community}@{domain}"
-                    except:
-                        pass
-            return url
-    
-    AutoCrawler = None
-    
-    def get_user_language(config):
-        if not config:
-            return "en"
-        return config.get("language", "en")
-    
-    def calculate_actual_dates(time_filter, start_date_input=None, end_date_input=None):
-        if time_filter == 'custom' and start_date_input and end_date_input:
-            return start_date_input, end_date_input
-        
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        
-        if time_filter == 'day':
-            start = now - timedelta(days=1)
-            return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
-        elif time_filter == 'week':
-            start = now - timedelta(weeks=1)
-            return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
-        elif time_filter == 'month':
-            start = now - timedelta(days=30)
-            return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
-        
-        return None, None
-    
-    calculate_actual_dates_for_lemmy = calculate_actual_dates
-    
-    print("✅ 폴백 구현 로드 완료")
+def get_user_language(config):
+    if not config:
+        return "en"
+    return config.get("language", "en")
 
-# 최종 상태 출력
+def calculate_actual_dates(time_filter, start_date_input=None, end_date_input=None):
+    if time_filter == 'custom' and start_date_input and end_date_input:
+        return start_date_input, end_date_input
+    
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    
+    if time_filter == 'day':
+        start = now - timedelta(days=1)
+        return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+    elif time_filter == 'week':
+        start = now - timedelta(weeks=1)
+        return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+    elif time_filter == 'month':
+        start = now - timedelta(days=30)
+        return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+    elif time_filter == 'year':
+        start = now - timedelta(days=365)
+        return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+    
+    return None, None
+
+# Lemmy용도 동일하게 사용
+calculate_actual_dates_for_lemmy = calculate_actual_dates
+
+print("✅ 레거시 폴백 구현 로드 완료")
 print(f"🎯 최종 상태:")
 print(f"   CORE_MODULES_AVAILABLE = {CORE_MODULES_AVAILABLE}")
 print(f"   SiteDetector = {SiteDetector is not None}")
