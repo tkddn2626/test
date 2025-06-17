@@ -2787,6 +2787,84 @@ function updateProgress(progress, message, details = {}) {
     console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
 }
 
+// 크롤링 결과를 표시하는 함수
+function displayResults(results, startIndex = 1) {
+    // 안전한 DOM 요소 접근
+    const container = safeGetElement('resultsContainer');
+    if (!container) {
+        console.error('resultsContainer 요소를 찾을 수 없습니다.');
+        // 폴백: 다른 가능한 컨테이너 ID들 시도
+        const fallbackIds = ['results', 'result-container', 'crawl-results'];
+        let fallbackContainer = null;
+        
+        for (const id of fallbackIds) {
+            fallbackContainer = safeGetElement(id);
+            if (fallbackContainer) {
+                console.log(`폴백 컨테이너 사용: ${id}`);
+                break;
+            }
+        }
+        
+        if (!fallbackContainer) {
+            console.error('결과를 표시할 컨테이너를 찾을 수 없습니다.');
+            return;
+        }
+        // 폴백 컨테이너를 사용
+        displaySimpleResults(fallbackContainer, results);
+        return;
+    }
+    
+    // 안전한 언어팩 접근
+    const lang = getSafeLanguagePack();
+    
+    if (!results || results.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: #5f6368; font-size: 16px; padding: 40px;">
+                ${lang.noResults || '결과가 없습니다'}
+            </div>
+        `;
+        return;
+    }
+    
+    // 완료 메시지 표시
+    setTimeout(() => {
+        const successMsg = `크롤링 완료! ${results.length}개 게시글을 찾았습니다`;
+        showMessage(successMsg, 'success');
+    }, 500);
+    
+    // 안전한 설정값 가져오기
+    const elapsedTime = crawlStartTime ? Math.round((Date.now() - crawlStartTime) / 1000) : 0;
+    const isAdvanced = safeGetElement('advancedSearch')?.checked || false;
+    const start = parseInt(safeGetValue(isAdvanced ? 'startRankAdv' : 'startRank', '1'));
+    const end = parseInt(safeGetValue(isAdvanced ? 'endRankAdv' : 'endRank', '20'));
+    const estimatedPages = Math.ceil(end / 25);
+    
+    // 요약 정보 HTML 생성
+    const summaryHtml = createSummaryHTML(results.length, start, end, estimatedPages, elapsedTime, isAdvanced, lang);
+    
+    // 개별 결과 아이템 HTML 생성
+    const resultsHtml = createResultsHTML(results, startIndex, lang);
+    
+    // 컨테이너에 HTML 삽입
+    try {
+        container.innerHTML = summaryHtml + resultsHtml;
+        
+        // 결과 아이템들 순차적 애니메이션
+        animateResultItems(container);
+        
+        // UI 상태 업데이트
+        updateUIAfterResults(lang);
+        
+        console.log(`${results.length}개 결과 표시 완료`);
+        
+    } catch (error) {
+        console.error('결과 표시 중 오류:', error);
+        // 폴백: 간단한 결과 표시
+        displaySimpleResults(container, results);
+    }
+}
+
+
 // 결과를 초기화하는 함수
 function clearResults() {
     const container = document.getElementById('resultsContainer');
