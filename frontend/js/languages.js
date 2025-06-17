@@ -155,20 +155,23 @@ const languages = {
            filtering_by_criteria: "설정 조건으로 필터링 중...",
            preparing_results: "결과 준비 중..."
        },
-       
+
        // ==================== 완료 메시지 ====================
-       completionMessages: {
-           unified_complete: "{input}에서 {count}개 게시물 발견 (사이트: {site})",
-           legacy_complete: "크롤링 완료: {count}개 게시물",
-           crawl_complete: "{site} {board}에서 {count}개 게시물 수집 완료 ({start}-{end}위)",
-           translation_complete: "번역 완료: {count}개 게시물을 처리했습니다",
-           reddit_complete: "Reddit {board}에서 {count}개 게시물 수집 완료",
-           dcinside_complete: "디시인사이드 {board} 갤러리에서 {count}개 게시물 수집 완료",
-           blind_complete: "블라인드 {board}에서 {count}개 게시물 수집 완료",
-           bbc_complete: "BBC {section}에서 {count}개 뉴스 수집 완료",
-           lemmy_complete: "Lemmy {board}에서 {count}개 게시물 수집 완료",
-           universal_complete: "{input}에서 {count}개 게시물 수집 완료",
-           analysis_complete: "사이트 분석 완료: {site} 감지됨"
+        completionMessages: {
+            success: "크롤링 완료: {count}개 게시물",
+            noData: "결과가 없습니다",
+            error: "오류가 발생했습니다",
+            unified_complete: "{input}에서 {count}개 게시물 발견 (사이트: {site})",
+            legacy_complete: "크롤링 완료: {count}개 게시물",
+            crawl_complete: "{site} {board}에서 {count}개 게시물 수집 완료 ({start}-{end}위)",
+            translation_complete: "번역 완료: {count}개 게시물을 처리했습니다",
+            reddit_complete: "Reddit {board}에서 {count}개 게시물 수집 완료",
+            dcinside_complete: "디시인사이드 {board} 갤러리에서 {count}개 게시물 수집 완료",
+            blind_complete: "블라인드 {board}에서 {count}개 게시물 수집 완료",
+            bbc_complete: "BBC {section}에서 {count}개 뉴스 수집 완료",
+            lemmy_complete: "Lemmy {board}에서 {count}개 게시물 수집 완료",
+            universal_complete: "{input}에서 {count}개 게시물 수집 완료",
+            analysis_complete: "사이트 분석 완료: {site} 감지됨"
        },
        
        // ==================== 에러 메시지 ====================
@@ -219,12 +222,19 @@ const languages = {
        },
        
        // ==================== 크롤링 상태 표시 (UI용) ====================
-       crawlingStatus: {
-           found: "개 발견",
-           page: "페이지",
-           timeRemaining: "예상 시간",
-           inProgress: "크롤링 중...",
-           cancelled: "크롤링이 취소되었습니다."
+        crawlingStatus: {
+            found: "개 발견",
+            page: "페이지",
+            timeRemaining: "예상 시간",
+            inProgress: "크롤링 중...",
+            cancelled: "크롤링이 취소되었습니다.",
+            processing: "처리 중...",
+            connecting: "연결 중...",
+            analyzing: "분석 중...",
+            collecting: "수집 중...",
+            completed: "크롤링 완료",
+            cancelled: "크롤링이 취소되었습니다",
+            noResults: "결과가 없습니다"
        },
        
        // ==================== 알림 메시지 ====================
@@ -455,18 +465,21 @@ const languages = {
        },
        
        // ==================== 완료 메시지 ====================
-       completionMessages: {
-           unified_complete: "Found {count} posts from {input} (Site: {site})",
-           legacy_complete: "Crawling complete: {count} posts",
-           crawl_complete: "Collected {count} posts from {site} {board} (Rank {start}-{end})",
-           translation_complete: "Translation complete: processed {count} posts",
-           reddit_complete: "Collected {count} posts from Reddit {board}",
-           dcinside_complete: "Collected {count} posts from DCInside {board} gallery",
-           blind_complete: "Collected {count} posts from Blind {board}",
-           bbc_complete: "Collected {count} news from BBC {section}",
-           lemmy_complete: "Collected {count} posts from Lemmy {board}",
-           universal_complete: "Collected {count} posts from {input}",
-           analysis_complete: "Site analysis complete: detected {site}"
+        completionMessages: {
+            success: "Crawling complete: {count} posts",
+            noData: "No results found", 
+            error: "An error occurred",
+            unified_complete: "Found {count} posts from {input} (Site: {site})",
+            legacy_complete: "Crawling complete: {count} posts",
+            crawl_complete: "Collected {count} posts from {site} {board} (Rank {start}-{end})",
+            translation_complete: "Translation complete: processed {count} posts",
+            reddit_complete: "Collected {count} posts from Reddit {board}",
+            dcinside_complete: "Collected {count} posts from DCInside {board} gallery",
+            blind_complete: "Collected {count} posts from Blind {board}",
+            bbc_complete: "Collected {count} news from BBC {section}",
+            lemmy_complete: "Collected {count} posts from Lemmy {board}",
+            universal_complete: "Collected {count} posts from {input}",
+            analysis_complete: "Site analysis complete: detected {site}"
        },
        
        // ==================== 에러 메시지 ====================
@@ -517,13 +530,20 @@ const languages = {
        },
        
        // ==================== 크롤링 상태 표시 (UI용) ====================
-       crawlingStatus: {
-           found: "found",
-           page: "page",
-           timeRemaining: "estimated time",
-           inProgress: "Crawling...",
-           cancelled: "Crawling has been cancelled."
-       },
+        crawlingStatus: {
+            found: "found",
+            page: "page",
+            timeRemaining: "estimated time",
+            inProgress: "Crawling...",
+            cancelled: "Crawling has been cancelled.",
+            processing: "Processing...",
+            connecting: "Connecting...", 
+            analyzing: "Analyzing...",
+            collecting: "Collecting...",
+            completed: "Crawling Complete",
+            cancelled: "Crawling has been cancelled",
+            noResults: "No results found"
+        },
        
        // ==================== 알림 메시지 ====================
        notifications: {
@@ -751,18 +771,21 @@ const languages = {
        },
        
        // ==================== 완료 메시지 ====================
-       completionMessages: {
-           unified_complete: "{input}から{count}個の投稿を発見 (サイト: {site})",
-           legacy_complete: "クロール完了: {count}個の投稿",
-           crawl_complete: "{site} {board}から{count}個の投稿を収集完了 ({start}-{end}位)",
-           translation_complete: "翻訳完了: {count}個の投稿を処理しました",
-           reddit_complete: "Reddit {board}から{count}個の投稿を収集完了",
-           dcinside_complete: "DCインサイド {board}ギャラリーから{count}個の投稿を収集完了",
-           blind_complete: "Blind {board}から{count}個の投稿を収集完了",
-           bbc_complete: "BBC {section}から{count}個のニュースを収集完了",
-           lemmy_complete: "Lemmy {board}から{count}個の投稿を収集完了",
-           universal_complete: "{input}から{count}個の投稿を収集完了",
-           analysis_complete: "サイト分析完了: {site}を検出しました"
+        completionMessages: {
+            success: "クロール完了: {count}個の投稿",
+            noData: "結果がありません",
+            error: "エラーが発生しました",
+            unified_complete: "{input}から{count}個の投稿を発見 (サイト: {site})",
+            legacy_complete: "クロール完了: {count}個の投稿",
+            crawl_complete: "{site} {board}から{count}個の投稿を収集完了 ({start}-{end}位)",
+            translation_complete: "翻訳完了: {count}個の投稿を処理しました",
+            reddit_complete: "Reddit {board}から{count}個の投稿を収集完了",
+            dcinside_complete: "DCインサイド {board}ギャラリーから{count}個の投稿を収集完了",
+            blind_complete: "Blind {board}から{count}個の投稿を収集完了",
+            bbc_complete: "BBC {section}から{count}個のニュースを収集完了",
+            lemmy_complete: "Lemmy {board}から{count}個の投稿を収集完了",
+            universal_complete: "{input}から{count}個の投稿を収集完了",
+            analysis_complete: "サイト分析完了: {site}を検出しました"
        },
        
        // ==================== 에러 메시지 ====================
@@ -813,12 +836,19 @@ const languages = {
        },
        
        // ==================== 크롤링 상태 표시 (UI용) ====================
-       crawlingStatus: {
-           found: "件発見",
-           page: "ページ",
-           timeRemaining: "予想時間",
-           inProgress: "クロール中...",
-           cancelled: "クロールがキャンセルされました。"
+        crawlingStatus: {
+            found: "件発見",
+            page: "ページ",
+            timeRemaining: "予想時間",
+            inProgress: "クロール中...",
+            cancelled: "クロールがキャンセルされました。",
+            processing: "処理中...",
+            connecting: "接続中...",
+            analyzing: "分析中...", 
+            collecting: "収集中...",
+            completed: "クロール完了",
+            cancelled: "クロールがキャンセルされました",
+            noResults: "結果がありません"
        },
        
        // ==================== 알림 메시지 ====================
