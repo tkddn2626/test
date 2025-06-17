@@ -19,8 +19,8 @@
                     <!-- 사이트 선택 드롭다운 제거됨 -->
                 </div>
                 <div class="shortcut-modal-buttons">
-                    <button class="btn" onclick="closeShortcutModal()">취소</button>
-                    <button class="btn btn-primary" onclick="saveShortcut()">저장</button>
+                    <button class="btn" onclick="closeShortcutModal()" data-lang-key="cancel">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveShortcut()" data-lang-key="save">Save</button>
                 </div>
             </div>
         </div>
@@ -360,10 +360,10 @@
                 <div class="progress-details" id="progressDetails" style="display: none;">
                     <div class="progress-stats">
                         <div class="progress-stat">
-                            📊 <span id="foundPosts">0</span><span id="postsLabel">개 수집</span>
+                            <span id="postsLabel" data-lang-key="results.found">collected</span>
                         </div>
                         <div class="progress-stat">
-                            📄 <span id="currentPage">1</span><span id="pageLabel">페이지</span>
+                            <span id="pageLabel" data-lang-key="results.page">page</span>
                         </div>
                     </div>
                     <div class="progress-eta" id="progressEta">예상 시간: 계산 중...</div>
@@ -378,19 +378,19 @@
         <footer class="footer">
             <div class="footer-content">
                 <div class="footer-links">
-                    <a href="#" id="privacyLink" onclick="openPrivacyModal()">개인정보처리방침</a>
-                    <a href="#" id="termsLink" onclick="openTermsModal()">서비스 약관</a>
+                    <a href="#" id="privacyLink" onclick="openPrivacyModal()" data-lang-key="privacy">Privacy Policy</a>
+                    <a href="#" id="termsLink" onclick="openTermsModal()" data-lang-key="terms">Terms of Service</a>
                 </div>
                 <div class="footer-links">
-                    <a href="#" id="bugReportLink" onclick="openBugReportModal()">피드백</a>
-                    <a href="#" id="businessLink" onclick="openBusinessModal()">비즈니스</a>
+                    <a href="#" id="bugReportLink" onclick="openBugReportModal()" data-lang-key="feedback">Fedback</a>
+                    <a href="#" id="businessLink" onclick="openBusinessModal()" data-lang-key="business">Business</a>
                 </div>
             </div>
             
             <!-- Language Selector - 둥근 버튼으로 변경 -->
             <div class="language-selector">
                 <button class="language-btn" onclick="toggleLanguageDropdown()">
-                    🌐 <span id="currentLang">한국어</span>
+                    🌐 <span id="currentLang">English</span>
                 </button>
                 <div class="language-dropdown" id="languageDropdown">
                     <div class="language-option active" onclick="selectLanguage('ko', '한국어')">한국어</div>
