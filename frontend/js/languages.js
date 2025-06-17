@@ -18,12 +18,6 @@ const languages = {
        
        // ==================== 사이트 관련 ====================
        siteSelect: "사이트를 선택하세요",
-       reddit: "레딧",
-       dcinside: "디시인사이드",
-       blind: "블라인드",
-       lemmy: "레미",
-       bbc: "BBC",
-       universal: "범용",
        
        // ==================== 사이트 이름 번역 ====================
        siteNames: {
@@ -276,16 +270,19 @@ const languages = {
        },
        
        // ==================== 기타 ====================
-       shortcuts: "바로가기",
-       addShortcut: "추가",
-       shortcutName: "바로가기 이름",
-       shortcutUrl: "게시판 URL 또는 이름",
-       save: "저장",
-       backBtn: "뒤로가기",
-       privacy: "개인정보처리방침",
-       terms: "약관",
-       feedback: "피드백",
-       business: "비즈니스",
+        shortcuts: "바로가기",
+        addShortcut: "추가",
+        shortcutName: "바로가기 이름",
+        shortcutUrl: "게시판 URL 또는 이름",
+        save: "저장",
+        backBtn: "뒤로가기",
+        privacy: "개인정보처리방침",
+        terms: "약관",
+        feedback: "피드백",
+        business: "비즈니스",
+        shortcutModalTitle: "사이트 추가",
+        fillAllFields: "이름과 URL을 모두 입력해주세요.",
+        maxShortcuts: "바로가기는 최대 5개까지만 추가할 수 있습니다.",
        
        // ==================== 도움말 텍스트 ====================
        lemmyHelpTitle: "Lemmy 커뮤니티 형식",
@@ -321,13 +318,7 @@ const languages = {
        
        // ==================== 사이트 관련 ====================
        siteSelect: "Please select a site",
-       reddit: "Reddit",
-       dcinside: "DCInside",
-       blind: "Blind",
-       lemmy: "Lemmy",
-       bbc: "BBC",
-       universal: "Universal",
-       
+
        // ==================== 사이트 이름 번역 ====================
        siteNames: {
            reddit: "Reddit",
@@ -577,17 +568,20 @@ const languages = {
        },
        
        // ==================== 기타 ====================
-       shortcuts: "Shortcuts",
-       addShortcut: "Add",
-       shortcutName: "Shortcut Name",
-       shortcutUrl: "Board URL or Name",
-       save: "Save",
-       backBtn: "Back",
-       privacy: "Privacy Policy",
-       terms: "Terms of Service",
-       feedback: "Feedback",
-       business: "Business",
-       
+        shortcuts: "Shortcuts",
+        addShortcut: "Add",
+        shortcutName: "Shortcut Name",
+        shortcutUrl: "Board URL or Name",
+        save: "Save",
+        backBtn: "Back",
+        privacy: "Privacy Policy",
+        terms: "Terms of Service",
+        feedback: "Feedback",
+        business: "Business",
+        shortcutModalTitle: "Add Site",
+        fillAllFields: "Please fill in both name and URL.",
+        maxShortcuts: "You can add up to 5 shortcuts.",
+
        // ==================== 도움말 텍스트 ====================
        lemmyHelpTitle: "Lemmy Community Format",
        lemmyHelpDescription: "Enter community name in format: community@instance\nExample: technology@lemmy.world",
@@ -622,13 +616,7 @@ const languages = {
        
        // ==================== 사이트 관련 ====================
        siteSelect: "サイトを選択してください",
-       reddit: "Reddit",
-       dcinside: "DCインサイド",
-       blind: "Blind",
-       lemmy: "Lemmy",
-       bbc: "BBC",
-       universal: "汎用",
-       
+
        // ==================== 사이트 이름 번역 ====================
        siteNames: {
            reddit: "Reddit",
@@ -876,16 +864,19 @@ const languages = {
        },
        
        // ==================== 기타 ====================
-       shortcuts: "ショートカット",
-       addShortcut: "追加",
-       shortcutName: "ショートカット名",
-       shortcutUrl: "掲示板URLまたは名前",
-       save: "保存",
-       backBtn: "戻る",
-       privacy: "プライバシーポリシー",
-       terms: "利用規約",
-       feedback: "フィードバック",
-       business: "ビジネス",
+        shortcuts: "ショートカット",
+        addShortcut: "追加",
+        shortcutName: "ショートカット名",
+        shortcutUrl: "掲示板URLまたは名前",
+        save: "保存",
+        backBtn: "戻る",
+        privacy: "プライバシーポリシー",
+        terms: "利用規約",
+        feedback: "フィードバック",
+        business: "ビジネス",
+        shortcutModalTitle: "サイト追加",
+        fillAllFields: "名前とURLを両方入力してください。", 
+        maxShortcuts: "ショートカットは最大5つまで追加できます。",
        
        // ==================== 도움말 텍스트 ====================
        lemmyHelpTitle: "Lemmyコミュニティ形式",
