@@ -219,8 +219,14 @@ class CrawlManager:
 crawl_manager = CrawlManager()
 
 # ==================== 🔥 통합 크롤링 실행 함수 (간소화) ====================
-async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str = None, **config):
+# main.py - Fixed crawling functions
+
+# ==================== 🔥 통합 크롤링 실행 함수 (수정된 버전) ====================
+async def execute_crawl_by_site(site_type: str, target_input: str, **config):
     """사이트별 크롤링 실행 함수 (매개변수 필터링 포함)"""
+    
+    # crawl_id를 config에서 안전하게 추출
+    crawl_id = config.pop('crawl_id', None)
     
     # 취소 확인
     if crawl_id and crawl_manager.is_cancelled(crawl_id):
@@ -253,7 +259,7 @@ async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str
             return await fetch_posts(**reddit_params)
             
         elif site_type == 'lemmy':
-            # 🔥 Lemmy 매개변수 정리 (min_comments 제외)
+            # Lemmy 매개변수 정리 (min_comments 제외)
             lemmy_params = {
                 'community_input': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
@@ -274,7 +280,7 @@ async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str
             return await crawl_lemmy_board(**lemmy_params)
             
         elif site_type == 'dcinside':
-            # 🔥 DCInside 매개변수 정리 (min_comments 제외)
+            # DCInside 매개변수 정리 (min_comments 제외)
             dc_params = {
                 'board_name': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
@@ -295,7 +301,7 @@ async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str
             return await crawl_dcinside_board(**dc_params)
             
         elif site_type == 'blind':
-            # 🔥 Blind 매개변수 정리 (min_comments 제외)
+            # Blind 매개변수 정리 (min_comments 제외)
             blind_params = {
                 'board_input': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
@@ -368,71 +374,36 @@ async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str
 # ==================== 간소화된 크롤링 래퍼 함수들 ====================
 # main.py의 크롤링 래퍼 함수들 수정
 
-# ==================== 간소화된 크롤링 래퍼 함수들 ====================
+
+# ==================== 수정된 크롤링 래퍼 함수들 ====================
 async def crawl_reddit_with_cancel_check(*args, **kwargs):
-    # crawl_id 안전하게 처리
-    crawl_id = kwargs.pop('crawl_id', None)
+    # crawl_id는 execute_crawl_by_site에서 처리하므로 제거하지 않음
     target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    
-    # crawl_id를 config에 다시 추가 (execute_crawl_by_site에서 처리됨)
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('reddit', target, **kwargs)
 
 async def crawl_lemmy_board_with_cancel_check(*args, **kwargs):
-    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('community_input', kwargs.get('board_identifier', ''))
-    
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('lemmy', target, **kwargs)
 
 async def crawl_dcinside_board_with_cancel_check(*args, **kwargs):
-    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('board_name', kwargs.get('board_identifier', ''))
-    
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('dcinside', target, **kwargs)
 
 async def crawl_blind_board_with_cancel_check(*args, **kwargs):
-    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('board_input', kwargs.get('board_identifier', ''))
-    
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('blind', target, **kwargs)
 
 async def crawl_bbc_board_with_cancel_check(board_url: str = None, **kwargs):
-    crawl_id = kwargs.pop('crawl_id', None)
     target = board_url or kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('bbc', target, **kwargs)
 
 async def crawl_universal_board_with_cancel_check(*args, **kwargs):
-    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('universal', target, **kwargs)
 
 # fetch_posts도 통합으로 처리
 async def fetch_posts_with_cancel_check(*args, **kwargs):
-    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    
-    if crawl_id:
-        kwargs['crawl_id'] = crawl_id
-    
     return await execute_crawl_by_site('reddit', target, **kwargs)
 
 # ==================== 번역 서비스 ====================
