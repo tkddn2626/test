@@ -2705,6 +2705,7 @@ function handleCompleteMessage(data) {
 }
 
 
+
 function handleCrawlingEnd() {
     hideProgress();
     isLoading = false;
@@ -2910,31 +2911,49 @@ function updateProgress(progress, message, details = {}) {
     const progressContainer = document.getElementById('progressContainer');
     if (progressContainer) {
         progressContainer.classList.add('show');
+        progressContainer.style.display = 'block';
     }
     
-    // 진행률 바 업데이트
-    const progressBar = document.getElementById('progress-bar') || 
-                        document.querySelector('.progress-bar') ||
-                        document.querySelector('[id*="progress"]');
+    // 🔥 진행률 바 업데이트 (여러 가능한 ID 확인)
+    const progressBarSelectors = [
+        '#progress-bar',
+        '.progress-bar', 
+        '#progressBar',
+        '[class*="progress"]'
+    ];
+    
+    let progressBar = null;
+    for (const selector of progressBarSelectors) {
+        progressBar = document.querySelector(selector);
+        if (progressBar) break;
+    }
     
     if (progressBar) {
-        progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-        progressBar.setAttribute('aria-valuenow', progress);
+        const validProgress = Math.max(0, Math.min(100, progress));
+        progressBar.style.width = `${validProgress}%`;
+        progressBar.setAttribute('aria-valuenow', validProgress);
     }
     
-    // 진행률 텍스트 업데이트
-    const progressText = document.getElementById('progress-text') || 
-                        document.getElementById('progressText') ||
-                        document.querySelector('.progress-text');
-                        
+    // 🔥 진행률 텍스트 업데이트 (여러 가능한 ID 확인)
+    const progressTextSelectors = [
+        '#progress-text',
+        '#progressText',
+        '.progress-text',
+        '.progress-message'
+    ];
+    
+    let progressText = null;
+    for (const selector of progressTextSelectors) {
+        progressText = document.querySelector(selector);
+        if (progressText) break;
+    }
+    
     if (progressText) {
         progressText.textContent = message || `${progress}%`;
     }
     
     // 상세 정보 표시
-    const progressDetails = document.getElementById('progress-details') || 
-                        document.getElementById('progressDetails');
-                        
+    const progressDetails = document.getElementById('progressDetails');
     if (progressDetails && Object.keys(details).length > 0) {
         const detailsText = Object.entries(details)
             .map(([key, value]) => `${key}: ${value}`)
@@ -2947,6 +2966,7 @@ function updateProgress(progress, message, details = {}) {
     
     console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
 }
+
 // 결과를 초기화하는 함수
 function clearResults() {
     const container = document.getElementById('resultsContainer');
@@ -2968,12 +2988,16 @@ function clearResults() {
 // 크롤링 결과를 표시하는 함수
 function displayResults(results, startIndex = 1) {
     const container = document.getElementById('resultsContainer');
-    // ✅ 수정: 영어 우선 폴백
     const lang = window.languages && window.languages[currentLanguage] ? 
                 window.languages[currentLanguage] : 
                 (window.languages && window.languages.en ? 
                  window.languages.en : 
                  window.languages.ko);
+    
+    if (!container) {
+        console.error('결과 컨테이너를 찾을 수 없습니다');
+        return;
+    }
     
     if (results.length === 0) {
         const noResultsText = lang.resultTexts?.noResults || 'No results found';
@@ -2981,16 +3005,81 @@ function displayResults(results, startIndex = 1) {
         return;
     }
     
-    // 완료 알림
-    setTimeout(() => {
-        const completeText = lang.crawlingStatus?.complete || 'Collection complete';
-        const foundText = lang.crawlingStatus?.found || ' posts found';
-        const successMsg = `${completeText}! ${results.length}${foundText}`;
-        showMessage(successMsg, 'success');
-    }, 500);
+    // 🔥 결과 테이블 HTML 생성
+    let tableHTML = `
+        <div class="results-header">
+            <h3>${lang.resultTexts?.resultsCount?.replace('{count}', results.length) || `${results.length}개 결과`}</h3>
+        </div>
+        <div class="results-table-container">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>순위</th>
+                        <th>제목</th>
+                        <th>조회수</th>
+                        <th>추천수</th>
+                        <th>댓글수</th>
+                        <th>작성일</th>
+                        <th>링크</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
     
-    // 나머지 displayResults 로직은 동일...
-    // (기존 코드 유지)
+    results.forEach((post, index) => {
+        const rank = startIndex + index;
+        const title = post.원제목 || post.제목 || post.title || '';
+        const translatedTitle = post.번역제목 || post.translated_title || '';
+        const views = post.조회수 || post.views || 0;
+        const likes = post.추천수 || post.likes || post.upvotes || 0;
+        const comments = post.댓글수 || post.comments || 0;
+        const date = post.작성일 || post.date || '';
+        const link = post.링크 || post.link || post.url || '';
+        
+        // 제목 표시 (번역이 있으면 번역, 없으면 원제목)
+        const displayTitle = translatedTitle || title;
+        
+        tableHTML += `
+            <tr>
+                <td>${rank}</td>
+                <td class="title-cell">
+                    <div class="title-content" title="${title}">
+                        ${displayTitle}
+                    </div>
+                    ${translatedTitle && translatedTitle !== title ? 
+                        `<div class="original-title">(원제목: ${title})</div>` : ''}
+                </td>
+                <td>${Number(views).toLocaleString()}</td>
+                <td>${Number(likes).toLocaleString()}</td>
+                <td>${Number(comments).toLocaleString()}</td>
+                <td>${date}</td>
+                <td>
+                    ${link ? `<a href="${link}" target="_blank" rel="noopener">링크</a>` : '-'}
+                </td>
+            </tr>
+        `;
+    });
+    
+    tableHTML += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = tableHTML;
+    
+    // 🔥 컨테이너 표시 및 애니메이션
+    container.style.display = 'block';
+    container.style.opacity = '0';
+    container.style.transform = 'translateY(20px)';
+    
+    setTimeout(() => {
+        container.style.transition = 'all 0.3s ease';
+        container.style.opacity = '1';
+        container.style.transform = 'translateY(0)';
+    }, 100);
+    
+    console.log(`✅ 결과 표시 완료: ${results.length}개`);
 }
 
 // ✅ 메시지 표시 함수들을 하나로 통합
@@ -3045,22 +3134,52 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
             const data = JSON.parse(event.data);
             console.log(`📨 메시지 수신 (${endpoint}):`, data);
 
-            // 중단 처리
+            // 🔥 새로운 메시지 형식 처리 추가
+            if (data.status_key) {
+                // 백엔드의 새로운 메시지 형식 처리
+                const translatedMessage = getLocalizedMessage(
+                    `crawlingProgress.${data.status_key}`, 
+                    data.status_data || {}
+                );
+                updateProgress(data.progress || 0, translatedMessage);
+                return;
+            }
+            
+            if (data.completion_key) {
+                // 완료 메시지 처리
+                const results = data.data || [];
+                if (results.length > 0) {
+                    crawlResults = results;
+                    displayResults(results);
+                    enableDownloadButtons();
+                }
+                
+                const completionMessage = getLocalizedMessage(
+                    `completionMessages.${data.completion_key}`,
+                    data.completion_data || {}
+                );
+                showMessage(completionMessage, 'success');
+                resetCrawlingState();
+                return;
+            }
+            
+            if (data.error_key) {
+                const errorMessage = getLocalizedMessage(
+                    `errorMessages.${data.error_key}`,
+                    data.error_data || {}
+                );
+                showMessage(errorMessage, 'error');
+                resetCrawlingState();
+                return;
+            }
+
+            // 🔥 기존 형식도 호환성을 위해 유지
             if (data.cancelled) {
                 showMessage('크롤링이 취소되었습니다.', 'info');
                 resetCrawlingState();
                 return;
             }
 
-            // 에러 처리
-            if (data.error || data.error_key) {
-                const errorMsg = data.error_detail || data.error || '크롤링 중 오류가 발생했습니다.';
-                showMessage(errorMsg, 'error');
-                resetCrawlingState();
-                return;
-            }
-
-            // 완료 처리
             if (data.done) {
                 const results = data.data || data.results || [];
                 if (results.length > 0) {
@@ -3075,7 +3194,6 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
                 return;
             }
 
-            // 진행률 처리
             if (data.progress !== undefined) {
                 const progress = Math.max(0, Math.min(100, data.progress));
                 const status = data.status || data.message || '처리 중...';
