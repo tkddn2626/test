@@ -296,7 +296,7 @@ const languages = {
        // ==================== 기타 ====================
         shortcuts: "바로가기",
         addShortcut: "추가",
-        shortcutName: "바로가기 이름",
+        shortcutName: "사이트 이름",
         shortcutUrl: "게시판 URL 또는 이름",
         save: "저장",
         backBtn: "뒤로가기",
@@ -611,7 +611,7 @@ const languages = {
        // ==================== 기타 ====================
         shortcuts: "Shortcuts",
         addShortcut: "Add",
-        shortcutName: "Shortcut Name",
+        shortcutName: "Site Name",
         shortcutUrl: "Board URL or Name",
         save: "Save",
         backBtn: "Back",
