@@ -2884,18 +2884,21 @@ function displayResults(results, startIndex = 1) {
     }
     
     if (!results || results.length === 0) {
+        const lang = window.languages[currentLanguage] || window.languages.en;
         container.innerHTML = `
             <div style="text-align: center; color: #5f6368; font-size: 16px; padding: 40px;">
-                결과가 없습니다
+                ${lang.results?.noResults || 'No results found'}
             </div>
         `;
         return;
     }
     
+    // 언어팩 가져오기
+    const lang = window.languages[currentLanguage] || window.languages.en;
+    
     // 완료 메시지 표시
     setTimeout(() => {
-        const lang = window.languages[currentLanguage];
-        const message = lang.completionMessages?.success || '크롤링 완료! {count}개 게시글을 찾았습니다';
+        const message = lang.completionMessages?.success || 'Crawling complete: {count} posts';
         const translatedMessage = message.replace('{count}', results.length);
         showMessage(translatedMessage, 'success');
     }, 500);
@@ -2907,6 +2910,24 @@ function displayResults(results, startIndex = 1) {
     const end = parseInt(safeGetValue(isAdvanced ? 'endRankAdv' : 'endRank', '20'));
     const estimatedPages = Math.ceil(end / 25);
     
+    // 번역된 텍스트들
+    const texts = {
+        crawlingComplete: lang.results?.crawlingComplete || 'Crawling Complete',
+        completedAt: lang.results?.completedAt || 'Completed',
+        totalPosts: lang.results?.totalPosts || 'Total Posts',
+        rankRange: lang.results?.rankRange || 'Rank Range',
+        estimatedPages: lang.results?.estimatedPages || 'Est. Pages',
+        sourcesite: lang.results?.sourcesite || 'Source Site',
+        crawlingMode: lang.results?.crawlingMode || 'Crawling Mode',
+        basic: lang.results?.basic || 'Basic',
+        advanced: lang.results?.advanced || 'Advanced Search',
+        duration: lang.results?.duration || 'Duration',
+        viewOriginal: lang.results?.viewOriginal || 'View Original',
+        seconds: lang.results?.seconds || 's',
+        posts: lang.results?.posts || 'posts',
+        page: lang.results?.page || 'page'
+    };
+    
     // HTML 생성
     const summaryHtml = `
         <div style="background: #f8f9fa; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(32,33,36,.1);">
@@ -2916,10 +2937,10 @@ function displayResults(results, startIndex = 1) {
                 </div>
                 <div>
                     <h3 style="color: #ff8000; margin: 0; font-size: 16px; font-weight: 550;">
-                        크롤링 완료
+                        ${texts.crawlingComplete}
                     </h3>
                     <p style="color: #5f6368; margin: 0; font-size: 11.5px;">
-                        ${new Date().toLocaleString()} 완료
+                        ${new Date().toLocaleString()} ${texts.completedAt}
                     </p>
                 </div>
             </div>
@@ -2927,35 +2948,35 @@ function displayResults(results, startIndex = 1) {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 16px;">
                 <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
                     <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${results.length}</div>
-                    <div style="font-size: 12px; color: #5f6368;">총 게시물</div>
+                    <div style="font-size: 12px; color: #5f6368;">${texts.totalPosts}</div>
                 </div>
                 
                 <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
                     <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${start}-${end}</div>
-                    <div style="font-size: 12px; color: #5f6368;">순위 범위</div>
+                    <div style="font-size: 12px; color: #5f6368;">${texts.rankRange}</div>
                 </div>
                 
                 <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
                     <div style="font-size: 16px; font-weight: 550; color: #ff8000;">~${estimatedPages}</div>
-                    <div style="font-size: 12px; color: #5f6368;">예상 페이지</div>
+                    <div style="font-size: 12px; color: #5f6368;">${texts.estimatedPages}</div>
                 </div>
                 
                 <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
                     <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${(currentSite || 'UNKNOWN').toUpperCase()}</div>
-                    <div style="font-size: 12px; color: #5f6368;">소스 사이트</div>
+                    <div style="font-size: 12px; color: #5f6368;">${texts.sourcesite}</div>
                 </div>
             </div>
             
             <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid #e8eaed;">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 14px; color: #5f6368;">크롤링 모드:</span>
+                    <span style="font-size: 14px; color: #5f6368;">${texts.crawlingMode}:</span>
                     <span style="font-size: 14px; font-weight: 500; color: #ff8000;">
-                        ${isAdvanced ? '고급 검색' : '기본'}
+                        ${isAdvanced ? texts.advanced : texts.basic}
                     </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 14px; color: #5f6368;">⏱️ 소요 시간:</span>
-                    <span style="font-size: 14px; font-weight: 500; color: #137333;">${elapsedTime}초</span>
+                    <span style="font-size: 14px; color: #5f6368;">⏱️ ${texts.duration}:</span>
+                    <span style="font-size: 14px; font-weight: 500; color: #137333;">${elapsedTime}${texts.seconds}</span>
                 </div>
             </div>
         </div>
@@ -2975,6 +2996,11 @@ function displayResults(results, startIndex = 1) {
         const comments = item.댓글수 || item.comments || 0;
         const date = item.작성일 || item.date || item.created_at || '';
         
+        // 번역된 라벨들
+        const viewsLabel = lang.views || 'Views';
+        const likesLabel = lang.likes || 'Likes'; 
+        const commentsLabel = lang.comments || 'Comments';
+        
         return `
             <div class="result-item" style="opacity: 0; transform: translateY(8px); border: 1px solid #e8eaed; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: white; transition: all 0.3s ease;">
                 <div style="display: flex; align-items: flex-start; margin-bottom: 12px;">
@@ -2992,9 +3018,9 @@ function displayResults(results, startIndex = 1) {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: #5f6368;">
                     <div>📅 ${date}</div>
                     <div style="display: flex; gap: 16px;">
-                        ${views > 0 ? `<span>👁️ ${views.toLocaleString()}</span>` : ''}
-                        ${likes > 0 ? `<span>👍 ${likes.toLocaleString()}</span>` : ''}
-                        ${comments > 0 ? `<span>💬 ${comments.toLocaleString()}</span>` : ''}
+                        ${views > 0 ? `<span title="${viewsLabel}">👁️ ${views.toLocaleString()}</span>` : ''}
+                        ${likes > 0 ? `<span title="${likesLabel}">👍 ${likes.toLocaleString()}</span>` : ''}
+                        ${comments > 0 ? `<span title="${commentsLabel}">💬 ${comments.toLocaleString()}</span>` : ''}
                     </div>
                 </div>
                 
@@ -3006,7 +3032,7 @@ function displayResults(results, startIndex = 1) {
                 
                 <div style="text-align: right;">
                     <a href="${link}" target="_blank" style="color: #ff8000; text-decoration: none; font-size: 14px; font-weight: 500;" rel="noopener noreferrer">
-                        원문 보기 →
+                        ${texts.viewOriginal} →
                     </a>
                 </div>
             </div>
@@ -3037,7 +3063,7 @@ function displayResults(results, startIndex = 1) {
             
             const crawlBtn = safeGetElement('crawlBtn');
             if (crawlBtn) {
-                crawlBtn.textContent = '크롤링 시작';
+                crawlBtn.textContent = lang.start || 'Start Crawling';
                 crawlBtn.disabled = false;
             }
         }, 100);
