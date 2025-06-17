@@ -961,16 +961,24 @@ function openShortcutModal() {
 
     const lang = window.languages[currentLanguage];
 
+    // 🔥 모달 제목 번역 (새 키 사용)
     const header = modal.querySelector('.shortcut-modal-header');
     if (header) {
         header.textContent = lang.shortcutModalTitle || '사이트 추가';
     }
     
+    // 🔥 입력 필드 번역 (기존 키 사용)
     const nameInput = document.getElementById('shortcutNameInput');
     const urlInput = document.getElementById('shortcutUrlInput');
-    if (nameInput) nameInput.placeholder = lang.shortcutNamePlaceholder || '사이트 이름';
-    if (urlInput) urlInput.placeholder = lang.shortcutUrlPlaceholder || '사이트 URL';
     
+    if (nameInput) {
+        nameInput.placeholder = lang.shortcutName || '바로가기 이름';
+    }
+    if (urlInput) {
+        urlInput.placeholder = lang.shortcutUrl || '사이트 URL';
+    }
+    
+    // 🔥 버튼 텍스트 번역 (기존 키 사용)
     const buttons = modal.querySelectorAll('.shortcut-modal-buttons .btn');
     if (buttons.length >= 2) {
         buttons[0].textContent = lang.cancel || '취소';
@@ -978,13 +986,7 @@ function openShortcutModal() {
     }
 
     modal.classList.add('show');
-
-    setTimeout(() => {
-        const nameInput = document.getElementById('shortcutNameInput');
-        if (nameInput) {
-            nameInput.focus();
-        }
-    }, 100);
+    setTimeout(() => nameInput?.focus(), 100);
 }
 
 // 바로가기 추가 모달을 닫는 함수
@@ -1002,12 +1004,14 @@ function saveShortcut() {
     const url = document.getElementById('shortcutUrlInput').value.trim();
     
     if (!name || !url) {
-        alert('이름과 URL을 모두 입력해주세요.');
+        // 🔥 하드코딩된 alert를 showMessage로 변경
+        showMessage('fillAllFields', 'error', { translate: true });
         return;
     }
     
     if (shortcuts.length >= 5) {
-        alert('바로가기는 최대 5개까지만 추가할 수 있습니다.');
+        // 🔥 하드코딩된 alert를 showMessage로 변경
+        showMessage('maxShortcuts', 'error', { translate: true });
         return;
     }
     
