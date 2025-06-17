@@ -174,11 +174,17 @@ function updateSortMethodLabels() {
     
     Array.from(sortSelect.options).forEach(option => {
         const value = option.value;
+        let newText = '';
         
         if (currentSite === 'reddit' && lang.sortOptions?.reddit?.[value]) {
-            option.textContent = lang.sortOptions.reddit[value];
+            newText = lang.sortOptions.reddit[value];
         } else if (lang.sortOptions?.other?.[value]) {
-            option.textContent = lang.sortOptions.other[value];
+            newText = lang.sortOptions.other[value];
+        }
+        
+        if (newText) {
+            option.textContent = newText;
+            console.log(`✅ 정렬 옵션 업데이트: ${value} = ${newText}`);
         }
     });
     
@@ -198,6 +204,7 @@ function updateTimeFilterLabels() {
         const value = option.value;
         if (lang.timeFilterLabels[value]) {
             option.textContent = lang.timeFilterLabels[value];
+            console.log(`✅ 시간 필터 업데이트: ${value} = ${lang.timeFilterLabels[value]}`);
         }
     });
     
@@ -208,7 +215,9 @@ function updateTimeFilterLabels() {
 function updateLabels() {
     const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
     
-    // 🔥 기본 UI 요소들
+    console.log(`🔄 언어 업데이트: ${currentLanguage}`, lang);
+    
+    // ✅ 기본 UI 요소들
     const elements = [
         { id: 'crawlBtn', prop: 'textContent', value: lang.start },
         { id: 'cancelBtn', prop: 'textContent', value: lang.cancel },
@@ -217,33 +226,44 @@ function updateLabels() {
         { id: 'boardInput', prop: 'placeholder', value: lang.boardPlaceholder }
     ];
     
-    // 🔥 폼 라벨들 (새로 추가)
-    const labelElements = [
-        { selector: 'label[for="minViews"]', value: lang.labels?.minViews },
-        { selector: 'label[for="minRecommend"]', value: lang.labels?.minRecommend },
-        { selector: 'label[for="minComments"]', value: lang.labels?.minComments },
-        { selector: 'label[for="startRank"]', value: lang.labels?.startRank },
-        { selector: 'label[for="endRank"]', value: lang.labels?.endRank },
-        { selector: 'label[for="sortMethod"]', value: lang.labels?.sortMethod },
-        { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod },
-        { selector: '.advanced-search label', value: lang.labels?.advancedSearch }
+    // ✅ 폼 라벨들 - 한국어로 표시되고 있는 부분들
+    const labelSelectors = [
+        { selector: 'label[for="minViews"]', key: 'labels.minViews' },
+        { selector: 'label[for="minRecommend"]', key: 'labels.minRecommend' },
+        { selector: 'label[for="minComments"]', key: 'labels.minComments' },
+        { selector: 'label[for="startRank"]', key: 'labels.startRank' },
+        { selector: 'label[for="endRank"]', key: 'labels.endRank' },
+        { selector: 'label[for="sortMethod"]', key: 'labels.sortMethod' },
+        { selector: 'label[for="timePeriod"]', key: 'labels.timePeriod' }
     ];
     
     // 기본 요소들 업데이트
     elements.forEach(({ id, prop, value }) => {
-        const element = safeGetElement(id);
-        if (element && value) element[prop] = value;
+        const element = document.getElementById(id);
+        if (element && value) {
+            element[prop] = value;
+            console.log(`✅ 업데이트: ${id} = ${value}`);
+        }
     });
     
-    // 라벨 요소들 업데이트
-    labelElements.forEach(({ selector, value }) => {
+    // ✅ 라벨 요소들 업데이트 (한국어로 보이는 부분들)
+    labelSelectors.forEach(({ selector, key }) => {
         const element = document.querySelector(selector);
-        if (element && value) element.textContent = value;
+        const value = getNestedValue(lang, key);
+        if (element && value) {
+            element.textContent = value;
+            console.log(`✅ 라벨 업데이트: ${selector} = ${value}`);
+        }
     });
     
-    // 드롭다운 옵션들 업데이트
+    // ✅ 드롭다운 옵션들 업데이트
     updateSortMethodLabels();
     updateTimeFilterLabels();
+    
+    // ✅ 현재 사이트의 보드 placeholder 업데이트
+    if (currentSite) {
+        updateBoardPlaceholder(currentSite);
+    }
 }
 
 // 언어 드롭다운을 표시/숨김하는 함수
@@ -259,6 +279,8 @@ function hideLanguageDropdown() {
 
 // 언어를 선택하고 UI를 업데이트하는 함수
 function selectLanguage(langCode, langName = null) {
+    console.log(`🌐 언어 변경 요청: ${langCode}`);
+    
     currentLanguage = langCode;
     
     if (!langName) {
@@ -282,17 +304,20 @@ function selectLanguage(langCode, langName = null) {
         }
     });
     
-    // 🔥 즉시 모든 라벨 업데이트
-    updateLabels();
-    
-    // 🔥 현재 선택된 사이트가 있으면 관련 옵션들도 다시 로드
-    if (currentSite) {
-        loadSiteSortOptions(currentSite);
-        updateBoardPlaceholder(currentSite);
-    }
+    // ✅ 즉시 모든 라벨 업데이트
+    setTimeout(() => {
+        updateLabels();
+        
+        // ✅ 현재 선택된 사이트가 있으면 관련 옵션들도 다시 로드
+        if (currentSite) {
+            loadSiteSortOptions(currentSite);
+            updateBoardPlaceholder(currentSite);
+        }
+        
+        console.log(`✅ 언어 변경 완료: ${langCode}`);
+    }, 50);
     
     hideLanguageDropdown();
-    console.log(`언어 변경됨: ${langCode} (${langName})`);
 }
 
 // ==================== 피드백 및 모달 관리 ====================
@@ -788,66 +813,60 @@ function setupEventListeners() {
 
 // DOM 로드 완료 시 초기화를 실행하는 이벤트 리스너
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 DOM 로딩 완료');
-    
-    // ✅ 브라우저 언어 자동 감지
-    const browserLanguage = detectBrowserLanguage();
-    currentLanguage = browserLanguage;
-    
-    const currentLangElement = document.getElementById('currentLang');
-    if (currentLangElement) {
-        const languageNames = {
-            'ko': '한국어',
-            'en': 'English', 
-            'ja': '日本語'
-        };
-        currentLangElement.textContent = languageNames[currentLanguage];
-    }
-    
-    // 언어 옵션 업데이트
-    document.querySelectorAll('.language-option').forEach(option => {
-        option.classList.remove('active');
-    });
-    
-    const activeOption = document.querySelector(`[onclick*="${currentLanguage}"]`);
-    if (activeOption) {
-        activeOption.classList.add('active');
-    }
-    
-    // ✅ 언어팩 확인 후 업데이트
-    if (window.languages && window.languages[currentLanguage]) {
-        updateLabels();
-    } else {
-        console.warn('언어팩이 로드되지 않았습니다');
-        setTimeout(() => {
-            if (window.languages && window.languages[currentLanguage]) {
-                updateLabels();
-            }
-        }, 100);
-    }
-    
-    // 나머지 초기화...
-    initializeLemmyVariables();
-    initializeDefaultShortcuts();
-    setupEventListeners();
-    initializeDateInputs();
-    loadShortcuts();
+   console.log('📄 DOM 로딩 완료');
+   
+   // ✅ 기본 언어 설정 개선
+   currentLanguage = 'en';
 
-    const logoImage = document.querySelector('.logo-image');
-    if (logoImage) {
-        logoImage.addEventListener('click', function() {
-            location.reload();
-        });
-    }
-    
-    console.log(`PickPost 시작, 감지된 언어: ${currentLanguage}, API 설정:`, { API_BASE_URL, WS_BASE_URL });
-    
-    if (window.initializeFeedbackSystem) {
-        window.initializeFeedbackSystem();
-    }
-    
-    window.dispatchEvent(new Event('PickPostReady'));
+   const currentLangElement = document.getElementById('currentLang');
+   if (currentLangElement) {
+       currentLangElement.textContent = 'English';
+   }
+   
+   document.querySelectorAll('.language-option').forEach(option => {
+       option.classList.remove('active');
+   });
+   
+   const enOption = document.querySelector('[onclick*="en"]');
+   if (enOption) {
+       enOption.classList.add('active');
+   }
+   
+   // ✅ 언어팩 확인 후 업데이트
+   if (window.languages && window.languages.en) {
+       updateLabels();
+   } else {
+       console.warn('언어팩이 로드되지 않았습니다');
+       // 언어팩 로드 대기
+       setTimeout(() => {
+           if (window.languages && window.languages.en) {
+               updateLabels();
+           }
+       }, 100);
+   }
+   
+   initializeLemmyVariables();
+   initializeDefaultShortcuts();
+   setupEventListeners();
+   initializeDateInputs();
+   loadShortcuts();
+
+   const logoImage = document.querySelector('.logo-image');
+   if (logoImage) {
+       logoImage.addEventListener('click', function() {
+           location.reload();
+       });
+   }
+   
+   console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
+   
+   if (window.initializeFeedbackSystem) {
+       window.initializeFeedbackSystem();
+   }
+   
+   window.dispatchEvent(new Event('PickPostReady'));
 });
+
 // ESC 키로 모달을 닫는 이벤트 리스너
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
