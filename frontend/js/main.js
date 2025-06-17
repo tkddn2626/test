@@ -3641,6 +3641,9 @@ window.selectSiteAutocompleteItem = selectSiteAutocompleteItem;
 //  selectSite 함수 전역 노출
 window.selectSite = selectSite;
 window.removeShortcut = removeShortcut;
+window.displayResults = displayResults;
+window.enableDownloadButtons = enableDownloadButtons;
+window.showMessage = showMessage;
 
 // ========================================
 // 전역 변수들을 다른 파일에서 접근 가능하게 노출
