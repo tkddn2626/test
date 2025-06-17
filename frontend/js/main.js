@@ -830,22 +830,58 @@ function setupEventListeners() {
 
 // DOM 로드 완료 시 초기화를 실행하는 이벤트 리스너
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 DOM 로딩 완료');
-    
-    // 언어팩 로드 대기
-    if (window.languages) {
-        initializeApp();
-    } else {
-        window.addEventListener('languagePackLoaded', initializeApp);
-        // 타임아웃 설정으로 안전장치 추가
-        setTimeout(() => {
-            if (!window.languages) {
-                console.error('언어팩 로드 실패 - 기본값 사용');
-                window.languages = { en: { start: 'Start Crawling' } };
-            }
-            initializeApp();
-        }, 1000);
-    }
+   console.log('📄 DOM 로딩 완료');
+   
+   // ✅ 기본 언어 설정 개선
+   currentLanguage = 'en';
+
+   const currentLangElement = document.getElementById('currentLang');
+   if (currentLangElement) {
+       currentLangElement.textContent = 'English';
+   }
+   
+   document.querySelectorAll('.language-option').forEach(option => {
+       option.classList.remove('active');
+   });
+   
+   const enOption = document.querySelector('[onclick*="en"]');
+   if (enOption) {
+       enOption.classList.add('active');
+   }
+   
+   // ✅ 언어팩 확인 후 업데이트
+   if (window.languages && window.languages.en) {
+       updateLabels();
+   } else {
+       console.warn('언어팩이 로드되지 않았습니다');
+       // 언어팩 로드 대기
+       setTimeout(() => {
+           if (window.languages && window.languages.en) {
+               updateLabels();
+           }
+       }, 100);
+   }
+   
+   initializeLemmyVariables();
+   initializeDefaultShortcuts();
+   setupEventListeners();
+   initializeDateInputs();
+   loadShortcuts();
+
+   const logoImage = document.querySelector('.logo-image');
+   if (logoImage) {
+       logoImage.addEventListener('click', function() {
+           location.reload();
+       });
+   }
+   
+   console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
+   
+   if (window.initializeFeedbackSystem) {
+       window.initializeFeedbackSystem();
+   }
+   
+   window.dispatchEvent(new Event('PickPostReady'));
 });
 
 // ESC 키로 모달을 닫는 이벤트 리스너
