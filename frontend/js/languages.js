@@ -1019,42 +1019,43 @@ const policies = {
 // ==================== 유틸리티 함수 ====================
 
 // 메시지 템플릿 처리 함수
-function getLocalizedMessage(messageKey, templateData = {}, language = null) {
-   const lang = language || currentLanguage || 'en';
-   const languagePack = window.languages[lang] || window.languages.en;
-   
-   let template = '';
-   
-   // 키 경로 탐색 (예: "crawlingProgress.site_detecting")
-   const keyParts = messageKey.split('.');
-   let current = languagePack;
-   
-   for (const part of keyParts) {
-       if (current && current[part]) {
-           current = current[part];
-       } else {
-           console.warn(`Missing translation key: ${messageKey} for language: ${lang}`);
-           // 영어 폴백
-           if (lang !== 'en') {
-               return getLocalizedMessage(messageKey, templateData, 'en');
-           }
-           return messageKey; // 최종 폴백
-       }
-   }
-   
-   template = current;
-   
-   // 템플릿 변수 치환
-   if (templateData && typeof templateData === 'object') {
-       Object.keys(templateData).forEach(key => {
-           const placeholder = new RegExp(`\\{${key}\\}`, 'g');
-           template = template.replace(placeholder, templateData[key] || '');
-       });
-   }
-   
-   return template;
+function getLocalizedMessage(messageKey, templateData = {}) {
+    try {
+        // ✅ 현재 언어가 설정되지 않았으면 브라우저 언어 감지
+        if (!window.currentLanguage) {
+            window.currentLanguage = detectBrowserLanguage();
+        }
+        
+        const lang = window.languages[window.currentLanguage || 'en'] || window.languages.en;
+        
+        const keyParts = messageKey.split('.');
+        let current = lang;
+        
+        for (const part of keyParts) {
+            if (current && current[part]) {
+                current = current[part];
+            } else {
+                console.warn(`Missing translation key: ${messageKey}`);
+                return messageKey;
+            }
+        }
+        
+        let message = current;
+        
+        // 템플릿 변수 치환
+        if (templateData && typeof templateData === 'object') {
+            Object.keys(templateData).forEach(key => {
+                const placeholder = new RegExp(`\\{${key}\\}`, 'g');
+                message = message.replace(placeholder, templateData[key] || '');
+            });
+        }
+        
+        return message;
+    } catch (error) {
+        console.error('언어 메시지 처리 오류:', error);
+        return messageKey;
+    }
 }
-
 // 진행률 메시지 생성 함수
 function createProgressMessage(statusKey, statusData = {}) {
    return getLocalizedMessage(`crawlingProgress.${statusKey}`, statusData);
