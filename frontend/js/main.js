@@ -790,174 +790,56 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', function() {
    console.log('📄 DOM 로딩 완료');
    
-   try {
-       // ==================== 1. 언어 설정 ====================
-       // 기본 언어를 영어로 설정
-       currentLanguage = 'en';
+   // ✅ 기본 언어 설정 개선
+   currentLanguage = 'en';
 
-       const currentLangElement = document.getElementById('currentLang');
-       if (currentLangElement) {
-           currentLangElement.textContent = 'English';
-       }
-       
-       // 언어 옵션 활성화 상태 초기화
-       document.querySelectorAll('.language-option').forEach(option => {
-           option.classList.remove('active');
-       });
-       
-       const enOption = document.querySelector('[onclick*="en"]');
-       if (enOption) {
-           enOption.classList.add('active');
-       }
-       
-       // ==================== 2. 언어팩 로드 및 라벨 업데이트 ====================
-       // 언어팩 확인 후 즉시 라벨 업데이트
-       if (window.languages && window.languages.en) {
-           console.log('✅ 언어팩 확인됨, 라벨 업데이트 중...');
-           updateLabels();
-       } else {
-           console.warn('⚠️ 언어팩이 아직 로드되지 않았습니다. 재시도 중...');
-           // 언어팩 로드 대기 후 재시도
-           let retryCount = 0;
-           const maxRetries = 10;
-           
-           const checkLanguagePack = setInterval(() => {
-               retryCount++;
-               
-               if (window.languages && window.languages.en) {
-                   console.log('✅ 언어팩 로드 확인, 라벨 업데이트 실행');
-                   updateLabels();
-                   clearInterval(checkLanguagePack);
-               } else if (retryCount >= maxRetries) {
-                   console.error('❌ 언어팩 로드 실패, 기본값 사용');
-                   clearInterval(checkLanguagePack);
-                   // 기본 영어 라벨로 폴백
-                   initializeFallbackLabels();
-               }
-           }, 100);
-       }
-       
-       // ==================== 3. 전역 변수 초기화 ====================
-       console.log('🔧 전역 변수 초기화 중...');
-       initializeLemmyVariables();
-       
-       // 크롤링 상태 초기화
-       isLoading = false;
-       currentSite = null;
-       searchInitiated = false;
-       currentSocket = null;
-       crawlResults = [];
-       currentCrawlId = null;
-       crawlStartTime = null;
-       
-       // 자동완성 관련 변수 초기화
-       autocompleteData = [];
-       siteAutocompleteData = [];
-       highlightIndex = -1;
-       siteHighlightIndex = -1;
-       isMouseDownOnAutocomplete = false;
-       isProgrammaticInput = false;
-       
-       // ==================== 4. 바로가기 시스템 초기화 ====================
-       console.log('📌 바로가기 시스템 초기화 중...');
-       try {
-           initializeDefaultShortcuts();
-           loadShortcuts();
-       } catch (error) {
-           console.error('바로가기 시스템 초기화 오류:', error);
-       }
-       
-       // ==================== 5. 이벤트 리스너 설정 ====================
-       console.log('🎯 이벤트 리스너 설정 중...');
-       try {
-           setupEventListeners();
-       } catch (error) {
-           console.error('이벤트 리스너 설정 오류:', error);
-           // 핵심 이벤트 리스너들만 개별적으로 설정 시도
-           setupCriticalEventListeners();
-       }
-       
-       // ==================== 6. 날짜 입력 초기화 ====================
-       console.log('📅 날짜 입력 초기화 중...');
-       try {
-           initializeDateInputs();
-       } catch (error) {
-           console.error('날짜 입력 초기화 오류:', error);
-       }
-       
-       // ==================== 7. 로고 클릭 이벤트 설정 ====================
-       const logoImage = document.querySelector('.logo-image');
-       if (logoImage) {
-           logoImage.addEventListener('click', function() {
-               location.reload();
-           });
-           logoImage.style.cursor = 'pointer';
-       }
-       
-       // ==================== 8. 피드백 시스템 초기화 ====================
-       if (typeof window.initializeFeedbackSystem === 'function') {
-           try {
-               window.initializeFeedbackSystem();
-               console.log('✅ 피드백 시스템 초기화 완료');
-           } catch (error) {
-               console.warn('⚠️ 피드백 시스템 초기화 실패:', error);
-           }
-       }
-       
-       // ==================== 9. UI 상태 초기화 ====================
-       console.log('🎨 UI 상태 초기화 중...');
-       
-       // 진행률 숨김
-       hideProgress();
-       
-       // 다운로드 버튼 숨김
-       const downloadBtn = document.getElementById('downloadBtn');
-       if (downloadBtn) {
-           downloadBtn.style.display = 'none';
-       }
-       
-       // 취소 버튼 숨김
-       const cancelBtn = document.getElementById('cancelBtn');
-       if (cancelBtn) {
-           cancelBtn.style.display = 'none';
-       }
-       
-       // 크롤링 버튼 상태 초기화
-       updateCrawlButton();
-       
-       // ==================== 10. 개발 모드 설정 ====================
-       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-           console.log('🔧 개발 모드 감지됨');
-           window.PickPostDebug = {
-               currentLanguage: () => currentLanguage,
-               currentSite: () => currentSite,
-               crawlResults: () => crawlResults,
-               testTranslation: (key) => getLocalizedMessage(key),
-               showAllLanguages: () => Object.keys(window.languages)
-           };
-       }
-       
-       // ==================== 11. 완료 이벤트 발송 ====================
-       console.log('🚀 PickPost 초기화 완료');
-       window.dispatchEvent(new Event('PickPostReady'));
-       
-       // API 설정 로깅
-       console.log('🌐 API 설정:', { API_BASE_URL, WS_BASE_URL });
-       
-       // 브라우저 호환성 체크
-       checkBrowserCompatibility();
-       
-   } catch (error) {
-       console.error('❌ DOM 초기화 중 치명적 오류:', error);
-       
-       // 오류 복구 시도
-       try {
-           showMessage('페이지 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
-       } catch (msgError) {
-           // 메시지 표시마저 실패하면 alert 사용
-           alert('페이지 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.');
-       }
+   const currentLangElement = document.getElementById('currentLang');
+   if (currentLangElement) {
+       currentLangElement.textContent = 'English';
    }
+   
+   document.querySelectorAll('.language-option').forEach(option => {
+       option.classList.remove('active');
+   });
+   
+   const enOption = document.querySelector('[onclick*="en"]');
+   if (enOption) {
+       enOption.classList.add('active');
+   }
+   
+   // ✅ 언어팩 확인 후 업데이트
+   if (window.languages && window.languages.en) {
+       updateLabels();
+   } else {
+       console.warn('언어팩이 로드되지 않았습니다');
+       // 언어팩 로드 대기
+       setTimeout(() => {
+           if (window.languages && window.languages.en) {
+               updateLabels();
+           }
+       }, 100);
+   }
+   
+   initializeLemmyVariables();
+   initializeDefaultShortcuts();
+   setupEventListeners();
+   initializeDateInputs();
+   loadShortcuts();
+
+   const logoImage = document.querySelector('.logo-image');
+   if (logoImage) {
+       logoImage.addEventListener('click', function() {
+           location.reload();
+       });
+   }
+   
+   console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
+   
+   if (window.initializeFeedbackSystem) {
+       window.initializeFeedbackSystem();
+   }
+   
+   window.dispatchEvent(new Event('PickPostReady'));
 });
 
 // ESC 키로 모달을 닫는 이벤트 리스너
