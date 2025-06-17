@@ -211,6 +211,77 @@ function updateTimeFilterLabels() {
     timePeriodSelect.value = currentValue;
 }
 
+function updateLabels() {
+    const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
+    
+    console.log(`🔄 언어 업데이트: ${currentLanguage}`, lang);
+    
+    // ✅ 기본 UI 요소들
+    const elements = [
+        { id: 'crawlBtn', prop: 'textContent', value: lang.start },
+        { id: 'cancelBtn', prop: 'textContent', value: lang.cancel },
+        { id: 'downloadBtn', prop: 'textContent', value: lang.download },
+        { id: 'siteInput', prop: 'placeholder', value: lang.sitePlaceholder },
+        { id: 'boardInput', prop: 'placeholder', value: lang.boardPlaceholder }
+    ];
+    
+    // ✅ 폼 라벨들 - 한국어로 표시되고 있는 부분들
+    const labelElements = [
+        { selector: 'label[for="minViews"]', value: lang.labels?.minViews },
+        { selector: 'label[for="minRecommend"]', value: lang.labels?.minRecommend },
+        { selector: 'label[for="minComments"]', value: lang.labels?.minComments },
+        { selector: 'label[for="startRank"]', value: lang.labels?.startRank },
+        { selector: 'label[for="endRank"]', value: lang.labels?.endRank },
+        { selector: 'label[for="sortMethod"]', value: lang.labels?.sortMethod },
+        { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod }
+    ];
+    
+    const additionalLabels = [
+        { selector: '#sortMethodLabel', value: lang.labels?.sortMethod },
+        { selector: '#timePeriodLabel', value: lang.labels?.timePeriod },
+        { selector: '#advancedSearchLabel', value: lang.labels?.advancedSearch },
+        { selector: '#startRankAdvLabel', value: lang.labels?.startRank },
+        { selector: '#endRankAdvLabel', value: lang.labels?.endRank },
+        { selector: '#startDateLabel', value: lang.labels?.startDate + ':' },
+        { selector: '#endDateLabel', value: lang.labels?.endDate + ':' }
+    ];
+    
+    additionalLabels.forEach(({ selector, value }) => {
+        const element = document.querySelector(selector);
+        if (element && value) {
+            element.textContent = value;
+        }
+    });
+
+    // 기본 요소들 업데이트
+    elements.forEach(({ id, prop, value }) => {
+        const element = document.getElementById(id);
+        if (element && value) {
+            element[prop] = value;
+            console.log(`✅ 업데이트: ${id} = ${value}`);
+        }
+    });
+    
+    
+    // ✅ 라벨 요소들 업데이트 (한국어로 보이는 부분들)
+    labelElements.forEach(({ selector, value }) => {
+        const element = document.querySelector(selector);
+        if (element && value) {
+            element.textContent = value;
+            console.log(`✅ 라벨 업데이트: ${selector} = ${value}`);
+        }
+    });
+    
+    // ✅ 드롭다운 옵션들 업데이트
+    updateSortMethodLabels();
+    updateTimeFilterLabels();
+    
+    // ✅ 현재 사이트의 보드 placeholder 업데이트
+    if (currentSite) {
+        updateBoardPlaceholder(currentSite);
+    }
+}
+
 // Footer 요소들을 번역하는 함수
 function updateFooterLabels() {
     const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
