@@ -227,14 +227,14 @@ function updateLabels() {
     ];
     
     // ✅ 폼 라벨들 - 한국어로 표시되고 있는 부분들
-    const labelSelectors = [
-        { selector: 'label[for="minViews"]', key: 'labels.minViews' },
-        { selector: 'label[for="minRecommend"]', key: 'labels.minRecommend' },
-        { selector: 'label[for="minComments"]', key: 'labels.minComments' },
-        { selector: 'label[for="startRank"]', key: 'labels.startRank' },
-        { selector: 'label[for="endRank"]', key: 'labels.endRank' },
-        { selector: 'label[for="sortMethod"]', key: 'labels.sortMethod' },
-        { selector: 'label[for="timePeriod"]', key: 'labels.timePeriod' }
+    const labelElements = [
+        { selector: 'label[for="minViews"]', value: lang.labels?.minViews },
+        { selector: 'label[for="minRecommend"]', value: lang.labels?.minRecommend },
+        { selector: 'label[for="minComments"]', value: lang.labels?.minComments },
+        { selector: 'label[for="startRank"]', value: lang.labels?.startRank },
+        { selector: 'label[for="endRank"]', value: lang.labels?.endRank },
+        { selector: 'label[for="sortMethod"]', value: lang.labels?.sortMethod },
+        { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod }
     ];
     
     // 기본 요소들 업데이트
@@ -247,9 +247,8 @@ function updateLabels() {
     });
     
     // ✅ 라벨 요소들 업데이트 (한국어로 보이는 부분들)
-    labelSelectors.forEach(({ selector, key }) => {
+    labelElements.forEach(({ selector, value }) => {
         const element = document.querySelector(selector);
-        const value = getNestedValue(lang, key);
         if (element && value) {
             element.textContent = value;
             console.log(`✅ 라벨 업데이트: ${selector} = ${value}`);
