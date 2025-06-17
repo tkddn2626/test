@@ -163,22 +163,87 @@ function getLabels() {
     return window.languages[currentLanguage] || window.languages.ko;
 }
 
+// 정렬 방법 라벨 업데이트
+function updateSortMethodLabels() {
+    const sortSelect = document.getElementById('sortMethod');
+    const lang = window.languages[currentLanguage];
+    
+    if (!sortSelect || !lang) return;
+    
+    const currentValue = sortSelect.value;
+    
+    Array.from(sortSelect.options).forEach(option => {
+        const value = option.value;
+        
+        if (currentSite === 'reddit' && lang.sortOptions?.reddit?.[value]) {
+            option.textContent = lang.sortOptions.reddit[value];
+        } else if (lang.sortOptions?.other?.[value]) {
+            option.textContent = lang.sortOptions.other[value];
+        }
+    });
+    
+    sortSelect.value = currentValue;
+}
+
+// 시간 필터 라벨 업데이트
+function updateTimeFilterLabels() {
+    const timePeriodSelect = document.getElementById('timePeriod');
+    const lang = window.languages[currentLanguage];
+    
+    if (!timePeriodSelect || !lang.timeFilterLabels) return;
+    
+    const currentValue = timePeriodSelect.value;
+    
+    Array.from(timePeriodSelect.options).forEach(option => {
+        const value = option.value;
+        if (lang.timeFilterLabels[value]) {
+            option.textContent = lang.timeFilterLabels[value];
+        }
+    });
+    
+    timePeriodSelect.value = currentValue;
+}
+
 // 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
 function updateLabels() {
     const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
     
-    // 안전한 요소 업데이트
+    // 🔥 기본 UI 요소들
     const elements = [
-        { id: 'crawlBtn', prop: 'textContent', value: lang.start || 'Start Crawling' },
-        { id: 'cancelBtn', prop: 'textContent', value: lang.cancel || 'Cancel' },
-        { id: 'downloadBtn', prop: 'textContent', value: lang.download || 'Download' },
-        { id: 'siteInput', prop: 'placeholder', value: lang.sitePlaceholder || 'Search for a site...' }
+        { id: 'crawlBtn', prop: 'textContent', value: lang.start },
+        { id: 'cancelBtn', prop: 'textContent', value: lang.cancel },
+        { id: 'downloadBtn', prop: 'textContent', value: lang.download },
+        { id: 'siteInput', prop: 'placeholder', value: lang.sitePlaceholder },
+        { id: 'boardInput', prop: 'placeholder', value: lang.boardPlaceholder }
     ];
     
+    // 🔥 폼 라벨들 (새로 추가)
+    const labelElements = [
+        { selector: 'label[for="minViews"]', value: lang.labels?.minViews },
+        { selector: 'label[for="minRecommend"]', value: lang.labels?.minRecommend },
+        { selector: 'label[for="minComments"]', value: lang.labels?.minComments },
+        { selector: 'label[for="startRank"]', value: lang.labels?.startRank },
+        { selector: 'label[for="endRank"]', value: lang.labels?.endRank },
+        { selector: 'label[for="sortMethod"]', value: lang.labels?.sortMethod },
+        { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod },
+        { selector: '.advanced-search label', value: lang.labels?.advancedSearch }
+    ];
+    
+    // 기본 요소들 업데이트
     elements.forEach(({ id, prop, value }) => {
         const element = safeGetElement(id);
-        if (element) element[prop] = value;
+        if (element && value) element[prop] = value;
     });
+    
+    // 라벨 요소들 업데이트
+    labelElements.forEach(({ selector, value }) => {
+        const element = document.querySelector(selector);
+        if (element && value) element.textContent = value;
+    });
+    
+    // 드롭다운 옵션들 업데이트
+    updateSortMethodLabels();
+    updateTimeFilterLabels();
 }
 
 // 언어 드롭다운을 표시/숨김하는 함수
@@ -196,7 +261,6 @@ function hideLanguageDropdown() {
 function selectLanguage(langCode, langName = null) {
     currentLanguage = langCode;
     
-    // langName이 제공되지 않은 경우 기본값 설정
     if (!langName) {
         const languageNames = {
             'ko': '한국어',
@@ -206,27 +270,30 @@ function selectLanguage(langCode, langName = null) {
         langName = languageNames[langCode] || langCode;
     }
     
-    // 안전한 DOM 요소 접근
     const currentLangElement = document.getElementById('currentLang');
     if (currentLangElement) {
         currentLangElement.textContent = langName;
     }
     
-    // 언어 옵션 활성화 상태 업데이트
     document.querySelectorAll('.language-option').forEach(option => {
         option.classList.remove('active');
-        // onclick 속성에서 언어 코드를 찾아서 매칭
         if (option.getAttribute('onclick') && option.getAttribute('onclick').includes(langCode)) {
             option.classList.add('active');
         }
     });
     
-    updateLabels(window.languages[currentLanguage]);
-    hideLanguageDropdown();
+    // 🔥 즉시 모든 라벨 업데이트
+    updateLabels();
     
+    // 🔥 현재 선택된 사이트가 있으면 관련 옵션들도 다시 로드
+    if (currentSite) {
+        loadSiteSortOptions(currentSite);
+        updateBoardPlaceholder(currentSite);
+    }
+    
+    hideLanguageDropdown();
     console.log(`언어 변경됨: ${langCode} (${langName})`);
 }
-
 
 // ==================== 피드백 및 모달 관리 ====================
 // 피드백 모달을 여는 함수
@@ -721,53 +788,178 @@ function setupEventListeners() {
 
 // DOM 로드 완료 시 초기화를 실행하는 이벤트 리스너
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 DOM 로딩 완료');
-    
-    // ✅ 기본 언어 설정 개선
-    currentLanguage = 'en';
+   console.log('📄 DOM 로딩 완료');
+   
+   try {
+       // ==================== 1. 언어 설정 ====================
+       // 기본 언어를 영어로 설정
+       currentLanguage = 'en';
 
-    const currentLangElement = document.getElementById('currentLang');
-    if (currentLangElement) {
-        currentLangElement.textContent = 'English';
-    }
-    
-    document.querySelectorAll('.language-option').forEach(option => {
-        option.classList.remove('active');
-    });
-    
-    const enOption = document.querySelector('[onclick*="en"]');
-    if (enOption) {
-        enOption.classList.add('active');
-    }
-    
-    // ✅ 언어팩 확인 후 업데이트
-    if (window.languages && window.languages.en) {
-        updateLabels();
-    } else {
-        console.warn('언어팩이 로드되지 않았습니다');
-    }
-    initializeLemmyVariables();
-    initializeDefaultShortcuts();
-    setupEventListeners();
-    initializeDateInputs();
-    loadShortcuts();
-
-    const logoImage = document.querySelector('.logo-image');
-    if (logoImage) {
-        logoImage.addEventListener('click', function() {
-            location.reload();
-        });
-    }
-    
-    console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
-    
-    if (window.initializeFeedbackSystem) {
-        window.initializeFeedbackSystem();
-    }
-    
-    window.dispatchEvent(new Event('PickPostReady'));
-    
+       const currentLangElement = document.getElementById('currentLang');
+       if (currentLangElement) {
+           currentLangElement.textContent = 'English';
+       }
+       
+       // 언어 옵션 활성화 상태 초기화
+       document.querySelectorAll('.language-option').forEach(option => {
+           option.classList.remove('active');
+       });
+       
+       const enOption = document.querySelector('[onclick*="en"]');
+       if (enOption) {
+           enOption.classList.add('active');
+       }
+       
+       // ==================== 2. 언어팩 로드 및 라벨 업데이트 ====================
+       // 언어팩 확인 후 즉시 라벨 업데이트
+       if (window.languages && window.languages.en) {
+           console.log('✅ 언어팩 확인됨, 라벨 업데이트 중...');
+           updateLabels();
+       } else {
+           console.warn('⚠️ 언어팩이 아직 로드되지 않았습니다. 재시도 중...');
+           // 언어팩 로드 대기 후 재시도
+           let retryCount = 0;
+           const maxRetries = 10;
+           
+           const checkLanguagePack = setInterval(() => {
+               retryCount++;
+               
+               if (window.languages && window.languages.en) {
+                   console.log('✅ 언어팩 로드 확인, 라벨 업데이트 실행');
+                   updateLabels();
+                   clearInterval(checkLanguagePack);
+               } else if (retryCount >= maxRetries) {
+                   console.error('❌ 언어팩 로드 실패, 기본값 사용');
+                   clearInterval(checkLanguagePack);
+                   // 기본 영어 라벨로 폴백
+                   initializeFallbackLabels();
+               }
+           }, 100);
+       }
+       
+       // ==================== 3. 전역 변수 초기화 ====================
+       console.log('🔧 전역 변수 초기화 중...');
+       initializeLemmyVariables();
+       
+       // 크롤링 상태 초기화
+       isLoading = false;
+       currentSite = null;
+       searchInitiated = false;
+       currentSocket = null;
+       crawlResults = [];
+       currentCrawlId = null;
+       crawlStartTime = null;
+       
+       // 자동완성 관련 변수 초기화
+       autocompleteData = [];
+       siteAutocompleteData = [];
+       highlightIndex = -1;
+       siteHighlightIndex = -1;
+       isMouseDownOnAutocomplete = false;
+       isProgrammaticInput = false;
+       
+       // ==================== 4. 바로가기 시스템 초기화 ====================
+       console.log('📌 바로가기 시스템 초기화 중...');
+       try {
+           initializeDefaultShortcuts();
+           loadShortcuts();
+       } catch (error) {
+           console.error('바로가기 시스템 초기화 오류:', error);
+       }
+       
+       // ==================== 5. 이벤트 리스너 설정 ====================
+       console.log('🎯 이벤트 리스너 설정 중...');
+       try {
+           setupEventListeners();
+       } catch (error) {
+           console.error('이벤트 리스너 설정 오류:', error);
+           // 핵심 이벤트 리스너들만 개별적으로 설정 시도
+           setupCriticalEventListeners();
+       }
+       
+       // ==================== 6. 날짜 입력 초기화 ====================
+       console.log('📅 날짜 입력 초기화 중...');
+       try {
+           initializeDateInputs();
+       } catch (error) {
+           console.error('날짜 입력 초기화 오류:', error);
+       }
+       
+       // ==================== 7. 로고 클릭 이벤트 설정 ====================
+       const logoImage = document.querySelector('.logo-image');
+       if (logoImage) {
+           logoImage.addEventListener('click', function() {
+               location.reload();
+           });
+           logoImage.style.cursor = 'pointer';
+       }
+       
+       // ==================== 8. 피드백 시스템 초기화 ====================
+       if (typeof window.initializeFeedbackSystem === 'function') {
+           try {
+               window.initializeFeedbackSystem();
+               console.log('✅ 피드백 시스템 초기화 완료');
+           } catch (error) {
+               console.warn('⚠️ 피드백 시스템 초기화 실패:', error);
+           }
+       }
+       
+       // ==================== 9. UI 상태 초기화 ====================
+       console.log('🎨 UI 상태 초기화 중...');
+       
+       // 진행률 숨김
+       hideProgress();
+       
+       // 다운로드 버튼 숨김
+       const downloadBtn = document.getElementById('downloadBtn');
+       if (downloadBtn) {
+           downloadBtn.style.display = 'none';
+       }
+       
+       // 취소 버튼 숨김
+       const cancelBtn = document.getElementById('cancelBtn');
+       if (cancelBtn) {
+           cancelBtn.style.display = 'none';
+       }
+       
+       // 크롤링 버튼 상태 초기화
+       updateCrawlButton();
+       
+       // ==================== 10. 개발 모드 설정 ====================
+       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+           console.log('🔧 개발 모드 감지됨');
+           window.PickPostDebug = {
+               currentLanguage: () => currentLanguage,
+               currentSite: () => currentSite,
+               crawlResults: () => crawlResults,
+               testTranslation: (key) => getLocalizedMessage(key),
+               showAllLanguages: () => Object.keys(window.languages)
+           };
+       }
+       
+       // ==================== 11. 완료 이벤트 발송 ====================
+       console.log('🚀 PickPost 초기화 완료');
+       window.dispatchEvent(new Event('PickPostReady'));
+       
+       // API 설정 로깅
+       console.log('🌐 API 설정:', { API_BASE_URL, WS_BASE_URL });
+       
+       // 브라우저 호환성 체크
+       checkBrowserCompatibility();
+       
+   } catch (error) {
+       console.error('❌ DOM 초기화 중 치명적 오류:', error);
+       
+       // 오류 복구 시도
+       try {
+           showMessage('페이지 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.', 'error');
+       } catch (msgError) {
+           // 메시지 표시마저 실패하면 alert 사용
+           alert('페이지 초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.');
+       }
+   }
 });
+
 // ESC 키로 모달을 닫는 이벤트 리스너
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
@@ -1854,35 +2046,28 @@ function showLemmyHelpContent() {
     
     boardSearchContainer.classList.add('dropdown-active');
     
-    // ✅ 안전한 접근으로 수정
-    const lemmyHelp = lang.lemmyHelp || {
-        title: 'Lemmy Community Format',
-        description: 'Enter community name in format: community@instance\nExample: technology@lemmy.world',
-        examples: {
-            technology: 'Technology discussions',
-            asklemmy: 'Ask the Lemmy community'
-        }
-    };
+    const title = lang.lemmyHelpTitle || 'Lemmy Community Format';
+    const description = lang.lemmyHelpDescription || 'Enter community@instance format';
     
     container.innerHTML = `
         <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
             <div style="flex: 1;">
-                <div style="font-weight: 500; color: #1a73e8;">${lemmyHelp.title}</div>
+                <div style="font-weight: 500; color: #1a73e8;">${title}</div>
                 <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
-                    ${lemmyHelp.description.replace(/\n/g, '<br>')}
+                    ${description.replace(/\n/g, '<br>')}
                 </div>
             </div>
         </div>
         <div class="autocomplete-item" onclick="setLemmyCommunity('technology@lemmy.world');">
             <div style="flex: 1;">
                 <div style="color: #1a73e8;">🔧 technology@lemmy.world</div>
-                <div style="font-size: 11px; color: #70757a;">${lemmyHelp.examples.technology}</div>
+                <div style="font-size: 11px; color: #70757a;">기술 관련 토론</div>
             </div>
         </div>
         <div class="autocomplete-item" onclick="setLemmyCommunity('asklemmy@lemmy.ml');">
             <div style="flex: 1;">
                 <div style="color: #1a73e8;">❓ asklemmy@lemmy.ml</div>
-                <div style="font-size: 11px; color: #70757a;">${lemmyHelp.examples.asklemmy}</div>
+                <div style="font-size: 11px; color: #70757a;">Lemmy 커뮤니티에 질문</div>
             </div>
         </div>
     `;
@@ -1907,7 +2092,8 @@ function updateCrawlButton() {
     let buttonText = lang.start || 'Start Crawling';
     
     if (!currentSite) {
-        buttonText = lang.crawlButtonMessages?.siteNotSelected || 'Select a site';
+        // 🔥 수정: 일관된 언어팩 접근
+        buttonText = lang.crawlButtonMessages?.siteNotSelected || lang.labels?.siteSelect || 'Select a site';
         isValid = false;
     } else if (!boardValue) {
         if (currentSite === 'universal') {
@@ -1919,44 +2105,11 @@ function updateCrawlButton() {
         }
         isValid = false;
     } else {
-        // ✅ 입력 검증 로직 수정
-        switch (currentSite) {
-            case 'universal':
-                isValid = boardValue.startsWith('http://') || 
-                         boardValue.startsWith('https://') ||
-                         (boardValue.includes('.') && boardValue.includes('/'));
-                if (!isValid) {
-                    buttonText = lang.crawlButtonMessages?.universalUrlError || 'Enter a valid URL';
-                }
-                break;
-            
-            case 'lemmy':
-                if (boardValue.includes('@') && boardValue.split('@').length === 2) {
-                    const [community, instance] = boardValue.split('@');
-                    isValid = community.length > 0 && instance.length > 0;
-                } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
-                    isValid = true;
-                } else if (boardValue.length > 2) {
-                    isValid = true;
-                    buttonText = `Try ${boardValue}@lemmy.world`;
-                } else {
-                    buttonText = lang.crawlButtonMessages?.lemmyFormatError || 'Format: community@lemmy.world';
-                    isValid = false;
-                }
-                break;
-                
-            case 'reddit':
-                if (boardValue.includes('reddit.com') && !boardValue.includes('/r/')) {
-                    buttonText = lang.crawlButtonMessages?.redditFormatError || 'Reddit format error';
-                    isValid = false;
-                } else {
-                    isValid = true;
-                }
-                break;
-                
-            default:
-                isValid = boardValue.length > 0;
-                break;
+        // 🔥 기존 검증 로직 유지하되 에러 메시지만 언어팩에서 가져오기
+        const validation = validateSiteInput(currentSite, boardValue, lang);
+        isValid = validation.isValid;
+        if (!isValid && validation.message) {
+            buttonText = validation.message;
         }
     }
     
@@ -2988,7 +3141,15 @@ function showMessage(message, type = 'info', options = {}) {
     try {
         const messageDiv = document.createElement('div');
         let displayMessage = message;
-        
+                
+        //언어팩인지 확인하고 번역
+        if (typeof message === 'string' && !message.includes(' ') && window.languages) {
+                    const translatedMessage = getLocalizedMessage(message, options.variables);
+                    if (translatedMessage !== message) {
+                        displayMessage = translatedMessage;
+                    }
+                }
+
         // 언어 키인 경우 번역
         if (options.translate && window.languages) {
             const lang = window.languages[currentLanguage] || window.languages.en;
