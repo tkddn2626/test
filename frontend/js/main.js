@@ -165,7 +165,7 @@ function getLabels() {
 // 정렬 방법 라벨 업데이트
 function updateSortMethodLabels() {
     const sortSelect = document.getElementById('sortMethod');
-    const lang = window.languages[currentLanguage];
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
     if (!sortSelect || !lang) return;
     
@@ -190,15 +190,17 @@ function updateSortMethodLabels() {
     sortSelect.value = currentValue;
 }
 
+
 // 시간 필터 라벨 업데이트
 function updateTimeFilterLabels() {
     const timePeriodSelect = document.getElementById('timePeriod');
-    const lang = window.languages[currentLanguage];
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
     if (!timePeriodSelect || !lang.timeFilterLabels) return;
     
     const currentValue = timePeriodSelect.value;
     
+    // 모든 옵션 업데이트
     Array.from(timePeriodSelect.options).forEach(option => {
         const value = option.value;
         if (lang.timeFilterLabels[value]) {
@@ -209,6 +211,7 @@ function updateTimeFilterLabels() {
     
     timePeriodSelect.value = currentValue;
 }
+
 
 function updateLabels() {
     const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
@@ -224,33 +227,25 @@ function updateLabels() {
         { id: 'boardInput', prop: 'placeholder', value: lang.boardPlaceholder }
     ];
     
-    // ✅ 폼 라벨들 - 한국어로 표시되고 있는 부분들
+    // ✅ 라벨 요소들 - ID 기반으로 직접 업데이트
     const labelElements = [
-        { selector: 'label[for="minViews"]', value: lang.labels?.minViews },
-        { selector: 'label[for="minRecommend"]', value: lang.labels?.minRecommend },
-        { selector: 'label[for="minComments"]', value: lang.labels?.minComments },
-        { selector: 'label[for="startRank"]', value: lang.labels?.startRank },
-        { selector: 'label[for="endRank"]', value: lang.labels?.endRank },
-        { selector: 'label[for="sortMethod"]', value: lang.labels?.sortMethod },
-        { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod }
+        { id: 'sortMethodLabel', value: lang.labels?.sortMethod },
+        { id: 'timePeriodLabel', value: lang.labels?.timePeriod },
+        { id: 'advancedSearchLabel', value: lang.labels?.advancedSearch },
+        { id: 'startRankLabel', value: lang.labels?.startRank },
+        { id: 'endRankLabel', value: lang.labels?.endRank },
+        { id: 'startRankAdvLabel', value: lang.labels?.startRank },
+        { id: 'endRankAdvLabel', value: lang.labels?.endRank },
+        { id: 'minViewsLabel', value: lang.labels?.minViews },
+        { id: 'minRecommendLabel', value: lang.labels?.minRecommend },
+        { id: 'minCommentsLabel', value: lang.labels?.minComments }
     ];
     
-    const additionalLabels = [
-        { selector: '#sortMethodLabel', value: lang.labels?.sortMethod },
-        { selector: '#timePeriodLabel', value: lang.labels?.timePeriod },
-        { selector: '#advancedSearchLabel', value: lang.labels?.advancedSearch },
-        { selector: '#startRankAdvLabel', value: lang.labels?.startRank },
-        { selector: '#endRankAdvLabel', value: lang.labels?.endRank },
-        { selector: '#startDateLabel', value: lang.labels?.startDate + ':' },
-        { selector: '#endDateLabel', value: lang.labels?.endDate + ':' }
+    // 날짜 라벨들 (콜론 포함)
+    const dateLabels = [
+        { id: 'startDateLabel', value: (lang.labels?.startDate || 'Start Date') + ':' },
+        { id: 'endDateLabel', value: (lang.labels?.endDate || 'End Date') + ':' }
     ];
-    
-    additionalLabels.forEach(({ selector, value }) => {
-        const element = document.querySelector(selector);
-        if (element && value) {
-            element.textContent = value;
-        }
-    });
 
     // 기본 요소들 업데이트
     elements.forEach(({ id, prop, value }) => {
@@ -261,13 +256,21 @@ function updateLabels() {
         }
     });
     
-    
-    // ✅ 라벨 요소들 업데이트 (한국어로 보이는 부분들)
-    labelElements.forEach(({ selector, value }) => {
-        const element = document.querySelector(selector);
+    // 라벨 요소들 업데이트
+    labelElements.forEach(({ id, value }) => {
+        const element = document.getElementById(id);
         if (element && value) {
             element.textContent = value;
-            console.log(`✅ 라벨 업데이트: ${selector} = ${value}`);
+            console.log(`✅ 라벨 업데이트: ${id} = ${value}`);
+        }
+    });
+    
+    // 날짜 라벨들 업데이트
+    dateLabels.forEach(({ id, value }) => {
+        const element = document.getElementById(id);
+        if (element && value) {
+            element.textContent = value;
+            console.log(`✅ 날짜 라벨 업데이트: ${id} = ${value}`);
         }
     });
     
@@ -275,11 +278,21 @@ function updateLabels() {
     updateSortMethodLabels();
     updateTimeFilterLabels();
     
+    // ✅ Footer 업데이트
+    updateFooterLabels();
+    
+    // ✅ 공지사항 버튼 업데이트
+    const announcementBtnText = document.getElementById('announcementBtnText');
+    if (announcementBtnText) {
+        announcementBtnText.textContent = lang.announcementBtnText || 'Announcements';
+    }
+    
     // ✅ 현재 사이트의 보드 placeholder 업데이트
     if (currentSite) {
         updateBoardPlaceholder(currentSite);
     }
 }
+
 
 // Footer 요소들을 번역하는 함수
 function updateFooterLabels() {
@@ -302,8 +315,18 @@ function updateFooterLabels() {
             console.log(`✅ Footer 업데이트: ${id} = ${lang[key]}`);
         }
     });
+    
+    // 언어 선택 버튼의 현재 언어 표시도 업데이트
+    const currentLangElement = document.getElementById('currentLang');
+    if (currentLangElement) {
+        const languageNames = {
+            'ko': '한국어',
+            'en': 'English', 
+            'ja': '日本語'
+        };
+        currentLangElement.textContent = languageNames[currentLanguage] || currentLanguage;
+    }
 }
-
 // 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
 function updateFooterLabels() {
     const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
@@ -882,7 +905,7 @@ function setupEventListeners() {
 document.addEventListener('DOMContentLoaded', function() {
    console.log('📄 DOM 로딩 완료');
    
-   // ✅ 기본 언어 설정 개선
+   // 🔥 기본 언어 설정 개선
    currentLanguage = 'en';
 
    const currentLangElement = document.getElementById('currentLang');
@@ -899,12 +922,11 @@ document.addEventListener('DOMContentLoaded', function() {
        enOption.classList.add('active');
    }
    
-   // ✅ 언어팩 확인 후 업데이트
+   // 🔥 언어팩 확인 후 모든 UI 업데이트
    if (window.languages && window.languages.en) {
-       updateLabels();
+       updateLabels(); // 이제 모든 번역이 포함됨
    } else {
        console.warn('언어팩이 로드되지 않았습니다');
-       // 언어팩 로드 대기
        setTimeout(() => {
            if (window.languages && window.languages.en) {
                updateLabels();
@@ -912,11 +934,12 @@ document.addEventListener('DOMContentLoaded', function() {
        }, 100);
    }
    
+   // 나머지 초기화...
    initializeLemmyVariables();
    initializeDefaultShortcuts();
    setupEventListeners();
    initializeDateInputs();
-   loadShortcuts();
+   loadShortcuts(); // 번역이 적용된 바로가기 로드
 
    const logoImage = document.querySelector('.logo-image');
    if (logoImage) {
@@ -983,7 +1006,7 @@ function initializeDefaultShortcuts() {
 // 저장된 바로가기들을 화면에 로드하는 함수
 function loadShortcuts() {
     const container = document.getElementById('siteSelection');
-    const lang = window.languages[currentLanguage];
+    const lang = window.languages[currentLanguage] || window.languages.en;
 
     const siteColors = {
         reddit: '#ff4500',
@@ -1012,7 +1035,7 @@ function loadShortcuts() {
     
     const addButton = shortcuts.length < 5 ? `
         <button class="site-btn add-shortcut-btn" onclick="openShortcutModal()">
-            ➕ ${lang.addShortcut || '추가'}
+            ➕ ${lang.addShortcut || 'Add'}
         </button>
     ` : '';
     
@@ -1027,30 +1050,30 @@ function openShortcutModal() {
         return;
     }
 
-    const lang = window.languages[currentLanguage];
+    const lang = window.languages[currentLanguage] || window.languages.en;
 
-    // 🔥 모달 제목 번역 (새 키 사용)
+    // 🔥 모달 제목 번역
     const header = modal.querySelector('.shortcut-modal-header');
     if (header) {
-        header.textContent = lang.shortcutModalTitle || '사이트 추가';
+        header.textContent = lang.shortcutModalTitle || 'Add Site';
     }
     
-    // 🔥 입력 필드 번역 (기존 키 사용)
+    // 🔥 입력 필드 플레이스홀더 번역
     const nameInput = document.getElementById('shortcutNameInput');
     const urlInput = document.getElementById('shortcutUrlInput');
     
     if (nameInput) {
-        nameInput.placeholder = lang.shortcutName || '바로가기 이름';
+        nameInput.placeholder = lang.shortcutName || 'Shortcut Name';
     }
     if (urlInput) {
-        urlInput.placeholder = lang.shortcutUrl || '사이트 URL';
+        urlInput.placeholder = lang.shortcutUrl || 'Site URL';
     }
     
-    // 🔥 버튼 텍스트 번역 (기존 키 사용)
+    // 🔥 버튼 텍스트 번역
     const buttons = modal.querySelectorAll('.shortcut-modal-buttons .btn');
     if (buttons.length >= 2) {
-        buttons[0].textContent = lang.cancel || '취소';
-        buttons[1].textContent = lang.save || '저장';
+        buttons[0].textContent = lang.cancel || 'Cancel';
+        buttons[1].textContent = lang.save || 'Save';
     }
 
     modal.classList.add('show');
@@ -1070,16 +1093,15 @@ function closeShortcutModal() {
 function saveShortcut() {
     const name = document.getElementById('shortcutNameInput').value.trim();
     const url = document.getElementById('shortcutUrlInput').value.trim();
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
     if (!name || !url) {
-        // 🔥 하드코딩된 alert를 showMessage로 변경
-        showMessage('fillAllFields', 'error', { translate: true });
+        showMessage(lang.fillAllFields || 'Please fill in both name and URL.', 'error');
         return;
     }
     
     if (shortcuts.length >= 5) {
-        // 🔥 하드코딩된 alert를 showMessage로 변경
-        showMessage('maxShortcuts', 'error', { translate: true });
+        showMessage(lang.maxShortcuts || 'You can add up to 5 shortcuts.', 'error');
         return;
     }
     
@@ -1090,6 +1112,7 @@ function saveShortcut() {
     loadShortcuts();
     closeShortcutModal();
 }
+
 
 // 바로가기를 삭제하는 함수
 function removeShortcut(index) {
@@ -3813,6 +3836,9 @@ window.selectLanguage = selectLanguage;
 window.validateSiteInput = validateSiteInput;
 window.showSiteSuggestions = showSiteSuggestions;
 window.showLemmyHelpContent = showLemmyHelpContent;
+window.updateTimeFilterLabels = updateTimeFilterLabels;
+window.updateSortMethodLabels = updateSortMethodLabels;
+window.updateFooterLabels = updateFooterLabels;
 
 // 자동완성 관련
 window.selectBBCSection = selectBBCSection;
