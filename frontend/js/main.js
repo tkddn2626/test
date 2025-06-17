@@ -2221,40 +2221,71 @@ async function startUnifiedCrawling(boardInput) {
 }
 
 // 🔥 통합 엔드포인트용 설정 생성
+// main.js의 buildCrawlConfig 함수 수정
 function buildCrawlConfig(boardInput) {
     const selectedLangs = getSelectedLanguages();
     const sort = safeGetValue('sortMethod', 'recent');
     const timeFilter = safeGetValue('timePeriod', 'day');
     const range = getSelectedRange();
     
-    return {
-        // 통합 엔드포인트용
+    // 기본 설정
+    const baseConfig = {
         input: boardInput,
         site: currentSite || 'auto',
-        
-        // 호환성을 위한 필드들
-        board: boardInput,  // 레거시 호환
-        
-        // 크롤링 옵션
+        board: boardInput,
         sort: sort,
         start: range.start,
         end: range.end,
-        start_index: range.start,  // 백엔드 호환
-        end_index: range.end,      // 백엔드 호환
+        start_index: range.start,
+        end_index: range.end,
         min_views: parseInt(safeGetValue('minViews', '0')),
         min_likes: parseInt(safeGetValue('minRecommend', '0')),
-        min_comments: parseInt(safeGetValue('minComments', '0')),
         time_filter: timeFilter,
         start_date: safeGetValue('startDate') || null,
         end_date: safeGetValue('endDate') || null,
-        
-        // 번역 옵션
         translate: selectedLangs.length > 0,
         target_languages: selectedLangs,
-        
-        // 언어 설정
         language: currentLanguage || 'en'
     };
+    
+    // 🔥 사이트별로 지원하지 않는 매개변수 제거
+    const siteSpecificConfigs = {
+        'lemmy': {
+            // Lemmy는 min_comments를 지원하지 않음
+            excludeParams: ['min_comments']
+        },
+        'reddit': {
+            // Reddit은 모든 매개변수 지원
+            excludeParams: []
+        },
+        'dcinside': {
+            // DCInside는 min_comments를 지원하지 않음
+            excludeParams: ['min_comments']
+        },
+        'blind': {
+            // Blind는 min_comments를 지원하지 않음
+            excludeParams: ['min_comments']
+        },
+        'bbc': {
+            // BBC는 특별한 제한 없음
+            excludeParams: []
+        },
+        'universal': {
+            // Universal은 특별한 제한 없음
+            excludeParams: []
+        }
+    };
+    
+    // min_comments는 조건부로만 추가
+    const siteConfig = siteSpecificConfigs[currentSite] || { excludeParams: [] };
+    
+    if (!siteConfig.excludeParams.includes('min_comments')) {
+        baseConfig.min_comments = parseInt(safeGetValue('minComments', '0'));
+    }
+    
+    console.log(`🔧 사이트별 설정 적용 (${currentSite}):`, baseConfig);
+    
+    return baseConfig;
 }
 
 // 레거시 auto-crawl용 설정 생성 
