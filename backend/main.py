@@ -42,19 +42,7 @@ except ImportError as e:
     logger.error(f"❌ 크롤러 모듈 로드 실패: {e}")
     LEGACY_CRAWLERS_AVAILABLE = False
 
-# main.py에서 코어 모듈 부분을 완전히 제거하고 레거시만 사용
-
-import os
-import sys
-from pathlib import Path
-
-# Python path 설정
-current_dir = Path(__file__).parent
-sys.path.insert(0, str(current_dir))
-
-print("🔥 레거시 시스템만 사용하여 시작...")
-
-# 🔥 코어 모듈 완전히 포기하고 직접 구현
+# 코어 모듈 완전히 포기하고 직접 구현
 CORE_MODULES_AVAILABLE = False
 
 # 직접 구현된 폴백 클래스와 함수들
@@ -148,12 +136,6 @@ def calculate_actual_dates(time_filter, start_date_input=None, end_date_input=No
 calculate_actual_dates_for_lemmy = calculate_actual_dates
 
 print("✅ 레거시 폴백 구현 로드 완료")
-print(f"🎯 최종 상태:")
-print(f"   CORE_MODULES_AVAILABLE = {CORE_MODULES_AVAILABLE}")
-print(f"   SiteDetector = {SiteDetector is not None}")
-print(f"   AutoCrawler = {AutoCrawler is not None}")
-print(f"   get_user_language = {get_user_language is not None}")
-print(f"   calculate_actual_dates = {calculate_actual_dates is not None}")
 
 # ==================== 진행률 및 메시지 관리 ====================
 class ProgressManager:
@@ -218,14 +200,11 @@ class CrawlManager:
 
 crawl_manager = CrawlManager()
 
-# ==================== 🔥 통합 크롤링 실행 함수 (간소화) ====================
-# main.py - Fixed crawling functions
-
-# ==================== 🔥 통합 크롤링 실행 함수 (수정된 버전) ====================
+# ==================== 🔥 통합 크롤링 실행 함수 (완전 수정) ====================
 async def execute_crawl_by_site(site_type: str, target_input: str, **config):
     """사이트별 크롤링 실행 함수 (매개변수 필터링 포함)"""
     
-    # crawl_id를 config에서 안전하게 추출
+    # crawl_id를 config에서 안전하게 추출 (중복 방지)
     crawl_id = config.pop('crawl_id', None)
     
     # 취소 확인
@@ -371,41 +350,6 @@ async def execute_crawl_by_site(site_type: str, target_input: str, **config):
         logger.error(f"❌ 크롤링 오류 ({site_type}): {e}")
         raise
 
-# ==================== 간소화된 크롤링 래퍼 함수들 ====================
-# main.py의 크롤링 래퍼 함수들 수정
-
-
-# ==================== 수정된 크롤링 래퍼 함수들 ====================
-async def crawl_reddit_with_cancel_check(*args, **kwargs):
-    # crawl_id는 execute_crawl_by_site에서 처리하므로 제거하지 않음
-    target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('reddit', target, **kwargs)
-
-async def crawl_lemmy_board_with_cancel_check(*args, **kwargs):
-    target = args[0] if args else kwargs.get('community_input', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('lemmy', target, **kwargs)
-
-async def crawl_dcinside_board_with_cancel_check(*args, **kwargs):
-    target = args[0] if args else kwargs.get('board_name', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('dcinside', target, **kwargs)
-
-async def crawl_blind_board_with_cancel_check(*args, **kwargs):
-    target = args[0] if args else kwargs.get('board_input', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('blind', target, **kwargs)
-
-async def crawl_bbc_board_with_cancel_check(board_url: str = None, **kwargs):
-    target = board_url or kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('bbc', target, **kwargs)
-
-async def crawl_universal_board_with_cancel_check(*args, **kwargs):
-    target = args[0] if args else kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('universal', target, **kwargs)
-
-# fetch_posts도 통합으로 처리
-async def fetch_posts_with_cancel_check(*args, **kwargs):
-    target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('reddit', target, **kwargs)
-
 # ==================== 번역 서비스 ====================
 async def deepl_translate(text: str, target_lang: str) -> str:
    """DeepL API를 사용한 번역"""
@@ -498,7 +442,7 @@ async def unified_crawl_endpoint(websocket: WebSocket):
             'translate': config.get("translate", False),
             'target_languages': config.get("target_languages", []),
             'websocket': websocket,
-            'crawl_id': crawl_id
+            'crawl_id': crawl_id  # crawl_id를 여기서만 한 번 전달
         }
         
         # 취소 확인 함수
@@ -547,11 +491,11 @@ async def unified_crawl_endpoint(websocket: WebSocket):
         check_cancelled()
 
         # 🔥 사이트별 크롤링 실행 (매개변수 자동 필터링)
+        # crawl_id는 이미 crawl_options에 포함되어 있으므로 따로 전달하지 않음
         raw_posts = await execute_crawl_by_site(
             detected_site, 
             board_identifier, 
-            crawl_id,
-            **crawl_options
+            **crawl_options  # crawl_id가 이미 포함됨
         )
 
         check_cancelled()
@@ -720,7 +664,7 @@ async def crawl_auto_socket(websocket: WebSocket):
            'start_date': actual_start_date,
            'end_date': actual_end_date,
            'websocket': websocket,
-           'crawl_id': crawl_id
+           'crawl_id': crawl_id  # crawl_id를 여기서만 한 번 전달
        }
 
        await ProgressManager.send_progress(websocket, "site_detecting", input=board_input)
@@ -735,8 +679,7 @@ async def crawl_auto_socket(websocket: WebSocket):
        raw_posts = await execute_crawl_by_site(
            detected_site, 
            board_identifier, 
-           crawl_id,
-           **crawl_config
+           **crawl_config  # crawl_id가 이미 포함됨
        )
        
        if not raw_posts:
@@ -1060,7 +1003,7 @@ if __name__ == "__main__":
    import uvicorn
    
    # 시스템 상태 로깅
-   logger.info("🚀 PickPost v2.0 서버 시작 (수정된 버전)")
+   logger.info("🚀 PickPost v2.0 서버 시작 (완전 수정된 버전)")
    logger.info(f"   레거시 크롤러: {'✅' if LEGACY_CRAWLERS_AVAILABLE else '❌'}")
    logger.info(f"   코어 모듈: {'✅' if CORE_MODULES_AVAILABLE else '❌'}")
    
