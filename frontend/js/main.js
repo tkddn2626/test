@@ -788,60 +788,66 @@ function setupEventListeners() {
 
 // DOM 로드 완료 시 초기화를 실행하는 이벤트 리스너
 document.addEventListener('DOMContentLoaded', function() {
-   console.log('📄 DOM 로딩 완료');
-   
-   // ✅ 기본 언어 설정 개선
-   currentLanguage = 'en';
+    console.log('📄 DOM 로딩 완료');
+    
+    // ✅ 브라우저 언어 자동 감지
+    const browserLanguage = detectBrowserLanguage();
+    currentLanguage = browserLanguage;
+    
+    const currentLangElement = document.getElementById('currentLang');
+    if (currentLangElement) {
+        const languageNames = {
+            'ko': '한국어',
+            'en': 'English', 
+            'ja': '日本語'
+        };
+        currentLangElement.textContent = languageNames[currentLanguage];
+    }
+    
+    // 언어 옵션 업데이트
+    document.querySelectorAll('.language-option').forEach(option => {
+        option.classList.remove('active');
+    });
+    
+    const activeOption = document.querySelector(`[onclick*="${currentLanguage}"]`);
+    if (activeOption) {
+        activeOption.classList.add('active');
+    }
+    
+    // ✅ 언어팩 확인 후 업데이트
+    if (window.languages && window.languages[currentLanguage]) {
+        updateLabels();
+    } else {
+        console.warn('언어팩이 로드되지 않았습니다');
+        setTimeout(() => {
+            if (window.languages && window.languages[currentLanguage]) {
+                updateLabels();
+            }
+        }, 100);
+    }
+    
+    // 나머지 초기화...
+    initializeLemmyVariables();
+    initializeDefaultShortcuts();
+    setupEventListeners();
+    initializeDateInputs();
+    loadShortcuts();
 
-   const currentLangElement = document.getElementById('currentLang');
-   if (currentLangElement) {
-       currentLangElement.textContent = 'English';
-   }
-   
-   document.querySelectorAll('.language-option').forEach(option => {
-       option.classList.remove('active');
-   });
-   
-   const enOption = document.querySelector('[onclick*="en"]');
-   if (enOption) {
-       enOption.classList.add('active');
-   }
-   
-   // ✅ 언어팩 확인 후 업데이트
-   if (window.languages && window.languages.en) {
-       updateLabels();
-   } else {
-       console.warn('언어팩이 로드되지 않았습니다');
-       // 언어팩 로드 대기
-       setTimeout(() => {
-           if (window.languages && window.languages.en) {
-               updateLabels();
-           }
-       }, 100);
-   }
-   
-   initializeLemmyVariables();
-   initializeDefaultShortcuts();
-   setupEventListeners();
-   initializeDateInputs();
-   loadShortcuts();
-
-   const logoImage = document.querySelector('.logo-image');
-   if (logoImage) {
-       logoImage.addEventListener('click', function() {
-           location.reload();
-       });
-   }
-   
-   console.log('PickPost 시작, API 설정:', { API_BASE_URL, WS_BASE_URL });
-   
-   if (window.initializeFeedbackSystem) {
-       window.initializeFeedbackSystem();
-   }
-   
-   window.dispatchEvent(new Event('PickPostReady'));
+    const logoImage = document.querySelector('.logo-image');
+    if (logoImage) {
+        logoImage.addEventListener('click', function() {
+            location.reload();
+        });
+    }
+    
+    console.log(`PickPost 시작, 감지된 언어: ${currentLanguage}, API 설정:`, { API_BASE_URL, WS_BASE_URL });
+    
+    if (window.initializeFeedbackSystem) {
+        window.initializeFeedbackSystem();
+    }
+    
+    window.dispatchEvent(new Event('PickPostReady'));
 });
-
 // ESC 키로 모달을 닫는 이벤트 리스너
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
