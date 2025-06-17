@@ -28,16 +28,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pickpost")
 
-# 🔥 통합 크롤링 시스템 import
-try:
-    from core.unified_crawler import unified_crawler, crawl_any_site
-    UNIFIED_SYSTEM_AVAILABLE = True
-    logger.info("🔥 통합 크롤링 시스템 로드 성공")
-except ImportError as e:
-    logger.warning(f"통합 크롤링 시스템 로드 실패: {e}")
-    UNIFIED_SYSTEM_AVAILABLE = False
-
-# 기존 크롤러 모듈 import (폴백용)
+# 🔥 기존 크롤러 모듈 import
 try:
     from reddit import fetch_posts
     from blind import crawl_blind_board
@@ -46,18 +37,43 @@ try:
     from lemmy import crawl_lemmy_board
     from bbc import crawl_bbc_board, detect_bbc_url_and_extract_info
     LEGACY_CRAWLERS_AVAILABLE = True
+    logger.info("✅ 레거시 크롤러 모듈 로드 성공")
 except ImportError as e:
-    logger.warning(f"레거시 크롤러 모듈 로드 실패: {e}")
+    logger.error(f"❌ 크롤러 모듈 로드 실패: {e}")
     LEGACY_CRAWLERS_AVAILABLE = False
 
-# 코어 모듈 import
-import core.endpoints
-from core.site_detector import SiteDetector
-from core.auto_crawler import AutoCrawler
-from core.utils import (
-   get_user_language,
-   calculate_actual_dates
-)
+# 🔥 코어 모듈 import (존재하는 것만)
+try:
+    from core.site_detector import SiteDetector
+    from core.auto_crawler import AutoCrawler  
+    from core.utils import get_user_language, calculate_actual_dates
+    CORE_MODULES_AVAILABLE = True
+    logger.info("✅ 코어 모듈 로드 성공")
+except ImportError as e:
+    logger.warning(f"⚠️ 코어 모듈 로드 실패: {e}")
+    CORE_MODULES_AVAILABLE = False
+    
+    # 폴백: 간단한 구현체들
+    class SiteDetector:
+        async def detect_site_type(self, input_data: str) -> str:
+            input_lower = input_data.lower()
+            if 'reddit' in input_lower: return 'reddit'
+            elif 'lemmy' in input_lower: return 'lemmy'
+            elif 'dcinside' in input_lower: return 'dcinside'
+            elif 'blind' in input_lower: return 'blind'
+            elif 'bbc' in input_lower: return 'bbc'
+            else: return 'universal'
+        
+        def extract_board_identifier(self, url: str, site_type: str) -> str:
+            return url
+    
+    def get_user_language(config: Dict) -> str:
+        return config.get("language", "en")
+    
+    def calculate_actual_dates(time_filter: str, start_date_input=None, end_date_input=None):
+        if time_filter == 'custom' and start_date_input and end_date_input:
+            return start_date_input, end_date_input
+        return None, None
 
 # ==================== 진행률 및 메시지 관리 ====================
 class ProgressManager:
@@ -122,47 +138,19 @@ class CrawlManager:
 
 crawl_manager = CrawlManager()
 
-# ==================== 🔥 통합 크롤링 실행 함수 ====================
-async def execute_unified_crawl(site_type: str, target_input: str, crawl_id: str = None, **config):
-    """통합 크롤링 실행 함수"""
+# ==================== 🔥 통합 크롤링 실행 함수 (간소화) ====================
+async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str = None, **config):
+    """사이트별 크롤링 실행 함수 (매개변수 필터링 포함)"""
     
     # 취소 확인
     if crawl_id and crawl_manager.is_cancelled(crawl_id):
         raise asyncio.CancelledError("크롤링 취소됨")
     
-    # 통합 시스템 사용 가능 여부 확인
-    if UNIFIED_SYSTEM_AVAILABLE:
-        try:
-            logger.info(f"🔥 통합 크롤링 시스템 사용: {site_type} -> {target_input}")
-            
-            # 통합 크롤러 사용
-            results = await unified_crawler.unified_crawl(site_type, target_input, **config)
-            
-            logger.info(f"✅ 통합 크롤링 완료: {len(results)}개 결과")
-            return results
-            
-        except Exception as e:
-            logger.error(f"❌ 통합 크롤링 오류: {e}")
-            
-            # 폴백: 레거시 크롤러 사용
-            if LEGACY_CRAWLERS_AVAILABLE:
-                logger.warning("⚠️ 레거시 크롤러로 폴백")
-                return await execute_legacy_crawl(site_type, target_input, crawl_id, **config)
-            else:
-                raise
-    else:
-        # 레거시 크롤러만 사용 가능
-        logger.info(f"📚 레거시 크롤링 시스템 사용: {site_type} -> {target_input}")
-        return await execute_legacy_crawl(site_type, target_input, crawl_id, **config)
-
-async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str = None, **config):
-    """레거시 크롤링 실행 함수 (폴백용)"""
+    if not LEGACY_CRAWLERS_AVAILABLE:
+        raise Exception("크롤러 모듈을 사용할 수 없습니다")
     
-    # 취소 확인
-    if crawl_id and crawl_manager.is_cancelled(crawl_id):
-        raise asyncio.CancelledError("크롤링 취소됨")
+    logger.info(f"🚀 사이트별 크롤링 시작: {site_type} -> {target_input}")
     
-    # 레거시 크롤러 직접 호출
     try:
         if site_type == 'reddit':
             # Reddit 매개변수 정리
@@ -185,13 +173,14 @@ async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str 
             return await fetch_posts(**reddit_params)
             
         elif site_type == 'lemmy':
-            # Lemmy 매개변수 정리 (min_comments 제외)
+            # 🔥 Lemmy 매개변수 정리 (min_comments 제외)
             lemmy_params = {
                 'community_input': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
                 'sort': config.get('sort', 'Hot'),
                 'min_views': config.get('min_views', 0),
                 'min_likes': config.get('min_likes', 0),
+                # min_comments 제거 - Lemmy는 지원하지 않음
                 'time_filter': config.get('time_filter', 'day'),
                 'start_date': config.get('start_date'),
                 'end_date': config.get('end_date'),
@@ -205,13 +194,14 @@ async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str 
             return await crawl_lemmy_board(**lemmy_params)
             
         elif site_type == 'dcinside':
-            # DCInside 매개변수 정리 (min_comments 제외)
+            # 🔥 DCInside 매개변수 정리 (min_comments 제외)
             dc_params = {
                 'board_name': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
                 'sort': config.get('sort', 'recent'),
                 'min_views': config.get('min_views', 0),
                 'min_likes': config.get('min_likes', 0),
+                # min_comments 제거 - DCInside는 지원하지 않음
                 'time_filter': config.get('time_filter', 'day'),
                 'start_date': config.get('start_date'),
                 'end_date': config.get('end_date'),
@@ -225,13 +215,14 @@ async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str 
             return await crawl_dcinside_board(**dc_params)
             
         elif site_type == 'blind':
-            # Blind 매개변수 정리 (min_comments 제외)
+            # 🔥 Blind 매개변수 정리 (min_comments 제외)
             blind_params = {
                 'board_input': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
                 'sort': config.get('sort', 'recent'),
                 'min_views': config.get('min_views', 0),
                 'min_likes': config.get('min_likes', 0),
+                # min_comments 제거 - Blind는 지원하지 않음
                 'time_filter': config.get('time_filter', 'day'),
                 'start_date': config.get('start_date'),
                 'end_date': config.get('end_date'),
@@ -245,7 +236,7 @@ async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str 
             return await crawl_blind_board(**blind_params)
             
         elif site_type == 'bbc':
-            # BBC 매개변수 정리
+            # BBC 매개변수 정리 (min_comments 포함 - 지원함)
             bbc_params = {
                 'board_url': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
@@ -267,7 +258,7 @@ async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str 
             return await crawl_bbc_board(**bbc_params)
             
         elif site_type == 'universal':
-            # Universal 매개변수 정리
+            # Universal 매개변수 정리 (min_comments 포함 - 지원함)
             universal_params = {
                 'board_url': target_input,
                 'limit': config.get('limit', config.get('end_index', 20) + 5),
@@ -291,38 +282,38 @@ async def execute_legacy_crawl(site_type: str, target_input: str, crawl_id: str 
             raise ValueError(f"지원하지 않는 사이트 타입: {site_type}")
             
     except Exception as e:
-        logger.error(f"❌ 레거시 크롤링 오류 ({site_type}): {e}")
+        logger.error(f"❌ 크롤링 오류 ({site_type}): {e}")
         raise
 
-# ==================== 🔥 간소화된 크롤링 래퍼 함수들 ====================
+# ==================== 간소화된 크롤링 래퍼 함수들 ====================
 async def crawl_reddit_with_cancel_check(*args, crawl_id=None, **kwargs):
     target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('reddit', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('reddit', target, crawl_id, **kwargs)
 
 async def crawl_lemmy_board_with_cancel_check(*args, crawl_id=None, **kwargs):
     target = args[0] if args else kwargs.get('community_input', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('lemmy', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('lemmy', target, crawl_id, **kwargs)
 
 async def crawl_dcinside_board_with_cancel_check(*args, crawl_id=None, **kwargs):
     target = args[0] if args else kwargs.get('board_name', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('dcinside', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('dcinside', target, crawl_id, **kwargs)
 
 async def crawl_blind_board_with_cancel_check(*args, crawl_id=None, **kwargs):
     target = args[0] if args else kwargs.get('board_input', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('blind', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('blind', target, crawl_id, **kwargs)
 
 async def crawl_bbc_board_with_cancel_check(board_url: str = None, crawl_id=None, **kwargs):
     target = board_url or kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('bbc', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('bbc', target, crawl_id, **kwargs)
 
 async def crawl_universal_board_with_cancel_check(*args, crawl_id=None, **kwargs):
     target = args[0] if args else kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('universal', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('universal', target, crawl_id, **kwargs)
 
 # fetch_posts도 통합으로 처리
 async def fetch_posts_with_cancel_check(*args, crawl_id=None, **kwargs):
     target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    return await execute_unified_crawl('reddit', target, crawl_id, **kwargs)
+    return await execute_crawl_by_site('reddit', target, crawl_id, **kwargs)
 
 # ==================== 번역 서비스 ====================
 async def deepl_translate(text: str, target_lang: str) -> str:
@@ -353,7 +344,7 @@ async def deepl_translate(text: str, target_lang: str) -> str:
        return text
 
 # ==================== FastAPI 앱 초기화 ====================
-app = FastAPI(title="PickPost API v2.0 (Unified)", debug=DEBUG)
+app = FastAPI(title="PickPost API v2.0", debug=DEBUG)
 
 # CORS 설정
 def get_cors_origins():
@@ -377,7 +368,7 @@ app.add_middleware(
 # ==================== 🔥 통합 크롤링 엔드포인트 ====================
 @app.websocket("/ws/crawl")
 async def unified_crawl_endpoint(websocket: WebSocket):
-    """통합 크롤링 WebSocket 엔드포인트 (통합 시스템 사용)"""
+    """통합 크롤링 WebSocket 엔드포인트"""
     origin = websocket.headers.get("origin", "")
     
     # Origin 검증
@@ -409,7 +400,7 @@ async def unified_crawl_endpoint(websocket: WebSocket):
             'end_index': config.get("end", 20),
             'min_views': config.get("min_views", 0),
             'min_likes': config.get("min_likes", 0),
-            'min_comments': config.get("min_comments", 0),  # 통합 시스템에서 자동 필터링됨
+            'min_comments': config.get("min_comments", 0),  # 사이트별로 자동 필터링됨
             'time_filter': config.get("time_filter", "day"),
             'start_date': config.get("start_date"),
             'end_date': config.get("end_date"),
@@ -464,8 +455,8 @@ async def unified_crawl_endpoint(websocket: WebSocket):
         )
         check_cancelled()
 
-        # 🔥 통합 크롤링 시스템 사용
-        raw_posts = await execute_unified_crawl(
+        # 🔥 사이트별 크롤링 실행 (매개변수 자동 필터링)
+        raw_posts = await execute_crawl_by_site(
             detected_site, 
             board_identifier, 
             crawl_id,
@@ -623,16 +614,15 @@ async def crawl_auto_socket(websocket: WebSocket):
            await ProgressManager.send_error(websocket, "empty_input")
            return
 
-       # AutoCrawler 실행 (레거시 방식)
-       auto_crawler = AutoCrawler()
+       # 사이트 감지 및 크롤링
        actual_start_date, actual_end_date = calculate_actual_dates(
            time_filter, start_date_input, end_date_input
        )
 
        crawl_config = {
            'sort': sort,
-           'start': start,
-           'end': end,
+           'start_index': start,
+           'end_index': end,
            'min_views': min_views,
            'min_likes': min_likes,
            'time_filter': time_filter,
@@ -645,7 +635,18 @@ async def crawl_auto_socket(websocket: WebSocket):
        await ProgressManager.send_progress(websocket, "site_detecting", input=board_input)
        check_cancelled()
 
-       raw_posts = await auto_crawler.crawl(board_input, **crawl_config)
+       # 간단한 사이트 감지
+       site_detector = SiteDetector()
+       detected_site = await site_detector.detect_site_type(board_input)
+       board_identifier = site_detector.extract_board_identifier(board_input, detected_site)
+
+       # 사이트별 크롤링 실행
+       raw_posts = await execute_crawl_by_site(
+           detected_site, 
+           board_identifier, 
+           crawl_id,
+           **crawl_config
+       )
        
        if not raw_posts:
            await ProgressManager.send_error(websocket, "no_posts_found")
@@ -805,91 +806,6 @@ async def autocomplete(site: str, keyword: str = Query(...)):
    
    return {"matches": matches[:15], "auto_detected": False}
 
-# ==================== 🔥 통합 시스템 관련 API ====================
-@app.get("/api/site-parameters/{site_type}")
-async def get_site_parameters(site_type: str):
-    """사이트별 지원 매개변수 조회 API"""
-    try:
-        if UNIFIED_SYSTEM_AVAILABLE:
-            params = unified_crawler.get_supported_parameters(site_type)
-            if not params:
-                raise HTTPException(status_code=404, detail=f"지원하지 않는 사이트: {site_type}")
-            
-            return {
-                "site": site_type,
-                "parameters": params,
-                "unified_system": True,
-                "example_request": {
-                    "input": f"example_{site_type}_board",
-                    "sort": "recent",
-                    "start": 1,
-                    "end": 20,
-                    **{param: "example_value" for param in params['optional'][:3]}
-                }
-            }
-        else:
-            # 레거시 시스템용 하드코딩된 매개변수
-            legacy_params = {
-                'reddit': {
-                    'required': ['subreddit_name'],
-                    'optional': ['limit', 'sort', 'time_filter', 'min_views', 'min_likes', 'start_date', 'end_date']
-                },
-                'lemmy': {
-                    'required': ['community_input'],
-                    'optional': ['limit', 'sort', 'min_views', 'min_likes', 'time_filter', 'start_date', 'end_date']
-                },
-                'dcinside': {
-                    'required': ['board_name'],
-                    'optional': ['limit', 'sort', 'min_views', 'min_likes', 'time_filter', 'start_date', 'end_date']
-                },
-                'blind': {
-                    'required': ['board_input'],
-                    'optional': ['limit', 'sort', 'min_views', 'min_likes', 'time_filter', 'start_date', 'end_date']
-                },
-                'bbc': {
-                    'required': ['board_url'],
-                    'optional': ['limit', 'sort', 'min_views', 'min_likes', 'min_comments', 'time_filter', 'start_date', 'end_date']
-                },
-                'universal': {
-                    'required': ['board_url'],
-                    'optional': ['limit', 'sort', 'min_views', 'min_likes', 'min_comments', 'time_filter', 'start_date', 'end_date']
-                }
-            }
-            
-            if site_type not in legacy_params:
-                raise HTTPException(status_code=404, detail=f"지원하지 않는 사이트: {site_type}")
-            
-            return {
-                "site": site_type,
-                "parameters": legacy_params[site_type],
-                "unified_system": False,
-                "legacy_mode": True
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/unified-system-status")
-async def get_unified_system_status():
-    """통합 시스템 상태 확인 API"""
-    status = {
-        "unified_system_available": UNIFIED_SYSTEM_AVAILABLE,
-        "legacy_crawlers_available": LEGACY_CRAWLERS_AVAILABLE,
-        "timestamp": datetime.now().isoformat()
-    }
-    
-    if UNIFIED_SYSTEM_AVAILABLE:
-        try:
-            registry_info = unified_crawler.get_registry_info()
-            status.update({
-                "unified_system_info": registry_info,
-                "total_sites": registry_info['total_sites'],
-                "supported_sites": registry_info['supported_sites']
-            })
-        except Exception as e:
-            status["unified_system_error"] = str(e)
-    
-    return status
-
 # ==================== 피드백 시스템 ====================
 @app.post("/api/feedback")
 async def submit_feedback(request: Request):
@@ -910,8 +826,8 @@ async def submit_feedback(request: Request):
            "content": feedback_content,
            "metadata": raw_data,
            "system_info": {
-               "unified_system": UNIFIED_SYSTEM_AVAILABLE,
-               "legacy_system": LEGACY_CRAWLERS_AVAILABLE
+               "legacy_system": LEGACY_CRAWLERS_AVAILABLE,
+               "core_modules": CORE_MODULES_AVAILABLE
            }
        }
        
@@ -935,11 +851,11 @@ def health_check():
    system_status = {
        "status": "healthy",
        "message": "PickPost API is running",
-       "unified_system": UNIFIED_SYSTEM_AVAILABLE,
-       "legacy_system": LEGACY_CRAWLERS_AVAILABLE
+       "legacy_system": LEGACY_CRAWLERS_AVAILABLE,
+       "core_modules": CORE_MODULES_AVAILABLE
    }
    
-   if not UNIFIED_SYSTEM_AVAILABLE and not LEGACY_CRAWLERS_AVAILABLE:
+   if not LEGACY_CRAWLERS_AVAILABLE:
        system_status["status"] = "degraded"
        system_status["message"] = "No crawler systems available"
    
@@ -950,20 +866,21 @@ def root():
    return {
        "message": "PickPost API Server", 
        "status": "running",
-       "version": "2.0.0 (Unified)",
+       "version": "2.0.0 (Fixed)",
        "docs": "/docs",
        "unified_endpoint": "/ws/crawl",
        "progress_system": "localized",
-       "unified_system": UNIFIED_SYSTEM_AVAILABLE,
-       "legacy_system": LEGACY_CRAWLERS_AVAILABLE
+       "legacy_system": LEGACY_CRAWLERS_AVAILABLE,
+       "core_modules": CORE_MODULES_AVAILABLE
    }
 
 @app.get("/api/system-info")
 async def get_system_info():
-    base_info = {
+    return {
         "version": "2.0.0",
         "environment": APP_ENV,
         "localized_messages": True,
+        "supported_sites": ["reddit", "dcinside", "blind", "bbc", "lemmy", "universal"],
         "endpoints": {
             "unified": "/ws/crawl",
             "analyze": "/ws/analyze",
@@ -973,48 +890,92 @@ async def get_system_info():
             "progress_localization": True,
             "error_localization": True,
             "multi_language_translation": True,
-            "cancellation_support": True
+            "cancellation_support": True,
+            "automatic_parameter_filtering": True
+        },
+        "system_status": {
+            "legacy_crawlers": LEGACY_CRAWLERS_AVAILABLE,
+            "core_modules": CORE_MODULES_AVAILABLE
+        }
+    }
+
+# ==================== 🔥 사이트별 매개변수 정보 API ====================
+@app.get("/api/site-parameters/{site_type}")
+async def get_site_parameters(site_type: str):
+    """사이트별 지원 매개변수 조회 API"""
+    
+    # 하드코딩된 매개변수 정보 (현재 코드 기반)
+    site_params = {
+        'reddit': {
+            'required': ['subreddit_name'],
+            'optional': ['limit', 'sort', 'time_filter', 'min_views', 'min_likes', 
+                        'start_date', 'end_date', 'start_index', 'end_index', 'enforce_date_limit'],
+            'unsupported': ['min_comments']  # Reddit은 min_comments 지원 안함
+        },
+        'lemmy': {
+            'required': ['community_input'],
+            'optional': ['limit', 'sort', 'min_views', 'min_likes', 'time_filter', 
+                        'start_date', 'end_date', 'start_index', 'end_index', 'enforce_date_limit'],
+            'unsupported': ['min_comments']  # Lemmy는 min_comments 지원 안함
+        },
+        'dcinside': {
+            'required': ['board_name'],
+            'optional': ['limit', 'sort', 'min_views', 'min_likes', 'time_filter', 
+                        'start_date', 'end_date', 'start_index', 'end_index', 'enforce_date_limit'],
+            'unsupported': ['min_comments']  # DCInside는 min_comments 지원 안함
+        },
+        'blind': {
+            'required': ['board_input'],
+            'optional': ['limit', 'sort', 'min_views', 'min_likes', 'time_filter', 
+                        'start_date', 'end_date', 'start_index', 'end_index', 'enforce_date_limit'],
+            'unsupported': ['min_comments']  # Blind는 min_comments 지원 안함
+        },
+        'bbc': {
+            'required': ['board_url'],
+            'optional': ['limit', 'sort', 'min_views', 'min_likes', 'min_comments', 
+                        'time_filter', 'start_date', 'end_date', 'board_name',
+                        'start_index', 'end_index', 'enforce_date_limit'],
+            'unsupported': []  # BBC는 모든 매개변수 지원
+        },
+        'universal': {
+            'required': ['board_url'],
+            'optional': ['limit', 'sort', 'min_views', 'min_likes', 'min_comments', 
+                        'time_filter', 'start_date', 'end_date', 'board_name',
+                        'start_index', 'end_index', 'enforce_date_limit'],
+            'unsupported': []  # Universal은 모든 매개변수 지원
         }
     }
     
-    # 통합 시스템 정보 추가
-    if UNIFIED_SYSTEM_AVAILABLE:
-        try:
-            registry_info = unified_crawler.get_registry_info()
-            base_info.update({
-                "unified_crawler": True,
-                "crawler_registry": registry_info,
-                "supported_sites": registry_info['supported_sites'],
-                "features": {
-                    **base_info["features"],
-                    "unified_parameter_handling": True,
-                    "automatic_parameter_filtering": True,
-                    "dynamic_crawler_loading": True
-                }
-            })
-        except Exception as e:
-            logger.error(f"통합 시스템 정보 조회 오류: {e}")
-            base_info["unified_system_error"] = str(e)
-    else:
-        # 레거시 시스템 정보
-        base_info.update({
-            "unified_crawler": False,
-            "legacy_mode": True,
-            "supported_sites": ["reddit", "dcinside", "blind", "bbc", "lemmy", "universal"]
-        })
+    if site_type not in site_params:
+        raise HTTPException(status_code=404, detail=f"지원하지 않는 사이트: {site_type}")
     
-    return base_info
+    return {
+        "site": site_type,
+        "parameters": site_params[site_type],
+        "parameter_filtering": True,
+        "note": f"{site_type}에서 지원하지 않는 매개변수는 자동으로 제거됩니다.",
+        "example_request": {
+            "input": f"example_{site_type}_board",
+            "sort": "recent",
+            "start": 1,
+            "end": 20,
+            "min_views": 0,
+            "min_likes": 0
+        }
+    }
 
 # ==================== 서버 시작 ====================
 if __name__ == "__main__":
    import uvicorn
    
    # 시스템 상태 로깅
-   if UNIFIED_SYSTEM_AVAILABLE:
-       logger.info("🔥 PickPost v2.0 서버 시작 (통합 크롤링 시스템)")
-   elif LEGACY_CRAWLERS_AVAILABLE:
-       logger.info("📚 PickPost v2.0 서버 시작 (레거시 크롤링 시스템)")
-   else:
-       logger.warning("⚠️ PickPost v2.0 서버 시작 (크롤링 시스템 없음)")
+   logger.info("🚀 PickPost v2.0 서버 시작 (수정된 버전)")
+   logger.info(f"   레거시 크롤러: {'✅' if LEGACY_CRAWLERS_AVAILABLE else '❌'}")
+   logger.info(f"   코어 모듈: {'✅' if CORE_MODULES_AVAILABLE else '❌'}")
+   
+   if not LEGACY_CRAWLERS_AVAILABLE:
+       logger.error("❌ 크롤링 시스템을 사용할 수 없습니다!")
    
    uvicorn.run(app, host="0.0.0.0", port=PORT)
+
+   
