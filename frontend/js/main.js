@@ -165,53 +165,20 @@ function getLabels() {
 
 // 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
 function updateLabels() {
-    const lang = window.languages?.[currentLanguage] || window.languages?.en || window.languages?.ko || {};
+    const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
     
-    // ✅ 기존 코드 그대로 사용, 안전한 접근만 추가
-    const crawlBtn = document.getElementById('crawlBtn');
-    if (crawlBtn) crawlBtn.textContent = lang.start || 'Start Crawling';
+    // 안전한 요소 업데이트
+    const elements = [
+        { id: 'crawlBtn', prop: 'textContent', value: lang.start || 'Start Crawling' },
+        { id: 'cancelBtn', prop: 'textContent', value: lang.cancel || 'Cancel' },
+        { id: 'downloadBtn', prop: 'textContent', value: lang.download || 'Download' },
+        { id: 'siteInput', prop: 'placeholder', value: lang.sitePlaceholder || 'Search for a site...' }
+    ];
     
-    const cancelBtn = document.getElementById('cancelBtn');
-    if (cancelBtn) cancelBtn.textContent = lang.cancel || 'Cancel';
-    
-    const downloadBtn = document.getElementById('downloadBtn');
-    if (downloadBtn) downloadBtn.textContent = lang.download || 'Download';
-    
-    // 플레이스홀더 설정
-    const siteInput = document.getElementById('siteInput');
-    if (siteInput) siteInput.placeholder = lang.sitePlaceholder || 'Search for a site...';
-    
-    if (currentSite) {
-        updateBoardPlaceholder(currentSite);
-    } else {
-        const boardInput = document.getElementById('boardInput');
-        if (boardInput) boardInput.placeholder = lang.boardPlaceholders?.default || 'Enter board name...';
-    }
-    
-    // 라벨들 업데이트
-    const minViewsLabel = document.getElementById('minViewsLabel');
-    if (minViewsLabel) minViewsLabel.textContent = lang.minViews || 'Min Views';
-    
-    const minRecommendLabel = document.getElementById('minRecommendLabel');
-    if (minRecommendLabel) minRecommendLabel.textContent = lang.minRecommend || 'Min Likes';
-    
-    const minCommentsLabel = document.getElementById('minCommentsLabel');
-    if (minCommentsLabel) minCommentsLabel.textContent = lang.minComments || 'Min Comments';
-    
-    const startRankLabel = document.getElementById('startRankLabel');
-    if (startRankLabel) startRankLabel.textContent = lang.startRank || 'Start Rank';
-    
-    const endRankLabel = document.getElementById('endRankLabel');
-    if (endRankLabel) endRankLabel.textContent = lang.endRank || 'End Rank';
-    
-    const sortMethodLabel = document.getElementById('sortMethodLabel');
-    if (sortMethodLabel) sortMethodLabel.textContent = lang.sortMethod || 'Sort Method';
-    
-    const timePeriodLabel = document.getElementById('timePeriodLabel');
-    if (timePeriodLabel) timePeriodLabel.textContent = lang.timePeriod || 'Time Period';
-    
-    const advancedSearchLabel = document.getElementById('advancedSearchLabel');
-    if (advancedSearchLabel) advancedSearchLabel.textContent = lang.advancedSearch || 'Advanced Search';
+    elements.forEach(({ id, prop, value }) => {
+        const element = safeGetElement(id);
+        if (element) element[prop] = value;
+    });
 }
 
 // 언어 드롭다운을 표시/숨김하는 함수
@@ -2138,48 +2105,50 @@ function selectAutocompleteItem(index) {
 // ==================== 크롤링 시스템 ====================
 // 크롤링을 시작하는 메인 함수
 async function startCrawling() {
-   if (isLoading) {
-       console.log('이미 크롤링이 진행 중입니다.');
-       return;
-   }
+    if (isLoading) {
+        console.log('이미 크롤링이 진행 중입니다.');
+        return;
+    }
 
-   const boardInput = document.getElementById('boardInput')?.value?.trim();
-   if (!boardInput) {
-       showMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
-       return;
-   }
+    const boardInput = document.getElementById('boardInput')?.value?.trim();
+    if (!boardInput) {
+        showMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
+        return;
+    }
 
-   try {
-       isLoading = true;
-       searchInitiated = true;
-       crawlStartTime = Date.now();
-       
-       updateUIForCrawlStart();
-       
-       // 🔥 1단계: 통합 엔드포인트 시도
-       try {
-           console.log('🔥 통합 엔드포인트 시도...');
-           const config = buildCrawlConfig(boardInput);
-           currentSocket = await createWebSocketWithRetry('crawl', config);
-           console.log('✅ 통합 엔드포인트 연결 성공');
-           
-       } catch (unifiedError) {
-           console.warn('⚠️ 통합 엔드포인트 실패, 레거시로 폴백:', unifiedError);
-           
-           // 🔥 2단계: 레거시 엔드포인트로 폴백
-           const legacyEndpoint = determineLegacyEndpoint(currentSite);
-           const legacyConfig = buildLegacyCrawlConfig(boardInput);
-           currentSocket = await createWebSocketWithRetry(legacyEndpoint, legacyConfig);
-           console.log('✅ 레거시 엔드포인트 연결 성공');
-       }
-       
-   } catch (error) {
-       console.error('❌ 모든 연결 방법 실패:', error);
-       showMessage('서버 연결에 실패했습니다.', 'error');
-       resetCrawlingState();
-   }
+    try {
+        isLoading = true;
+        searchInitiated = true;
+        crawlStartTime = Date.now();
+        
+        updateUIForCrawlStart();
+        
+        // 단순화된 설정
+        const config = {
+            input: boardInput,
+            site: currentSite || 'auto',
+            sort: safeGetValue('sortMethod', 'recent'),
+            start: parseInt(safeGetValue('startRank', '1')),
+            end: parseInt(safeGetValue('endRank', '20')),
+            min_views: parseInt(safeGetValue('minViews', '0')),
+            min_likes: parseInt(safeGetValue('minRecommend', '0')),
+            min_comments: parseInt(safeGetValue('minComments', '0')),
+            time_filter: safeGetValue('timePeriod', 'day'),
+            start_date: safeGetValue('startDate') || null,
+            end_date: safeGetValue('endDate') || null,
+            language: currentLanguage || 'en'
+        };
+        
+        // 통합 엔드포인트만 사용
+        currentSocket = await createWebSocketWithRetry('crawl', config);
+        console.log('✅ 크롤링 시작');
+        
+    } catch (error) {
+        console.error('❌ 크롤링 실패:', error);
+        showMessage('서버 연결에 실패했습니다.', 'error');
+        resetCrawlingState();
+    }
 }
-
 // 레거시 엔드포인트 결정 함수
 function determineLegacyEndpoint(site) {
     const endpointMap = {
@@ -2315,113 +2284,6 @@ function formatMessage(template, data = {}) {
     return message;
 }
 
-// WebSocket 메시지에서 번역된 상태 메시지 생성
-function getTranslatedStatus(statusKey, statusData = {}) {
-    const lang = window.languages[currentLanguage];
-    const template = lang.crawlingStatus?.[statusKey];
-
-    if (!template) {
-        console.warn(`Missing translation for status key: ${statusKey}`);
-        return statusKey; // 키가 없으면 키 자체를 반환
-    }
-    
-    return formatMessage(template, statusData);
-}
-
-// 레거시 상태 메시지 번역 (패턴 매칭)
-function translateLegacyStatus(status) {
-    const lang = window.languages[currentLanguage];
-    
-    // 패턴 매칭 규칙
-    const statusPatterns = [
-        { pattern: /메타데이터 보강/, key: 'metadata_processing' },
-        { pattern: /게시물 수집/, key: 'collecting_posts' },
-        { pattern: /데이터 분석/, key: 'analyzing_content' },
-        { pattern: /결과 필터링/, key: 'filtering_results' },
-        { pattern: /번역 준비/, key: 'preparing_translation' },
-        { pattern: /Reddit.*정렬로 수집/, key: 'reddit_analyzing' },
-        { pattern: /DCInside.*파싱/, key: 'dcinside_parsing' },
-        { pattern: /Blind.*처리/, key: 'blind_processing' },
-        { pattern: /BBC.*가져오는/, key: 'bbc_fetching' },
-        { pattern: /Lemmy.*연결/, key: 'lemmy_connecting' },
-        { pattern: /웹페이지 분석/, key: 'universal_parsing' }
-    ];
-    
-    for (const {pattern, key} of statusPatterns) {
-        if (pattern.test(status)) {
-            return lang.crawlingStatus?.[key] || status;
-        }
-    }
-    
-    return status;
-}
-    
-// 🔥 통합 WebSocket 메시지 핸들러
-function setupWebSocketMessageHandlers(ws, endpoint) {
-    ws.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            console.log(`📨 메시지 수신 (${endpoint}):`, data);
-
-            // 중단 처리
-            if (data.cancelled) {
-                showMessage('크롤링이 취소되었습니다.', 'info');
-                resetCrawlingState();
-                return;
-            }
-
-            // 에러 처리
-            if (data.error || data.error_key) {
-                const errorMsg = data.error_detail || data.error || '크롤링 중 오류가 발생했습니다.';
-                showMessage(errorMsg, 'error');
-                resetCrawlingState();
-                return;
-            }
-
-            // 완료 처리
-            if (data.done) {
-                const results = data.data || data.results || [];
-                if (results.length > 0) {
-                    crawlResults = results;
-                    displayResults(results);
-                    enableDownloadButtons();
-                    showMessage(`크롤링 완료: ${results.length}개 게시물`, 'success');
-                } else {
-                    showMessage('결과가 없습니다.', 'warning');
-                }
-                resetCrawlingState();
-                return;
-            }
-
-            // 진행률 처리
-            if (data.progress !== undefined) {
-                const progress = Math.max(0, Math.min(100, data.progress));
-                const status = data.status || data.message || '처리 중...';
-                updateProgress(progress, status);
-                return;
-            }
-
-        } catch (error) {
-            console.error('메시지 파싱 오류:', error);
-            showMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
-        }
-    };
-
-    ws.onerror = (error) => {
-        console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
-        showMessage('연결 오류가 발생했습니다', 'error');
-        resetCrawlingState();
-    };
-
-    ws.onclose = (event) => {
-        console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code);
-        if (isLoading && event.code !== 1000) {
-            showMessage('연결이 예기치 않게 종료되었습니다', 'error');
-            resetCrawlingState();
-        }
-    };
-}
-
 // 크롤링 완료 처리 (통합)
 function handleCrawlComplete(data, endpoint) {
     console.log(`✅ 크롤링 완료 (${endpoint}):`, data);
@@ -2491,65 +2353,6 @@ function handleErrorMessage(data) {
     
     showMessage(translatedMessage, 'error');
     resetCrawlingState();
-}
-
-// 레거시 진행률 메시지 처리 
-function handleLegacyProgress(data, endpoint) {
-    const progress = Math.min(Math.max(data.progress || 0, 0), 100);
-    let status = data.status || data.message || '처리 중...';
-    
-    // 레거시 상태 메시지 번역
-    status = translateLegacyStatus(status);
-    
-    console.log(`📊 레거시 진행률 (${endpoint}): ${progress}% - ${status}`);
-    
-    updateProgress(progress, status);
-    
-    // 부분 결과 실시간 표시
-    if (data.partial_results && data.partial_results.length > 0) {
-        displayPartialResults(data.partial_results);
-    }
-}
-// 레거시 메시지 처리 (하위 호환성)
-function handleLegacyMessage(data, endpoint) {
-    // 중단 메시지 처리
-    if (data.cancelled) {
-        showMessage('크롤링이 취소되었습니다.', 'info');
-        resetCrawlingState();
-        return;
-    }
-
-    // 에러 처리
-    if (data.error) {
-        handleLegacyError(data.error, endpoint);
-        return;
-    }
-
-    // 완료 처리
-    if (data.done) {
-        handleLegacyComplete(data, endpoint);
-        return;
-    }
-
-    // 진행률 처리
-    if (data.progress !== undefined) {
-        handleLegacyProgress(data, endpoint);
-        return;
-    }
-
-    // 상태 처리
-    if (data.status) {
-        handleLegacyStatus(data, endpoint);
-        return;
-    }
-
-    // 부분 결과 처리
-    if (data.data) {
-        handlePartialResults(data, endpoint);
-        return;
-    }
-
-    console.log(`ℹ️ 기타 메시지 (${endpoint}):`, data);
 }
 
 // UI 업데이트 함수들...
@@ -3148,56 +2951,23 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
-            console.log(`📨 메시지 수신 (${endpoint}):`, data);
+            console.log(`📨 메시지 수신:`, data);
 
-            // 🔥 새로운 메시지 형식 처리 추가
-            if (data.status_key) {
-                // 백엔드의 새로운 메시지 형식 처리
-                const translatedMessage = getLocalizedMessage(
-                    `crawlingProgress.${data.status_key}`, 
-                    data.status_data || {}
-                );
-                updateProgress(data.progress || 0, translatedMessage);
-                return;
-            }
-            
-            if (data.completion_key) {
-                // 완료 메시지 처리
-                const results = data.data || [];
-                if (results.length > 0) {
-                    crawlResults = results;
-                    displayResults(results);
-                    enableDownloadButtons();
-                }
-                
-                const completionMessage = getLocalizedMessage(
-                    `completionMessages.${data.completion_key}`,
-                    data.completion_data || {}
-                );
-                showMessage(completionMessage, 'success');
-                resetCrawlingState();
-                return;
-            }
-            
-            if (data.error_key) {
-                const errorMessage = getLocalizedMessage(
-                    `errorMessages.${data.error_key}`,
-                    data.error_data || {}
-                );
-                showMessage(errorMessage, 'error');
-                resetCrawlingState();
-                return;
-            }
-
-            // 🔥 기존 형식도 호환성을 위해 유지
+            // 간단한 메시지 처리
             if (data.cancelled) {
                 showMessage('크롤링이 취소되었습니다.', 'info');
                 resetCrawlingState();
                 return;
             }
 
+            if (data.error) {
+                showMessage(data.error, 'error');
+                resetCrawlingState();
+                return;
+            }
+
             if (data.done) {
-                const results = data.data || data.results || [];
+                const results = data.data || [];
                 if (results.length > 0) {
                     crawlResults = results;
                     displayResults(results);
@@ -3212,7 +2982,7 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
 
             if (data.progress !== undefined) {
                 const progress = Math.max(0, Math.min(100, data.progress));
-                const status = data.status || data.message || '처리 중...';
+                const status = data.status || '처리 중...';
                 updateProgress(progress, status);
                 return;
             }
@@ -3224,13 +2994,13 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
     };
 
     ws.onerror = (error) => {
-        console.error(`❌ WebSocket 오류 (${endpoint}):`, error);
+        console.error(`❌ WebSocket 오류:`, error);
         showMessage('연결 오류가 발생했습니다', 'error');
         resetCrawlingState();
     };
 
     ws.onclose = (event) => {
-        console.log(`🔌 WebSocket 연결 종료 (${endpoint}):`, event.code);
+        console.log(`🔌 WebSocket 연결 종료:`, event.code);
         if (isLoading && event.code !== 1000) {
             showMessage('연결이 예기치 않게 종료되었습니다', 'error');
             resetCrawlingState();
