@@ -211,76 +211,50 @@ function updateTimeFilterLabels() {
     timePeriodSelect.value = currentValue;
 }
 
-// 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
-function updateLabels() {
+// Footer 요소들을 번역하는 함수
+function updateFooterLabels() {
     const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
     
-    console.log(`🔄 언어 업데이트: ${currentLanguage}`, lang);
+    console.log(`🔄 Footer 언어 업데이트: ${currentLanguage}`);
     
-    // ✅ 기본 UI 요소들
-    const elements = [
-        { id: 'crawlBtn', prop: 'textContent', value: lang.start },
-        { id: 'cancelBtn', prop: 'textContent', value: lang.cancel },
-        { id: 'downloadBtn', prop: 'textContent', value: lang.download },
-        { id: 'siteInput', prop: 'placeholder', value: lang.sitePlaceholder },
-        { id: 'boardInput', prop: 'placeholder', value: lang.boardPlaceholder }
+    // Footer 링크들 업데이트
+    const footerElements = [
+        { id: 'privacyLink', key: 'privacy' },
+        { id: 'termsLink', key: 'terms' },
+        { id: 'bugReportLink', key: 'feedback' },
+        { id: 'businessLink', key: 'business' }
     ];
     
-    // ✅ 폼 라벨들 - 한국어로 표시되고 있는 부분들
-    const labelElements = [
-        { selector: 'label[for="minViews"]', value: lang.labels?.minViews },
-        { selector: 'label[for="minRecommend"]', value: lang.labels?.minRecommend },
-        { selector: 'label[for="minComments"]', value: lang.labels?.minComments },
-        { selector: 'label[for="startRank"]', value: lang.labels?.startRank },
-        { selector: 'label[for="endRank"]', value: lang.labels?.endRank },
-        { selector: 'label[for="sortMethod"]', value: lang.labels?.sortMethod },
-        { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod }
-    ];
-    
-    const additionalLabels = [
-        { selector: '#sortMethodLabel', value: lang.labels?.sortMethod },
-        { selector: '#timePeriodLabel', value: lang.labels?.timePeriod },
-        { selector: '#advancedSearchLabel', value: lang.labels?.advancedSearch },
-        { selector: '#startRankAdvLabel', value: lang.labels?.startRank },
-        { selector: '#endRankAdvLabel', value: lang.labels?.endRank },
-        { selector: '#startDateLabel', value: lang.labels?.startDate + ':' },
-        { selector: '#endDateLabel', value: lang.labels?.endDate + ':' }
-    ];
-    
-    additionalLabels.forEach(({ selector, value }) => {
-        const element = document.querySelector(selector);
-        if (element && value) {
-            element.textContent = value;
-        }
-    });
-
-    // 기본 요소들 업데이트
-    elements.forEach(({ id, prop, value }) => {
+    footerElements.forEach(({ id, key }) => {
         const element = document.getElementById(id);
-        if (element && value) {
-            element[prop] = value;
-            console.log(`✅ 업데이트: ${id} = ${value}`);
+        if (element && lang[key]) {
+            element.textContent = lang[key];
+            console.log(`✅ Footer 업데이트: ${id} = ${lang[key]}`);
         }
     });
+}
+
+// 모든 UI 라벨을 현재 언어에 맞게 업데이트하는 함수
+function updateFooterLabels() {
+    const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
     
+    console.log(`🔄 Footer 언어 업데이트: ${currentLanguage}`);
     
-    // ✅ 라벨 요소들 업데이트 (한국어로 보이는 부분들)
-    labelElements.forEach(({ selector, value }) => {
-        const element = document.querySelector(selector);
-        if (element && value) {
-            element.textContent = value;
-            console.log(`✅ 라벨 업데이트: ${selector} = ${value}`);
+    // Footer 링크들 업데이트
+    const footerElements = [
+        { id: 'privacyLink', key: 'privacy' },
+        { id: 'termsLink', key: 'terms' },
+        { id: 'bugReportLink', key: 'feedback' },
+        { id: 'businessLink', key: 'business' }
+    ];
+    
+    footerElements.forEach(({ id, key }) => {
+        const element = document.getElementById(id);
+        if (element && lang[key]) {
+            element.textContent = lang[key];
+            console.log(`✅ Footer 업데이트: ${id} = ${lang[key]}`);
         }
     });
-    
-    // ✅ 드롭다운 옵션들 업데이트
-    updateSortMethodLabels();
-    updateTimeFilterLabels();
-    
-    // ✅ 현재 사이트의 보드 placeholder 업데이트
-    if (currentSite) {
-        updateBoardPlaceholder(currentSite);
-    }
 }
 
 // 언어 드롭다운을 표시/숨김하는 함수
@@ -321,7 +295,7 @@ function selectLanguage(langCode, langName = null) {
         }
     });
     
-    // ✅ 즉시 모든 라벨 업데이트
+    // ✅ 즉시 모든 라벨 업데이트 (Footer 포함)
     setTimeout(() => {
         updateLabels();
         
@@ -344,16 +318,28 @@ function openBugReportModal() {
     const textarea = document.getElementById('bugReportDescription');
     const lang = window.languages[currentLanguage];
     
-    document.getElementById('bugReportTitleText').textContent = lang.feedbackTitle || 'PickPost에 의견 보내기';
-    document.getElementById('bugReportDescLabel').textContent = lang.feedbackDescLabel || '의견을 설명해 주세요. (필수)';
-    document.getElementById('screenshotTitle').textContent = lang.fileAttachTitle;
-    document.getElementById('bugReportWarningText').textContent = lang.warningTitle || '민감한 정보는 포함하지 마세요';
-    document.getElementById('bugReportWarningDetail').textContent = lang.warningDetail || '개인정보, 비밀번호, 금융정보 등은 포함하지 마세요...';
-    document.getElementById('bugReportCancelBtn').textContent = lang.cancel;
-    document.getElementById('bugReportSubmitBtn').textContent = lang.submit || '보내기';
+    // 모달 내 모든 텍스트 번역
+    document.getElementById('bugReportTitleText').textContent = lang.feedbackTitle || 'Send Feedback to PickPost';
+    document.getElementById('bugReportDescLabel').textContent = lang.feedbackDescLabel || 'Please describe your feedback. (Required)';
+    document.getElementById('screenshotTitle').textContent = lang.fileAttachTitle || 'Attach a photo to help PickPost better understand your feedback.';
+    document.getElementById('bugReportWarningText').textContent = lang.warningTitle || 'Do not include sensitive information';
+    document.getElementById('bugReportWarningDetail').textContent = lang.warningDetail || 'Do not include personal information, passwords, financial information, etc.';
+    document.getElementById('bugReportCancelBtn').textContent = lang.cancel || 'Cancel';
+    document.getElementById('bugReportSubmitBtn').textContent = lang.submit || 'Submit';
+    
+    // 플레이스홀더 및 기타 텍스트
+    if (textarea) {
+        textarea.placeholder = lang.feedbackPlaceholder || 'Please tell us why you are providing this feedback. Specific descriptions are very helpful for improvement.';
+    }
+    
+    const screenshotBtn = document.getElementById('screenshotBtn');
+    const screenshotBtnText = document.getElementById('screenshotBtnText');
+    if (screenshotBtnText) {
+        screenshotBtnText.textContent = lang.fileAttach || 'Attach Photo';
+    }
     
     modal.classList.add('show');
-    setTimeout(() => textarea.focus(), 300);
+    setTimeout(() => textarea?.focus(), 300);
     setupModalKeyboardTrap(modal);
 }
 
@@ -384,10 +370,10 @@ function closeBugReportModal() {
 // 서비스 약관 모달을 여는 함수
 function openTermsModal() {
     const modal = document.getElementById('termsModal');
-    const terms = window.policies[currentLanguage].terms;
+    const terms = window.policies[currentLanguage]?.terms || window.policies.en?.terms || {};
     
-    document.getElementById('termsModalTitle').textContent = terms.title;
-    document.getElementById('termsModalContent').innerHTML = terms.content;
+    document.getElementById('termsModalTitle').textContent = terms.title || 'Terms of Service';
+    document.getElementById('termsModalContent').innerHTML = terms.content || '<p>Terms of service content not available.</p>';
     
     modal.classList.add('show');
     setupModalKeyboardTrap(modal);
@@ -402,33 +388,34 @@ function closeTermsModal() {
 // 개인정보처리방침 모달을 여는 함수
 function openPrivacyModal() {
     const modal = document.getElementById('privacyModal');
-    const policy = window.policies[currentLanguage].privacy;
+    const policy = window.policies[currentLanguage]?.privacy || window.policies.en?.privacy || {};
     
-    document.getElementById('privacyModalTitle').textContent = policy.title;
-    document.getElementById('privacyModalContent').innerHTML = policy.content;
+    document.getElementById('privacyModalTitle').textContent = policy.title || 'Privacy Policy';
+    document.getElementById('privacyModalContent').innerHTML = policy.content || '<p>Privacy policy content not available.</p>';
     
     modal.classList.add('show');
     setupModalKeyboardTrap(modal);
 }
-
 // 개인정보처리방침 모달을 닫는 함수
 function closePrivacyModal() {
     const modal = document.getElementById('privacyModal');
     modal.classList.remove('show');
 }
-
 // 비즈니스 모달을 여는 함수
 function openBusinessModal() {
     const modal = document.getElementById('businessModal');
-    const policy = window.policies[currentLanguage].business;
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
-    document.getElementById('businessModalTitle').textContent = policy.title;
-    document.getElementById('businessModalContent').innerHTML = policy.content;
+    // 비즈니스 모달 제목 번역
+    document.getElementById('businessModalTitle').textContent = lang.businessTitle || '💼 Business Information';
+    
+    // 비즈니스 내용 번역
+    const businessContent = getBusinessContent(currentLanguage);
+    document.getElementById('businessModalContent').innerHTML = businessContent;
     
     modal.classList.add('show');
     setupModalKeyboardTrap(modal);
 }
-
 // 비즈니스 모달을 닫는 함수
 function closeBusinessModal() {
     const modal = document.getElementById('businessModal');
