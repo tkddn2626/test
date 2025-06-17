@@ -237,6 +237,23 @@ function updateLabels() {
         { selector: 'label[for="timePeriod"]', value: lang.labels?.timePeriod }
     ];
     
+    const additionalLabels = [
+        { selector: '#sortMethodLabel', value: lang.labels?.sortMethod },
+        { selector: '#timePeriodLabel', value: lang.labels?.timePeriod },
+        { selector: '#advancedSearchLabel', value: lang.labels?.advancedSearch },
+        { selector: '#startRankAdvLabel', value: lang.labels?.startRank },
+        { selector: '#endRankAdvLabel', value: lang.labels?.endRank },
+        { selector: '#startDateLabel', value: lang.labels?.startDate + ':' },
+        { selector: '#endDateLabel', value: lang.labels?.endDate + ':' }
+    ];
+    
+    additionalLabels.forEach(({ selector, value }) => {
+        const element = document.querySelector(selector);
+        if (element && value) {
+            element.textContent = value;
+        }
+    });
+
     // 기본 요소들 업데이트
     elements.forEach(({ id, prop, value }) => {
         const element = document.getElementById(id);
@@ -245,6 +262,7 @@ function updateLabels() {
             console.log(`✅ 업데이트: ${id} = ${value}`);
         }
     });
+    
     
     // ✅ 라벨 요소들 업데이트 (한국어로 보이는 부분들)
     labelElements.forEach(({ selector, value }) => {
