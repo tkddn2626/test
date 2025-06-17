@@ -2788,39 +2788,22 @@ function updateProgress(progress, message, details = {}) {
 }
 
 // 크롤링 결과를 표시하는 함수
+
+// 크롤링 결과를 표시하는 함수
 function displayResults(results, startIndex = 1) {
     // 안전한 DOM 요소 접근
     const container = safeGetElement('resultsContainer');
     if (!container) {
         console.error('resultsContainer 요소를 찾을 수 없습니다.');
-        // 폴백: 다른 가능한 컨테이너 ID들 시도
-        const fallbackIds = ['results', 'result-container', 'crawl-results'];
-        let fallbackContainer = null;
-        
-        for (const id of fallbackIds) {
-            fallbackContainer = safeGetElement(id);
-            if (fallbackContainer) {
-                console.log(`폴백 컨테이너 사용: ${id}`);
-                break;
-            }
-        }
-        
-        if (!fallbackContainer) {
-            console.error('결과를 표시할 컨테이너를 찾을 수 없습니다.');
-            return;
-        }
-        // 폴백 컨테이너를 사용
-        displaySimpleResults(fallbackContainer, results);
+        // 간단한 폴백 표시
+        showSimpleResults(results);
         return;
     }
-    
-    // 안전한 언어팩 접근
-    const lang = getSafeLanguagePack();
     
     if (!results || results.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; color: #5f6368; font-size: 16px; padding: 40px;">
-                ${lang.noResults || '결과가 없습니다'}
+                결과가 없습니다
             </div>
         `;
         return;
@@ -2828,39 +2811,156 @@ function displayResults(results, startIndex = 1) {
     
     // 완료 메시지 표시
     setTimeout(() => {
-        const successMsg = `크롤링 완료! ${results.length}개 게시글을 찾았습니다`;
-        showMessage(successMsg, 'success');
+        showMessage(`크롤링 완료! ${results.length}개 게시글을 찾았습니다`, 'success');
     }, 500);
     
-    // 안전한 설정값 가져오기
+    // 설정값 가져오기
     const elapsedTime = crawlStartTime ? Math.round((Date.now() - crawlStartTime) / 1000) : 0;
     const isAdvanced = safeGetElement('advancedSearch')?.checked || false;
     const start = parseInt(safeGetValue(isAdvanced ? 'startRankAdv' : 'startRank', '1'));
     const end = parseInt(safeGetValue(isAdvanced ? 'endRankAdv' : 'endRank', '20'));
     const estimatedPages = Math.ceil(end / 25);
     
-    // 요약 정보 HTML 생성
-    const summaryHtml = createSummaryHTML(results.length, start, end, estimatedPages, elapsedTime, isAdvanced, lang);
+    // HTML 생성
+    const summaryHtml = `
+        <div style="background: #f8f9fa; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(32,33,36,.1);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                <div style="width: 40px; height: 40px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                    <div style="width: 24px; height: 24px; background: #ff8000; border-radius: 50%;"></div>
+                </div>
+                <div>
+                    <h3 style="color: #ff8000; margin: 0; font-size: 16px; font-weight: 550;">
+                        크롤링 완료
+                    </h3>
+                    <p style="color: #5f6368; margin: 0; font-size: 11.5px;">
+                        ${new Date().toLocaleString()} 완료
+                    </p>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
+                    <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${results.length}</div>
+                    <div style="font-size: 12px; color: #5f6368;">총 게시물</div>
+                </div>
+                
+                <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
+                    <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${start}-${end}</div>
+                    <div style="font-size: 12px; color: #5f6368;">순위 범위</div>
+                </div>
+                
+                <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
+                    <div style="font-size: 16px; font-weight: 550; color: #ff8000;">~${estimatedPages}</div>
+                    <div style="font-size: 12px; color: #5f6368;">예상 페이지</div>
+                </div>
+                
+                <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
+                    <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${(currentSite || 'UNKNOWN').toUpperCase()}</div>
+                    <div style="font-size: 12px; color: #5f6368;">소스 사이트</div>
+                </div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid #e8eaed;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px; color: #5f6368;">크롤링 모드:</span>
+                    <span style="font-size: 14px; font-weight: 500; color: #ff8000;">
+                        ${isAdvanced ? '고급 검색' : '기본'}
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px; color: #5f6368;">⏱️ 소요 시간:</span>
+                    <span style="font-size: 14px; font-weight: 500; color: #137333;">${elapsedTime}초</span>
+                </div>
+            </div>
+        </div>
+    `;
     
-    // 개별 결과 아이템 HTML 생성
-    const resultsHtml = createResultsHTML(results, startIndex, lang);
+    // 개별 결과 HTML 생성
+    const resultsHtml = results.map((item, index) => {
+        const itemNumber = startIndex + index;
+        
+        // 안전한 필드 접근
+        const title = item.원제목 || item.title || item.제목 || 'No Title';
+        const translatedTitle = item.번역제목 || item.translated_title || '';
+        const link = item.링크 || item.link || item.url || '#';
+        const content = item.본문 || item.content || item.내용 || '';
+        const views = item.조회수 || item.views || 0;
+        const likes = item.추천수 || item.likes || item.score || 0;
+        const comments = item.댓글수 || item.comments || 0;
+        const date = item.작성일 || item.date || item.created_at || '';
+        
+        return `
+            <div class="result-item" style="opacity: 0; transform: translateY(8px); border: 1px solid #e8eaed; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: white; transition: all 0.3s ease;">
+                <div style="display: flex; align-items: flex-start; margin-bottom: 12px;">
+                    <div style="min-width: 32px; height: 32px; background: #ff8000; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; margin-right: 12px;">
+                        ${itemNumber}
+                    </div>
+                    <div style="flex: 1;">
+                        <a href="${link}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500; font-size: 16px; line-height: 1.4;" rel="noopener noreferrer">
+                            ${title}
+                        </a>
+                        ${translatedTitle ? `<div style="color: #5f6368; font-size: 14px; margin-top: 4px;">${translatedTitle}</div>` : ''}
+                    </div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: #5f6368;">
+                    <div>📅 ${date}</div>
+                    <div style="display: flex; gap: 16px;">
+                        ${views > 0 ? `<span>👁️ ${views.toLocaleString()}</span>` : ''}
+                        ${likes > 0 ? `<span>👍 ${likes.toLocaleString()}</span>` : ''}
+                        ${comments > 0 ? `<span>💬 ${comments.toLocaleString()}</span>` : ''}
+                    </div>
+                </div>
+                
+                ${content ? `
+                    <div style="color: #3c4043; font-size: 14px; line-height: 1.5; margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+                        ${content.length > 200 ? content.substring(0, 200) + '...' : content}
+                    </div>
+                ` : ''}
+                
+                <div style="text-align: right;">
+                    <a href="${link}" target="_blank" style="color: #ff8000; text-decoration: none; font-size: 14px; font-weight: 500;" rel="noopener noreferrer">
+                        원문 보기 →
+                    </a>
+                </div>
+            </div>
+        `;
+    }).join('');
     
     // 컨테이너에 HTML 삽입
     try {
         container.innerHTML = summaryHtml + resultsHtml;
         
         // 결과 아이템들 순차적 애니메이션
-        animateResultItems(container);
+        const resultItems = container.querySelectorAll('.result-item');
+        resultItems.forEach((item, index) => {
+            setTimeout(() => {
+                item.style.opacity = '1';
+                item.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
         
         // UI 상태 업데이트
-        updateUIAfterResults(lang);
+        setTimeout(() => {
+            enableDownloadButtons();
+            
+            const cancelBtn = safeGetElement('cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+            
+            const crawlBtn = safeGetElement('crawlBtn');
+            if (crawlBtn) {
+                crawlBtn.textContent = '크롤링 시작';
+                crawlBtn.disabled = false;
+            }
+        }, 100);
         
         console.log(`${results.length}개 결과 표시 완료`);
         
     } catch (error) {
         console.error('결과 표시 중 오류:', error);
-        // 폴백: 간단한 결과 표시
-        displaySimpleResults(container, results);
+        showSimpleResults(results);
     }
 }
 
