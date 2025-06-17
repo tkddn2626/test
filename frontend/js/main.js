@@ -29,15 +29,14 @@ window.addEventListener('error', function(e) {
         timestamp: new Date().toISOString()
     });
     
-    // 간단한 복구 로직만 유지
     if (e.message.includes('community_name')) {
         window.community_name = '';
         window.lemmy_instance = '';
         showMessage('Input validation error fixed. Please try again.', 'info');
     } else if (e.message.includes('Cannot read properties of undefined')) {
-        showMessage('페이지를 새로고침해주세요.', 'warning');
+        showMessage('pageRefreshNeeded', 'warning', { translate: true });
     } else {
-        showMessage('일시적인 오류가 발생했습니다.', 'warning');
+        showMessage('errorMessages.general', 'warning', { translate: true });
     }
 });
 
@@ -420,19 +419,12 @@ function closeBugReportModal() {
     
     const description = document.getElementById('bugReportDescription').value.trim();
     if (description.length > 0) {
-        const confirmMessages = {
-            ko: '작성 중인 내용이 있습니다. 정말 닫으시겠습니까?',
-            en: 'There is content being written. Are you sure you want to close?',
-            ja: '作成中の内容があります。本当に閉じますか？'
-        };
-        
-        if (!confirm(confirmMessages[currentLanguage] || confirmMessages.ko)) {
+        if (!confirm(getLocalizedMessage('confirmClose'))) {
             return;
         }
     }
     
     modal.classList.remove('show');
-    
     setTimeout(() => {
         resetBugReportModal();
     }, 300);
@@ -1279,7 +1271,6 @@ function showSiteSuggestions(suggestions, keyword, extractedURL = null) {
     const searchContainer = document.querySelector('.search-container');
     
     let existingDropdown = searchContainer.querySelector('.site-autocomplete');
-    
     if (existingDropdown) {
         existingDropdown.remove();
     }
@@ -1293,10 +1284,18 @@ function showSiteSuggestions(suggestions, keyword, extractedURL = null) {
             new RegExp(`(${keyword})`, 'gi'),
             '<mark style="background: #ffeb3b;">$1</mark>'
         );
-        const descHighlighted = item.desc.replace(
-            new RegExp(`(${keyword})`, 'gi'),
-            '<mark style="background: #ffeb3b;">$1</mark>'
-        );
+        
+        let descHighlighted = item.desc;
+        
+        if (extractedURL && item.site === 'universal') {
+            const urlDetectedText = getLocalizedMessage('urlDetected');
+            descHighlighted = `${urlDetectedText}: ${extractedURL}`;
+        } else {
+            descHighlighted = item.desc.replace(
+                new RegExp(`(${keyword})`, 'gi'),
+                '<mark style="background: #ffeb3b;">$1</mark>'
+            );
+        }
         
         return `
             <div class="site-autocomplete-item" data-index="${index}" onclick="selectSiteAutocompleteItem(${index})">
@@ -1312,6 +1311,7 @@ function showSiteSuggestions(suggestions, keyword, extractedURL = null) {
     searchContainer.appendChild(dropdown);
     siteHighlightIndex = -1;
 }
+
 
 // 사이트 자동완성을 숨기는 함수
 function hideSiteAutocomplete() {
@@ -2026,14 +2026,14 @@ function useOfflineAutocomplete(keyword) {
 function showLemmyHelpContent() {
     const container = document.getElementById('autocomplete');
     const boardSearchContainer = document.getElementById('boardSearchContainer');
-    const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
     
     if (!container || !boardSearchContainer) return;
     
     boardSearchContainer.classList.add('dropdown-active');
     
-    const title = lang.lemmyHelpTitle || 'Lemmy Community Format';
-    const description = lang.lemmyHelpDescription || 'Enter community@instance format';
+    // 기존 키 활용
+    const title = getLocalizedMessage('lemmyHelpTitle');
+    const description = getLocalizedMessage('lemmyHelpDescription');
     
     container.innerHTML = `
         <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
@@ -2047,13 +2047,13 @@ function showLemmyHelpContent() {
         <div class="autocomplete-item" onclick="setLemmyCommunity('technology@lemmy.world');">
             <div style="flex: 1;">
                 <div style="color: #1a73e8;">🔧 technology@lemmy.world</div>
-                <div style="font-size: 11px; color: #70757a;">기술 관련 토론</div>
+                <div style="font-size: 11px; color: #70757a;">${getLocalizedMessage('helpTexts.lemmyHelp.examples.technology')}</div>
             </div>
         </div>
         <div class="autocomplete-item" onclick="setLemmyCommunity('asklemmy@lemmy.ml');">
             <div style="flex: 1;">
                 <div style="color: #1a73e8;">❓ asklemmy@lemmy.ml</div>
-                <div style="font-size: 11px; color: #70757a;">Lemmy 커뮤니티에 질문</div>
+                <div style="font-size: 11px; color: #70757a;">${getLocalizedMessage('helpTexts.lemmyHelp.examples.asklemmy')}</div>
             </div>
         </div>
     `;
@@ -2253,7 +2253,7 @@ async function startCrawling() {
 
     const boardInput = document.getElementById('boardInput')?.value?.trim();
     if (!boardInput) {
-        showMessage('게시판 URL 또는 키워드를 입력해주세요.', 'error');
+        showMessage('crawlButtonMessages.boardEmpty', 'error', { translate: true });
         return;
     }
 
@@ -2263,8 +2263,9 @@ async function startCrawling() {
         crawlStartTime = Date.now();
         
         updateUIForCrawlStart();
+        updateProgress(0, getLocalizedMessage('preparingCrawl'));
         
-        // 단순화된 설정
+        // 기존 설정 코드...
         const config = {
             input: boardInput,
             site: currentSite || 'auto',
@@ -2280,13 +2281,12 @@ async function startCrawling() {
             language: currentLanguage || 'en'
         };
         
-        // 통합 엔드포인트만 사용
         currentSocket = await createWebSocketWithRetry('crawl', config);
         console.log('✅ 크롤링 시작');
         
     } catch (error) {
         console.error('❌ 크롤링 실패:', error);
-        showMessage('서버 연결에 실패했습니다.', 'error');
+        showMessage('errorMessages.connection_failed', 'error', { translate: true });
         resetCrawlingState();
     }
 }
@@ -2532,8 +2532,8 @@ function updateUIForCrawlStart() {
     const crawlBtn = document.getElementById('crawlBtn');
     if (crawlBtn) {
         crawlBtn.disabled = true;
-        const lang = window.languages?.[currentLanguage] || {};
-        crawlBtn.textContent = lang.crawlingStatus?.inProgress || '크롤링 중...';
+        // 기존 키 재사용
+        crawlBtn.textContent = getLocalizedMessage('crawlingStatus.processing');
     }
     
     // 진행률 표시 시작
@@ -2544,6 +2544,7 @@ function updateUIForCrawlStart() {
     
     console.log('🚀 크롤링 UI 준비 완료');
 }
+
 
 function resetCrawlingState() {
     try {
@@ -2882,16 +2883,15 @@ function hideProgress() {
 
 // 진행 상황을 업데이트하는 함수
 function updateProgress(progress, message, details = {}) {
-    // 진행률 컨테이너 표시
     const progressContainer = document.getElementById('progressContainer');
     if (progressContainer) {
         progressContainer.classList.add('show');
         progressContainer.style.display = 'block';
     }
     
-    // 🔥 진행률 바 업데이트 (여러 가능한 ID 확인)
+    // 진행률 바 업데이트
     const progressBarSelectors = [
-        '#progressFill',  // 기존 ID
+        '#progressFill',
         '.progress-fill', 
         '#progress-bar',
         '.progress-bar'
@@ -2908,7 +2908,7 @@ function updateProgress(progress, message, details = {}) {
         progressBar.style.width = `${validProgress}%`;
     }
     
-    // 🔥 진행률 텍스트 업데이트
+    // 진행률 텍스트 업데이트 (번역된 메시지 사용)
     const progressTextSelectors = [
         '#progressText',
         '.progress-text',
@@ -2922,7 +2922,15 @@ function updateProgress(progress, message, details = {}) {
     }
     
     if (progressText) {
-        progressText.textContent = message || `${progress}%`;
+        // 메시지가 번역 키인지 확인하고 번역
+        let displayMessage = message;
+        if (typeof message === 'string' && !message.includes(' ') && window.languages) {
+            const translatedMessage = getLocalizedMessage(message);
+            if (translatedMessage !== message) {
+                displayMessage = translatedMessage;
+            }
+        }
+        progressText.textContent = displayMessage || `${progress}%`;
     }
     
     console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
@@ -3309,16 +3317,14 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
             const data = JSON.parse(event.data);
             console.log(`📨 메시지 수신:`, data);
 
-            const lang = window.languages[currentLanguage]; // 🔥 언어팩 가져오기
-
             if (data.cancelled) {
-                showMessage(lang.crawlingStatus?.cancelled || '크롤링이 취소되었습니다.', 'info');
+                showMessage('crawlingStatus.cancelled', 'info', { translate: true });
                 resetCrawlingState();
                 return;
             }
 
             if (data.error) {
-                showMessage(data.error, 'error');
+                showMessage('errorMessages.general', 'error', { translate: true });
                 resetCrawlingState();
                 return;
             }
@@ -3330,12 +3336,10 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
                     displayResults(results);
                     enableDownloadButtons();
                     
-                    // 🔥 번역된 완료 메시지
-                    const message = lang.completionMessages?.success || '크롤링 완료: {count}개 게시물';
-                    const translatedMessage = message.replace('{count}', results.length);
-                    showMessage(translatedMessage, 'success');
+                    const message = getLocalizedMessage('completionMessages.success').replace('{count}', results.length);
+                    showMessage(message, 'success');
                 } else {
-                    showMessage(lang.crawlingStatus?.noResults || '결과가 없습니다.', 'warning');
+                    showMessage('completedNoResults', 'warning', { translate: true });
                 }
                 resetCrawlingState();
                 return;
@@ -3344,43 +3348,37 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
             if (data.progress !== undefined) {
                 const progress = Math.max(0, Math.min(100, data.progress));
                 
-                // 🔥 상태 메시지 번역
-                let status = data.status || lang.crawlingStatus?.processing || '처리 중...';
-                
-                // 백엔드에서 오는 영어 상태를 한국어로 매핑
-                const statusMap = {
-                    'processing': lang.crawlingStatus?.processing,
-                    'connecting': lang.crawlingStatus?.connecting,
-                    'analyzing': lang.crawlingStatus?.analyzing,
-                    'collecting': lang.crawlingStatus?.collecting
-                };
-                
-                if (statusMap[status.toLowerCase()]) {
-                    status = statusMap[status.toLowerCase()];
+                let statusKey = 'crawlingStatus.processing';
+                if (data.status) {
+                    const statusMap = {
+                        'connecting': 'crawlingStatus.connecting',
+                        'analyzing': 'crawlingStatus.analyzing', 
+                        'collecting': 'crawlingStatus.collecting',
+                        'processing': 'crawlingStatus.processing'
+                    };
+                    statusKey = statusMap[data.status.toLowerCase()] || statusKey;
                 }
                 
-                updateProgress(progress, status);
+                updateProgress(progress, getLocalizedMessage(statusKey));
                 return;
             }
 
         } catch (error) {
             console.error('메시지 파싱 오류:', error);
-            const lang = window.languages[currentLanguage];
-            showMessage(lang.completionMessages?.error || '메시지 처리 중 오류가 발생했습니다.', 'error');
+            showMessage('errorMessages.general', 'error', { translate: true });
         }
     };
 
     ws.onerror = (error) => {
         console.error(`❌ WebSocket 오류:`, error);
-        const lang = window.languages[currentLanguage];
-        showMessage('연결 오류가 발생했습니다', 'error');
+        showMessage('errorMessages.network_error', 'error', { translate: true });
         resetCrawlingState();
     };
 
     ws.onclose = (event) => {
         console.log(`🔌 WebSocket 연결 종료:`, event.code);
         if (isLoading && event.code !== 1000) {
-            showMessage('연결이 예기치 않게 종료되었습니다', 'error');
+            showMessage('connectionDropped', 'error', { translate: true });
             resetCrawlingState();
         }
     };
@@ -3547,46 +3545,54 @@ function enhancedSiteDetection(input) {
 }
 
 // 입력 유효성을 검사하는 함수
-function validateInput(site, boardInput) {
-    const errors = [];
-    
-    if (!site) {
-        errors.push('사이트를 선택해주세요');
-        return errors;
-    }
-    
-    if (!boardInput.trim()) {
-        if (site === 'universal') {
-            errors.push('크롤링할 웹사이트 URL을 입력해주세요');
-        } else {
-            errors.push('게시판 이름을 입력해주세요');
-        }
-        return errors;
-    }
-    
+function validateSiteInput(site, boardValue, lang) {
     switch (site) {
         case 'universal':
-            if (!boardInput.startsWith('http')) {
-                errors.push('범용 크롤러는 http:// 또는 https://로 시작하는 완전한 URL이 필요합니다');
-            }
-            break;
+            const isValidUrl = boardValue.startsWith('http://') || 
+                             boardValue.startsWith('https://') ||
+                             (boardValue.includes('.') && boardValue.includes('/'));
             
-        case 'reddit':
-            if (boardInput.includes('reddit.com') && !boardInput.includes('/r/')) {
-                errors.push('Reddit 게시판은 "/r/게시판명" 형태여야 합니다');
-            }
-            break;
+            return {
+                isValid: isValidUrl,
+                message: isValidUrl ? '' : getLocalizedMessage('crawlButtonMessages.universalUrlError')
+            };
             
         case 'lemmy':
-            if (!boardInput.includes('@') && !boardInput.includes('lemmy')) {
-                errors.push('Lemmy 커뮤니티는 "커뮤니티명@인스턴스" 형태여야 합니다 (예: technology@lemmy.world)');
+            if (boardValue.includes('@') && boardValue.split('@').length === 2) {
+                const [community, instance] = boardValue.split('@');
+                return {
+                    isValid: community.length > 0 && instance.length > 0,
+                    message: ''
+                };
+            } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
+                return { isValid: true, message: '' };
+            } else if (boardValue.length > 2) {
+                const suggestion = getLocalizedMessage('formatSuggestion');
+                return {
+                    isValid: true,
+                    message: `${suggestion}: ${boardValue}@lemmy.world`
+                };
+            } else {
+                return {
+                    isValid: false,
+                    message: getLocalizedMessage('crawlButtonMessages.lemmyFormatError')
+                };
             }
-            break;
+            
+        case 'reddit':
+            const hasRedditError = boardValue.includes('reddit.com') && !boardValue.includes('/r/');
+            return {
+                isValid: !hasRedditError,
+                message: hasRedditError ? getLocalizedMessage('crawlButtonMessages.redditFormatError') : ''
+            };
+            
+        default:
+            return {
+                isValid: boardValue.length > 0,
+                message: ''
+            };
     }
-    
-    return errors;
 }
-
 
 // 보드 입력창을 클리어하는 함수
 function clearBoardInput() {
@@ -3693,11 +3699,10 @@ function validateSiteInput(site, boardValue, lang) {
             
             return {
                 isValid: isValidUrl,
-                message: isValidUrl ? '' : (lang.crawlButtonMessages?.universalUrlError || 'Enter a valid URL')
+                message: isValidUrl ? '' : getLocalizedMessage('crawlButtonMessages.universalUrlError')
             };
             
         case 'lemmy':
-            // ✅ 수정: community_name 변수 사용하지 않고 직접 검증
             if (boardValue.includes('@') && boardValue.split('@').length === 2) {
                 const [community, instance] = boardValue.split('@');
                 return {
@@ -3707,14 +3712,16 @@ function validateSiteInput(site, boardValue, lang) {
             } else if (boardValue.startsWith('https://') && boardValue.includes('/c/')) {
                 return { isValid: true, message: '' };
             } else if (boardValue.length > 2) {
+                // 신규 키 사용하여 제안 제공
+                const suggestion = getLocalizedMessage('formatSuggestion');
                 return {
                     isValid: true,
-                    message: `Try ${boardValue}@lemmy.world`
+                    message: `${suggestion}: ${boardValue}@lemmy.world`
                 };
             } else {
                 return {
                     isValid: false,
-                    message: lang.crawlButtonMessages?.lemmyFormatError || 'Format: community@lemmy.world'
+                    message: getLocalizedMessage('crawlButtonMessages.lemmyFormatError')
                 };
             }
             
@@ -3722,7 +3729,7 @@ function validateSiteInput(site, boardValue, lang) {
             const hasRedditError = boardValue.includes('reddit.com') && !boardValue.includes('/r/');
             return {
                 isValid: !hasRedditError,
-                message: hasRedditError ? (lang.crawlButtonMessages?.redditFormatError || 'Reddit format error') : ''
+                message: hasRedditError ? getLocalizedMessage('crawlButtonMessages.redditFormatError') : ''
             };
             
         default:
@@ -3803,6 +3810,9 @@ window.useShortcut = useShortcut;
 // 언어 관련
 window.toggleLanguageDropdown = toggleLanguageDropdown;
 window.selectLanguage = selectLanguage;
+window.validateSiteInput = validateSiteInput;
+window.showSiteSuggestions = showSiteSuggestions;
+window.showLemmyHelpContent = showLemmyHelpContent;
 
 // 자동완성 관련
 window.selectBBCSection = selectBBCSection;
