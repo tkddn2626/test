@@ -26,30 +26,28 @@ let lastAnnouncementCheck = localStorage.getItem('pickpost_last_announcement_che
  */
 function openAnnouncementModal() {
     const modal = document.getElementById('announcementModal');
-    const lang = window.languages[window.PickPostGlobals?.getCurrentLanguage() || 'ko'];
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
-    // 제목 번역
+    // 모달 제목 번역
     const titleElement = document.getElementById('announcementTitle');
     if (titleElement) {
-        titleElement.textContent = lang.announcementTitle || '📢 공지사항';
+        titleElement.textContent = `📢 ${lang.announcementTitle || 'Announcements'}`;
     }
     
-    // 닫기 버튼 번역
+    // 버튼 텍스트 번역
     const closeBtn = document.getElementById('announcementCloseBtn');
     if (closeBtn) {
-        closeBtn.textContent = lang.ok || '확인';
+        closeBtn.textContent = lang.ok || 'OK';
     }
     
-    // 공지사항 목록 생성
-    loadAnnouncements();
+    // 공지사항 버튼 텍스트도 업데이트
+    const announcementBtn = document.getElementById('announcementBtn');
+    const announcementBtnText = document.getElementById('announcementBtnText');
+    if (announcementBtnText) {
+        announcementBtnText.textContent = lang.announcementBtnText || 'Announcements';
+    }
     
     modal.classList.add('show');
-    
-    // 새 공지 뱃지 숨기기 및 읽음 상태 업데이트
-    markAllAnnouncementsAsRead();
-    
-    // 키보드 트랩 설정 (접근성)
-    setupAnnouncementModalKeyboardTrap(modal);
 }
 
 /**
