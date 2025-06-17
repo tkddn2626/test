@@ -43,37 +43,124 @@ except ImportError as e:
     LEGACY_CRAWLERS_AVAILABLE = False
 
 # 🔥 코어 모듈 import (존재하는 것만)
+# main.py에서 안전한 코어 모듈 import
+
+import os
+import sys
+from pathlib import Path
+
+# Python path 설정
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
+
+print("🔥 코어 모듈 로드 시도 (안전한 방식)...")
+
+# 🔥 1단계: 기본 core 패키지 로드 시도
 try:
-    from core.site_detector import SiteDetector
-    from core.auto_crawler import AutoCrawler  
-    from core.utils import get_user_language, calculate_actual_dates
+    import core
+    print("✅ Core 패키지 로드 성공")
+    
+    # 2단계: 개별 모듈들을 안전하게 로드
+    SiteDetector = core.get_site_detector()
+    AutoCrawler = core.get_auto_crawler()
+    utils_module = core.get_utils()
+    
+    # 3단계: 기본 함수들 가져오기
+    get_user_language = core.get_user_language
+    calculate_actual_dates = core.calculate_actual_dates
+    
+    # 4단계: 모듈별 가용성 확인
+    if SiteDetector:
+        print("✅ SiteDetector 사용 가능")
+    else:
+        print("❌ SiteDetector 사용 불가")
+        
+    if AutoCrawler:
+        print("✅ AutoCrawler 사용 가능")
+    else:
+        print("❌ AutoCrawler 사용 불가")
+        
+    if utils_module:
+        print("✅ Utils 모듈 사용 가능")
+        # 추가 utils 함수들 로드
+        try:
+            calculate_actual_dates_for_lemmy = utils_module.calculate_actual_dates_for_lemmy
+        except AttributeError:
+            calculate_actual_dates_for_lemmy = calculate_actual_dates
+    else:
+        print("❌ Utils 모듈 사용 불가")
+        calculate_actual_dates_for_lemmy = calculate_actual_dates
+    
+    # 최소한 기본 함수들이 있으면 부분적으로 사용 가능
     CORE_MODULES_AVAILABLE = True
-    logger.info("✅ 코어 모듈 로드 성공")
+    print("✅ 코어 모듈 부분 로드 성공")
+    
 except ImportError as e:
-    logger.warning(f"⚠️ 코어 모듈 로드 실패: {e}")
+    print(f"❌ Core 패키지 로드 실패: {e}")
     CORE_MODULES_AVAILABLE = False
     
-    # 폴백: 간단한 구현체들
+    # 완전한 폴백 구현
     class SiteDetector:
         async def detect_site_type(self, input_data: str) -> str:
             input_lower = input_data.lower()
-            if 'reddit' in input_lower: return 'reddit'
-            elif 'lemmy' in input_lower: return 'lemmy'
-            elif 'dcinside' in input_lower: return 'dcinside'
-            elif 'blind' in input_lower: return 'blind'
-            elif 'bbc' in input_lower: return 'bbc'
-            else: return 'universal'
+            if 'reddit' in input_lower or '/r/' in input_lower:
+                return 'reddit'
+            elif 'lemmy' in input_lower or '@lemmy' in input_lower:
+                return 'lemmy'
+            elif 'dcinside' in input_lower or 'gall.dcinside' in input_lower:
+                return 'dcinside'
+            elif 'teamblind.com' in input_lower or 'blind.com' in input_lower:
+                return 'blind'
+            elif 'bbc.com' in input_lower or 'bbc.co.uk' in input_lower:
+                return 'bbc'
+            elif input_data.startswith('http'):
+                return 'universal'
+            else:
+                return 'universal'
         
         def extract_board_identifier(self, url: str, site_type: str) -> str:
+            if site_type == 'reddit' and '/r/' in url:
+                import re
+                match = re.search(r'/r/([^/]+)', url)
+                return match.group(1) if match else url
+            elif site_type == 'lemmy' and '/c/' in url:
+                parts = url.split('/c/')
+                if len(parts) > 1:
+                    from urllib.parse import urlparse
+                    domain = urlparse(url).netloc
+                    community = parts[1].split('/')[0]
+                    return f"{community}@{domain}"
             return url
     
-    def get_user_language(config: Dict) -> str:
+    AutoCrawler = None
+    
+    def get_user_language(config):
         return config.get("language", "en")
     
-    def calculate_actual_dates(time_filter: str, start_date_input=None, end_date_input=None):
+    def calculate_actual_dates(time_filter, start_date_input=None, end_date_input=None):
         if time_filter == 'custom' and start_date_input and end_date_input:
             return start_date_input, end_date_input
+        
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        
+        if time_filter == 'day':
+            start = now - timedelta(days=1)
+            return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+        elif time_filter == 'week':
+            start = now - timedelta(weeks=1)
+            return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+        elif time_filter == 'month':
+            start = now - timedelta(days=30)
+            return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
+        
         return None, None
+    
+    calculate_actual_dates_for_lemmy = calculate_actual_dates
+    
+    print("✅ 폴백 구현 로드 완료")
+
+print(f"🎯 최종 상태: CORE_MODULES_AVAILABLE = {CORE_MODULES_AVAILABLE}")
 
 # ==================== 진행률 및 메시지 관리 ====================
 class ProgressManager:
@@ -286,34 +373,74 @@ async def execute_crawl_by_site(site_type: str, target_input: str, crawl_id: str
         raise
 
 # ==================== 간소화된 크롤링 래퍼 함수들 ====================
-async def crawl_reddit_with_cancel_check(*args, crawl_id=None, **kwargs):
+# main.py의 크롤링 래퍼 함수들 수정
+
+# ==================== 간소화된 크롤링 래퍼 함수들 ====================
+async def crawl_reddit_with_cancel_check(*args, **kwargs):
+    # crawl_id 안전하게 처리
+    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('reddit', target, crawl_id, **kwargs)
+    
+    # crawl_id를 config에 다시 추가 (execute_crawl_by_site에서 처리됨)
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('reddit', target, **kwargs)
 
-async def crawl_lemmy_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+async def crawl_lemmy_board_with_cancel_check(*args, **kwargs):
+    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('community_input', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('lemmy', target, crawl_id, **kwargs)
+    
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('lemmy', target, **kwargs)
 
-async def crawl_dcinside_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+async def crawl_dcinside_board_with_cancel_check(*args, **kwargs):
+    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('board_name', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('dcinside', target, crawl_id, **kwargs)
+    
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('dcinside', target, **kwargs)
 
-async def crawl_blind_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+async def crawl_blind_board_with_cancel_check(*args, **kwargs):
+    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('board_input', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('blind', target, crawl_id, **kwargs)
+    
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('blind', target, **kwargs)
 
-async def crawl_bbc_board_with_cancel_check(board_url: str = None, crawl_id=None, **kwargs):
+async def crawl_bbc_board_with_cancel_check(board_url: str = None, **kwargs):
+    crawl_id = kwargs.pop('crawl_id', None)
     target = board_url or kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('bbc', target, crawl_id, **kwargs)
+    
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('bbc', target, **kwargs)
 
-async def crawl_universal_board_with_cancel_check(*args, crawl_id=None, **kwargs):
+async def crawl_universal_board_with_cancel_check(*args, **kwargs):
+    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('board_url', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('universal', target, crawl_id, **kwargs)
+    
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('universal', target, **kwargs)
 
 # fetch_posts도 통합으로 처리
-async def fetch_posts_with_cancel_check(*args, crawl_id=None, **kwargs):
+async def fetch_posts_with_cancel_check(*args, **kwargs):
+    crawl_id = kwargs.pop('crawl_id', None)
     target = args[0] if args else kwargs.get('subreddit_name', kwargs.get('board_identifier', ''))
-    return await execute_crawl_by_site('reddit', target, crawl_id, **kwargs)
+    
+    if crawl_id:
+        kwargs['crawl_id'] = crawl_id
+    
+    return await execute_crawl_by_site('reddit', target, **kwargs)
 
 # ==================== 번역 서비스 ====================
 async def deepl_translate(text: str, target_lang: str) -> str:
@@ -977,5 +1104,3 @@ if __name__ == "__main__":
        logger.error("❌ 크롤링 시스템을 사용할 수 없습니다!")
    
    uvicorn.run(app, host="0.0.0.0", port=PORT)
-
-   
