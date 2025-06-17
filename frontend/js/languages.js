@@ -109,7 +109,7 @@ const languages = {
         },
 
         results: {
-            crawlingComplete: "크롤링 완료",
+            crawlingComplete: "수집 완료",
             completedAt: "완료",
             totalPosts: "총 게시물", 
             rankRange: "순위 범위",
@@ -158,11 +158,11 @@ const languages = {
 
        // ==================== 완료 메시지 ====================
         completionMessages: {
-            success: "크롤링 완료: {count}개 게시물",
+            success: "수집 완료: {count}개 게시물",
             noData: "결과가 없습니다",
             error: "오류가 발생했습니다",
             unified_complete: "{input}에서 {count}개 게시물 발견 (사이트: {site})",
-            legacy_complete: "크롤링 완료: {count}개 게시물",
+            legacy_complete: "수집 완료: {count}개 게시물",
             crawl_complete: "{site} {board}에서 {count}개 게시물 수집 완료 ({start}-{end}위)",
             translation_complete: "번역 완료: {count}개 게시물을 처리했습니다",
             reddit_complete: "Reddit {board}에서 {count}개 게시물 수집 완료",
@@ -232,7 +232,7 @@ const languages = {
             connecting: "연결 중...",
             analyzing: "분석 중...",
             collecting: "수집 중...",
-            completed: "크롤링 완료",
+            completed: "수집 완료",
             cancelled: "크롤링이 취소되었습니다",
             noResults: "결과가 없습니다"
        },
@@ -419,7 +419,7 @@ const languages = {
         },
 
         results: {
-            crawlingComplete: "Crawling Complete",
+            crawlingComplete: "Complete",
             completedAt: "Completed",
             totalPosts: "Total Posts",
             rankRange: "Rank Range", 
@@ -466,11 +466,11 @@ const languages = {
        
        // ==================== 완료 메시지 ====================
         completionMessages: {
-            success: "Crawling complete: {count} posts",
+            success: "Complete: {count} posts",
             noData: "No results found", 
             error: "An error occurred",
             unified_complete: "Found {count} posts from {input} (Site: {site})",
-            legacy_complete: "Crawling complete: {count} posts",
+            legacy_complete: "Complete: {count} posts",
             crawl_complete: "Collected {count} posts from {site} {board} (Rank {start}-{end})",
             translation_complete: "Translation complete: processed {count} posts",
             reddit_complete: "Collected {count} posts from Reddit {board}",
@@ -540,7 +540,7 @@ const languages = {
             connecting: "Connecting...", 
             analyzing: "Analyzing...",
             collecting: "Collecting...",
-            completed: "Crawling Complete",
+            completed: "Complete",
             cancelled: "Crawling has been cancelled",
             noResults: "No results found"
         },
@@ -726,7 +726,7 @@ const languages = {
             loadMore: "もっと見る"
         },
         results: {
-            crawlingComplete: "クロール完了",
+            crawlingComplete: "収集完了",
             completedAt: "完了", 
             totalPosts: "総投稿数",
             rankRange: "順位範囲",
@@ -846,7 +846,7 @@ const languages = {
             connecting: "接続中...",
             analyzing: "分析中...", 
             collecting: "収集中...",
-            completed: "クロール完了",
+            completed: "収集完了",
             cancelled: "クロールがキャンセルされました",
             noResults: "結果がありません"
        },
