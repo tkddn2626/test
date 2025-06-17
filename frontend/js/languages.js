@@ -238,13 +238,27 @@ const languages = {
        },
        
        // ==================== 알림 메시지 ====================
-       notifications: {
-           file_too_large: "파일 크기는 5MB 이하로 제한됩니다",
-           invalid_file_type: "이미지 파일만 업로드할 수 있습니다",
-           no_data: "다운로드할 데이터가 없습니다",
-           download_success: "파일이 다운로드되었습니다: {filename}"
-       },
-       
+        notifications: {
+            file_too_large: "파일 크기는 5MB 이하로 제한됩니다",
+            invalid_file_type: "이미지 파일만 업로드할 수 있습니다",
+            no_data: "다운로드할 데이터가 없습니다",
+            download_success: "파일이 다운로드되었습니다: {filename}"
+        },
+          // 확인 다이얼로그 
+        confirmClose: "작성 중인 내용이 있습니다. 정말 닫으시겠습니까?",
+        
+        // 에러 복구 
+        pageRefreshNeeded: "페이지를 새로고침해주세요.",
+        connectionDropped: "연결이 예기치 않게 종료되었습니다",
+        
+        // 진행 상황 세분화 
+        preparingCrawl: "크롤링 준비 중...",
+        completedNoResults: "크롤링이 완료되었지만 결과가 없습니다.",
+        
+        // 자동완성 도움말 
+        urlDetected: "URL 감지됨",
+        formatSuggestion: "형식 제안",
+    
        // ==================== 피드백 시스템 ====================
        feedbackTitle: "PickPost에 의견 보내기",
        feedbackDescLabel: "의견을 설명해 주세요. (필수)",
@@ -552,7 +566,14 @@ const languages = {
            no_data: "No data to download",
            download_success: "File downloaded: {filename}"
        },
-       
+        confirmClose: "There is content being written. Are you sure you want to close?",
+        pageRefreshNeeded: "Please refresh the page.",
+        connectionDropped: "Connection was unexpectedly closed",
+        preparingCrawl: "Preparing to crawl...",
+        completedNoResults: "Crawling completed but no results found.",
+        urlDetected: "URL detected",
+        formatSuggestion: "Format suggestion",
+           
        // ==================== 피드백 시스템 ====================
        feedbackTitle: "Send Feedback to PickPost",
        feedbackDescLabel: "Please describe your feedback. (Required)",
@@ -858,7 +879,15 @@ const languages = {
            no_data: "ダウンロードするデータがありません",
            download_success: "ファイルがダウンロードされました: {filename}"
        },
-       
+
+        confirmClose: "作成中の内容があります。本当に閉じますか？",
+        pageRefreshNeeded: "ページを更新してください。",
+        connectionDropped: "接続が予期せず終了しました",
+        preparingCrawl: "クロール準備中...",
+        completedNoResults: "クロールが完了しましたが、結果がありません。",
+        urlDetected: "URL検出済み",
+        formatSuggestion: "形式提案",
+
        // ==================== 피드백 시스템 ====================
        feedbackTitle: "PickPostに意見を送る",
        feedbackDescLabel: "意見を説明してください。（必須）",
