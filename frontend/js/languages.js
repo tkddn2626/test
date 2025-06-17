@@ -1,3 +1,183 @@
+// languages.js 파일 상단에 추가 (기존 내용 유지하면서)
+
+// 전역 언어 객체 확인
+if (typeof window.languages === 'undefined') {
+    window.languages = {};
+}
+
+// 기본 영어 언어팩 (최소한의 필수 요소만)
+window.languages.en = {
+    start: 'Start Crawling',
+    cancel: 'Cancel',
+    download: 'Download Excel',
+    
+    // 사이트 플레이스홀더
+    sitePlaceholder: 'Search for a site...',
+    boardPlaceholders: {
+        default: 'Enter board name...',
+        reddit: 'Enter subreddit name (e.g., python)',
+        lemmy: 'Enter community@instance (e.g., technology@lemmy.world)',
+        dcinside: 'Enter gallery name',
+        blind: 'Enter topic name',
+        bbc: 'Enter BBC section URL',
+        universal: 'Enter website URL'
+    },
+    
+    // 정렬 옵션
+    sortOptions: {
+        reddit: {
+            new: 'New',
+            top: 'Top',
+            hot: 'Hot',
+            best: 'Best',
+            rising: 'Rising'
+        },
+        other: {
+            popular: 'Popular',
+            recommend: 'Recommend',
+            recent: 'Recent',
+            comments: 'Comments'
+        }
+    },
+    
+    // 라벨들
+    minViews: 'Min Views',
+    minRecommend: 'Min Likes',
+    minComments: 'Min Comments',
+    startRank: 'Start Rank',
+    endRank: 'End Rank',
+    sortMethod: 'Sort Method',
+    timePeriod: 'Time Period',
+    advancedSearch: 'Advanced Search'
+};
+
+// 한국어 언어팩도 동일한 구조로 설정
+window.languages.ko = {
+    start: '크롤링 시작',
+    cancel: '취소',
+    download: 'Excel 다운로드',
+    
+    sitePlaceholder: '사이트 검색...',
+    boardPlaceholders: {
+        default: '게시판 이름 입력...',
+        reddit: '서브레딧 이름 입력 (예: python)',
+        lemmy: '커뮤니티@인스턴스 입력 (예: technology@lemmy.world)',
+        dcinside: '갤러리 이름 입력',
+        blind: '토픽 이름 입력',
+        bbc: 'BBC 섹션 URL 입력',
+        universal: '웹사이트 URL 입력'
+    },
+    
+    sortOptions: {
+        reddit: {
+            new: '최신순',
+            top: '인기순',
+            hot: '핫',
+            best: '베스트',
+            rising: '급상승'
+        },
+        other: {
+            popular: '인기순',
+            recommend: '추천순',
+            recent: '최신순',
+            comments: '댓글순'
+        }
+    },
+    
+    minViews: '최소 조회수',
+    minRecommend: '최소 추천수',
+    minComments: '최소 댓글수',
+    startRank: '시작 순위',
+    endRank: '끝 순위',
+    sortMethod: '정렬 방법',
+    timePeriod: '시간 범위',
+    advancedSearch: '고급 검색'
+};
+
+// 일본어도 기본 구조만
+window.languages.ja = {
+    start: 'クロール開始',
+    cancel: 'キャンセル',
+    download: 'Excelダウンロード',
+    
+    sitePlaceholder: 'サイト検索...',
+    boardPlaceholders: {
+        default: '掲示板名を入力...',
+        reddit: 'サブレディット名を入力',
+        lemmy: 'コミュニティ@インスタンス',
+        dcinside: 'ギャラリー名を入力',
+        blind: 'トピック名を入力',
+        bbc: 'BBC セクションURL',
+        universal: 'ウェブサイトURL'
+    },
+    
+    sortOptions: {
+        reddit: {
+            new: '新着順',
+            top: '人気順',
+            hot: 'ホット',
+            best: 'ベスト',
+            rising: '急上昇'
+        },
+        other: {
+            popular: '人気順',
+            recommend: '推薦順',
+            recent: '最新順',
+            comments: 'コメント順'
+        }
+    },
+    
+    minViews: '最小ビュー数',
+    minRecommend: '最小推薦数',
+    minComments: '最小コメント数',
+    startRank: '開始ランク',
+    endRank: '終了ランク',
+    sortMethod: '並び順',
+    timePeriod: '時間範囲',
+    advancedSearch: '詳細検索'
+};
+
+// 언어팩 로드 완료 확인
+console.log('✅ 언어팩 로드 완료:', Object.keys(window.languages));
+
+// 기본 언어 설정 함수 (main.js에서 사용)
+function getLocalizedMessage(messageKey, templateData = {}) {
+    try {
+        const lang = window.languages[window.currentLanguage || 'en'] || window.languages.en;
+        
+        const keyParts = messageKey.split('.');
+        let current = lang;
+        
+        for (const part of keyParts) {
+            if (current && current[part]) {
+                current = current[part];
+            } else {
+                console.warn(`Missing translation key: ${messageKey}`);
+                return messageKey;
+            }
+        }
+        
+        let message = current;
+        
+        // 템플릿 변수 치환
+        if (templateData && typeof templateData === 'object') {
+            Object.keys(templateData).forEach(key => {
+                const placeholder = new RegExp(`\\{${key}\\}`, 'g');
+                message = message.replace(placeholder, templateData[key] || '');
+            });
+        }
+        
+        return message;
+    } catch (error) {
+        console.error('언어 메시지 처리 오류:', error);
+        return messageKey;
+    }
+}
+
+// 전역으로 노출
+window.getLocalizedMessage = getLocalizedMessage;
+
+
 // PickPost 언어팩 - 정리된 완전한 버전
 const languages = {
     ko: {
