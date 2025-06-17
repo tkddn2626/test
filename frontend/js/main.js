@@ -2002,10 +2002,10 @@ function updateCrawlButton() {
     let buttonText = lang.start || 'Start Crawling';
     
     if (!currentSite) {
-        // 🔥 수정: 일관된 언어팩 접근
-        buttonText = lang.crawlButtonMessages?.siteNotSelected || lang.labels?.siteSelect || 'Select a site';
+        buttonText = lang.crawlButtonMessages?.siteNotSelected || 'Select a site';
         isValid = false;
     } else if (!boardValue) {
+        // 🔥 사이트별 메시지도 번역
         if (currentSite === 'universal') {
             buttonText = lang.crawlButtonMessages?.universalEmpty || 'Enter website URL';
         } else if (currentSite === 'lemmy') {
@@ -2015,7 +2015,6 @@ function updateCrawlButton() {
         }
         isValid = false;
     } else {
-        // 🔥 기존 검증 로직 유지하되 에러 메시지만 언어팩에서 가져오기
         const validation = validateSiteInput(currentSite, boardValue, lang);
         isValid = validation.isValid;
         if (!isValid && validation.message) {
@@ -2025,9 +2024,12 @@ function updateCrawlButton() {
     
     crawlBtn.disabled = !isValid || isLoading;
     
-    if (!isLoading) {
-        crawlBtn.textContent = buttonText;
+    // 🔥 크롤링 중일 때도 번역
+    if (isLoading) {
+        buttonText = lang.crawlingStatus?.processing || '크롤링 중...';
     }
+    
+    crawlBtn.textContent = buttonText;
 }
 
 // 범용 크롤러 도움말을 표시하는 함수
@@ -2874,7 +2876,10 @@ function displayResults(results, startIndex = 1) {
     
     // 완료 메시지 표시
     setTimeout(() => {
-        showMessage(`크롤링 완료! ${results.length}개 게시글을 찾았습니다`, 'success');
+        const lang = window.languages[currentLanguage];
+        const message = lang.completionMessages?.success || '크롤링 완료! {count}개 게시글을 찾았습니다';
+        const translatedMessage = message.replace('{count}', results.length);
+        showMessage(translatedMessage, 'success');
     }, 500);
     
     // 설정값 가져오기
@@ -3202,9 +3207,10 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
             const data = JSON.parse(event.data);
             console.log(`📨 메시지 수신:`, data);
 
-            // 간단한 메시지 처리
+            const lang = window.languages[currentLanguage]; // 🔥 언어팩 가져오기
+
             if (data.cancelled) {
-                showMessage('크롤링이 취소되었습니다.', 'info');
+                showMessage(lang.crawlingStatus?.cancelled || '크롤링이 취소되었습니다.', 'info');
                 resetCrawlingState();
                 return;
             }
@@ -3221,9 +3227,13 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
                     crawlResults = results;
                     displayResults(results);
                     enableDownloadButtons();
-                    showMessage(`크롤링 완료: ${results.length}개 게시물`, 'success');
+                    
+                    // 🔥 번역된 완료 메시지
+                    const message = lang.completionMessages?.success || '크롤링 완료: {count}개 게시물';
+                    const translatedMessage = message.replace('{count}', results.length);
+                    showMessage(translatedMessage, 'success');
                 } else {
-                    showMessage('결과가 없습니다.', 'warning');
+                    showMessage(lang.crawlingStatus?.noResults || '결과가 없습니다.', 'warning');
                 }
                 resetCrawlingState();
                 return;
@@ -3231,19 +3241,36 @@ function setupWebSocketMessageHandlers(ws, endpoint) {
 
             if (data.progress !== undefined) {
                 const progress = Math.max(0, Math.min(100, data.progress));
-                const status = data.status || '처리 중...';
+                
+                // 🔥 상태 메시지 번역
+                let status = data.status || lang.crawlingStatus?.processing || '처리 중...';
+                
+                // 백엔드에서 오는 영어 상태를 한국어로 매핑
+                const statusMap = {
+                    'processing': lang.crawlingStatus?.processing,
+                    'connecting': lang.crawlingStatus?.connecting,
+                    'analyzing': lang.crawlingStatus?.analyzing,
+                    'collecting': lang.crawlingStatus?.collecting
+                };
+                
+                if (statusMap[status.toLowerCase()]) {
+                    status = statusMap[status.toLowerCase()];
+                }
+                
                 updateProgress(progress, status);
                 return;
             }
 
         } catch (error) {
             console.error('메시지 파싱 오류:', error);
-            showMessage('메시지 처리 중 오류가 발생했습니다.', 'error');
+            const lang = window.languages[currentLanguage];
+            showMessage(lang.completionMessages?.error || '메시지 처리 중 오류가 발생했습니다.', 'error');
         }
     };
 
     ws.onerror = (error) => {
         console.error(`❌ WebSocket 오류:`, error);
+        const lang = window.languages[currentLanguage];
         showMessage('연결 오류가 발생했습니다', 'error');
         resetCrawlingState();
     };
