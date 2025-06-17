@@ -99,21 +99,40 @@ const languages = {
        },
        
        // ==================== 결과 표시 ====================
-       views: "조회수",
-       likes: "추천수", 
-       comments: "댓글수",
-       date: "작성일",
-       original: "원문 링크",
-       translation: "번역",
-       fail: "(번역 실패)",
-       
-       resultTexts: {
-           noResults: "검색 결과가 없습니다",
-           resultsCount: "{count}개의 결과를 찾았습니다",
-           showing: "{start}-{end} / {total}",
-           loadMore: "더 보기"
-       },
-       
+        views: "조회수",
+        likes: "추천수", 
+        comments: "댓글수",
+        date: "작성일",
+        original: "원문 링크",
+        translation: "번역",
+        fail: "(번역 실패)",
+
+        resultTexts: {
+        noResults: "검색 결과가 없습니다",
+        resultsCount: "{count}개의 결과를 찾았습니다",
+        showing: "{start}-{end} / {total}",
+        loadMore: "더 보기"
+        },
+
+        results: {
+            crawlingComplete: "크롤링 완료",
+            completedAt: "완료",
+            totalPosts: "총 게시물", 
+            rankRange: "순위 범위",
+            estimatedPages: "예상 페이지",
+            sourcesite: "소스 사이트",
+            crawlingMode: "크롤링 모드",
+            basic: "기본",
+            advanced: "고급 검색", 
+            duration: "소요 시간",
+            viewOriginal: "원문 보기",
+            seconds: "초",
+            posts: "개",
+            page: "페이지",
+            found: "개 수집",
+            noResults: "결과가 없습니다"
+        },
+
        // ==================== 크롤링 진행 상태 ====================
        crawlingProgress: {
            // 기본 진행 단계
@@ -383,20 +402,40 @@ const languages = {
        },
        
        // ==================== 결과 표시 ====================
-       views: "Views",
-       likes: "Likes",
-       comments: "Comments",
-       date: "Date",
-       original: "Original Link",
-       translation: "Translation",
-       fail: "(Translation Failed)",
-       
-       resultTexts: {
-           noResults: "No search results found",
-           resultsCount: "Found {count} results",
-           showing: "{start}-{end} / {total}",
-           loadMore: "Load More"
-       },
+        views: "Views",
+        likes: "Likes",
+        comments: "Comments",
+        date: "Date",
+        original: "Original Link",
+        translation: "Translation",
+        fail: "(Translation Failed)",
+        
+        resultTexts: {
+            noResults: "No search results found",
+            resultsCount: "Found {count} results",
+            showing: "{start}-{end} / {total}",
+            loadMore: "Load More"
+        },
+
+        results: {
+            crawlingComplete: "Crawling Complete",
+            completedAt: "Completed",
+            totalPosts: "Total Posts",
+            rankRange: "Rank Range", 
+            estimatedPages: "Est. Pages",
+            sourcesite: "Source Site",
+            crawlingMode: "Crawling Mode",
+            basic: "Basic",
+            advanced: "Advanced Search",
+            duration: "Duration", 
+            viewOriginal: "View Original",
+            seconds: "s",
+            posts: "posts",
+            page: "page", 
+            found: "collected",
+            noResults: "No results found"
+        },
+
        
        // ==================== 크롤링 진행 상태 ====================
        crawlingProgress: {
@@ -664,20 +703,38 @@ const languages = {
        },
        
        // ==================== 결과 표시 ====================
-       views: "閲覧数",
-       likes: "推奨数",
-       comments: "コメント数",
-       date: "作成日",
-       original: "原文リンク",
-       translation: "翻訳",
-       fail: "(翻訳失敗)",
-       
-       resultTexts: {
-           noResults: "検索結果がありません",
-           resultsCount: "{count}件の結果が見つかりました",
-           showing: "{start}-{end} / {total}",
-           loadMore: "もっと見る"
-       },
+        views: "閲覧数",
+        likes: "推奨数",
+        comments: "コメント数",
+        date: "作成日",
+        original: "原文リンク",
+        translation: "翻訳",
+        fail: "(翻訳失敗)",
+        
+        resultTexts: {
+            noResults: "検索結果がありません",
+            resultsCount: "{count}件の結果が見つかりました",
+            showing: "{start}-{end} / {total}",
+            loadMore: "もっと見る"
+        },
+        results: {
+            crawlingComplete: "クロール完了",
+            completedAt: "完了", 
+            totalPosts: "総投稿数",
+            rankRange: "順位範囲",
+            estimatedPages: "推定ページ",
+            sourcesite: "ソースサイト", 
+            crawlingMode: "クロールモード",
+            basic: "基本",
+            advanced: "高度な検索",
+            duration: "所要時間",
+            viewOriginal: "原文を見る", 
+            seconds: "秒",
+            posts: "件",
+            page: "ページ",
+            found: "件収集", 
+            noResults: "結果がありません"
+        },
        
        // ==================== 크롤링 진행 상태 ====================
        crawlingProgress: {
