@@ -3142,6 +3142,11 @@ function displayResults(results, startIndex = 1) {
         const viewsLabel = lang.views || 'Views';
         const likesLabel = lang.likes || 'Likes'; 
         const commentsLabel = lang.comments || 'Comments';
+        //번역 제목이 원제목과 같거나 의미없는 경우 표시하지 않음
+        const shouldShowTranslation = translatedTitle && 
+                                translatedTitle !== title && 
+                                translatedTitle.trim() !== '' &&
+                                !translatedTitle.includes('Translation not needed');
         
         return `
             <div class="result-item" style="opacity: 0; transform: translateY(8px); border: 1px solid #e8eaed; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: white; transition: all 0.3s ease;">
