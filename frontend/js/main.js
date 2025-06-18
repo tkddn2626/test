@@ -2350,7 +2350,7 @@ async function startUnifiedCrawling(boardInput) {
     }
 }
 
-// 통합 엔드포인트용 설정 생성
+// 🔥 통합 엔드포인트용 설정 생성
 function buildCrawlConfig(boardInput) {
     const selectedLangs = getSelectedLanguages();
     const sort = safeGetValue('sortMethod', 'recent');
@@ -2372,12 +2372,12 @@ function buildCrawlConfig(boardInput) {
         time_filter: timeFilter,
         start_date: safeGetValue('startDate') || null,
         end_date: safeGetValue('endDate') || null,
-        translate: selectedLangs.length > 0,  
-        target_languages: selectedLangs,      
+        translate: selectedLangs.length > 0,  // ✅ 번역 여부 결정
+        target_languages: selectedLangs,      // ✅ 대상 언어 목록
         language: currentLanguage || 'en'
     };
     
-    // 사이트별로 지원하지 않는 매개변수 제거
+    // 🔥 사이트별로 지원하지 않는 매개변수 제거
     const siteSpecificConfigs = {
         'lemmy': {
             excludeParams: ['min_comments']
@@ -2945,6 +2945,33 @@ function updateProgress(progress, message, details = {}) {
             }
         }
         progressText.textContent = displayMessage || `${progress}%`;
+    }
+    
+    // ✅ 예상시간 번역 추가
+    const progressEta = document.getElementById('progressEta');
+    if (progressEta && crawlStartTime && progress > 10) {
+        const lang = window.languages[currentLanguage] || window.languages.en;
+        const elapsed = Date.now() - crawlStartTime;
+        const estimated = (elapsed / progress) * (100 - progress);
+        const minutes = Math.floor(estimated / 60000);
+        const seconds = Math.floor((estimated % 60000) / 1000);
+        
+        let timeText = (lang.crawlingStatus?.timeRemaining || 'Estimated time') + ': ';
+        if (minutes > 0) {
+            const minutesLabel = lang.resultTexts?.minutes || 'min';
+            const secondsLabel = lang.resultTexts?.seconds || 's';
+            timeText += `${minutes}${minutesLabel} ${seconds}${secondsLabel}`;
+        } else {
+            const secondsLabel = lang.resultTexts?.seconds || 's';
+            timeText += `${seconds}${secondsLabel}`;
+        }
+        
+        progressEta.textContent = timeText;
+    } else if (progressEta) {
+        const lang = window.languages[currentLanguage] || window.languages.en;
+        const timeRemaining = lang.crawlingStatus?.timeRemaining || 'Estimated time';
+        const calculating = lang.resultTexts?.calculating || 'Calculating...';
+        progressEta.textContent = `${timeRemaining}: ${calculating}`;
     }
     
     console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
@@ -3654,6 +3681,54 @@ function detectContentLanguage() {
             return 'ko';
         }
         if (boardInput.includes('.jp') || boardInput.includes('japanese') || boardInput.includes('日本')) {
+            return 'ja';
+        }
+        return 'en'; // 기본값
+    }
+    
+    return siteLanguageMap[currentSite] || 'en';
+}
+
+// 선택된 언어 가져오기
+function getSelectedLanguages() {
+    // 언어 선택 체크박스가 있는지 확인 (수동 선택)
+    const languageCheckboxes = document.querySelectorAll('input[name="target_languages"]:checked');
+    if (languageCheckboxes.length > 0) {
+        return Array.from(languageCheckboxes).map(cb => cb.value);
+    }
+    
+    // 게시물 언어 감지
+    const detectedLanguage = detectContentLanguage();
+    
+    // 번역 필요성 판단: 현재 UI 언어와 게시물 언어가 같으면 번역 안함
+    if (detectedLanguage === currentLanguage) {
+        console.log(`🚫 번역 안함: 게시물 언어(${detectedLanguage})와 UI 언어(${currentLanguage})가 동일`);
+        return []; // 번역 안함
+    }
+    
+    // 다르면 현재 UI 언어로 번역
+    console.log(`✅ 번역 진행: ${detectedLanguage} → ${currentLanguage}`);
+    return [currentLanguage];
+}
+
+// 게시물 언어를 감지하는 함수 (getSelectedLanguages 함수 위에 추가)
+function detectContentLanguage() {
+    // 사이트별 기본 언어 매핑
+    const siteLanguageMap = {
+        'reddit': 'en',
+        'lemmy': 'en', 
+        'bbc': 'en',
+        'dcinside': 'ko',
+        'blind': 'ko'
+    };
+    
+    // Universal 크롤러의 경우 URL에서 언어 추정
+    if (currentSite === 'universal') {
+        const boardInput = document.getElementById('boardInput')?.value || '';
+        if (boardInput.includes('.kr') || boardInput.includes('korean') || boardInput.includes('한국')) {
+            return 'ko';
+        }
+        if (boardInput.includes('.jp') || boardInput.includes('japanese') || boardInput.includes('日본')) {
             return 'ja';
         }
         return 'en'; // 기본값
