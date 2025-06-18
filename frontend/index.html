@@ -138,7 +138,7 @@
                 </div>
                 
                 <div class="bug-report-footer">
-                    <button class="btn" onclick="closeTermsModal()" data-lang-key="ok">확인</button>
+                    <button class="btn" id="closeTermsBtn" onclick="closeTermsModal()">확인</button>
                 </div>
             </div>
         </div>
@@ -158,7 +158,7 @@
                 </div>
                 
                 <div class="bug-report-footer">
-                    <button class="btn" onclick="closePrivacyModal()" data-lang-key="ok">확인</button>
+                    <button class="btn" id="closePrivacyBtn" onclick="closePrivacyModal()">확인</button>
                 </div>
             </div>
         </div>
@@ -168,7 +168,7 @@
             <div class="bug-report-modal-content">
                 <div class="bug-report-header">
                     <h2 class="bug-report-title" id="businessModalTitle">💼 비즈니스 안내</h2>
-                    <button class="bug-report-close" onclick="closeBusinessModal()">✕</button>
+                    <button class="bug-report-close" id="closeBusinessBtn" onclick="closeBusinessModal()">✕</button>
                 </div>
                 
                 <div class="bug-report-body" style="max-height: 70vh; overflow-y: auto;">
@@ -178,7 +178,7 @@
                 </div>
                 
                 <div class="bug-report-footer">
-                    <button class="btn" onclick="closeBusinessModal()" data-lang-key="ok">확인</button>
+                    <button class="btn" onclick="closeBusinessModal()">확인</button>
                 </div>
             </div>
         </div>
