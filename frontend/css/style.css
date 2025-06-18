@@ -1222,6 +1222,24 @@ body {
     transform: translateY(-1px);
 }
 
+.result-thumbnail {
+    position: relative;
+    margin: 8px 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.media-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
 /* ============================================================================
    MODALS - 모달 창
    ============================================================================ */
