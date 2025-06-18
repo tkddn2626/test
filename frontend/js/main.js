@@ -406,52 +406,22 @@ function selectLanguage(langCode, langName = null) {
 
 // ==================== 피드백 및 모달 관리 ====================
 // 피드백 모달을 여는 함수
-function openBugReportModal() {
-    const modal = document.getElementById('bugReportModal');
-    const textarea = document.getElementById('bugReportDescription');
-    const lang = window.languages[currentLanguage];
+function openBusinessModal() {
+    const modal = document.getElementById('businessModal');
+    const policy = window.policies[currentLanguage]?.business || window.policies.en?.business || {};
     
-    // 모달 내 모든 텍스트 번역
-    document.getElementById('bugReportTitleText').textContent = lang.feedbackTitle || 'Send Feedback to PickPost';
-    document.getElementById('bugReportDescLabel').textContent = lang.feedbackDescLabel || 'Please describe your feedback. (Required)';
-    document.getElementById('screenshotTitle').textContent = lang.fileAttachTitle || 'Attach a photo to help PickPost better understand your feedback.';
-    document.getElementById('bugReportWarningText').textContent = lang.warningTitle || 'Do not include sensitive information';
-    document.getElementById('bugReportWarningDetail').textContent = lang.warningDetail || 'Do not include personal information, passwords, financial information, etc.';
-    document.getElementById('bugReportCancelBtn').textContent = lang.cancel || 'Cancel';
-    document.getElementById('bugReportSubmitBtn').textContent = lang.submit || 'Submit';
-    
-    // 플레이스홀더 및 기타 텍스트
-    if (textarea) {
-        textarea.placeholder = lang.feedbackPlaceholder || 'Please tell us why you are providing this feedback. Specific descriptions are very helpful for improvement.';
-    }
-    
-    const screenshotBtn = document.getElementById('screenshotBtn');
-    const screenshotBtnText = document.getElementById('screenshotBtnText');
-    if (screenshotBtnText) {
-        screenshotBtnText.textContent = lang.fileAttach || 'Attach Photo';
-    }
+    document.getElementById('businessModalTitle').textContent = policy.title || '💼 Business Information';
+    document.getElementById('businessModalContent').innerHTML = policy.content || '<p>Business information not available.</p>';
     
     modal.classList.add('show');
-    setTimeout(() => textarea?.focus(), 300);
     setupModalKeyboardTrap(modal);
 }
 
 // 피드백 모달을 닫는 함수
-function closeBugReportModal() {
-    const modal = document.getElementById('bugReportModal');
-    
-    const description = document.getElementById('bugReportDescription').value.trim();
-    if (description.length > 0) {
-        if (!confirm(getLocalizedMessage('confirmClose'))) {
-            return;
-        }
-    }
-    
-    modal.classList.remove('show');
-    setTimeout(() => {
-        resetBugReportModal();
-    }, 300);
+function closeBusinessModal() {
+    document.getElementById('businessModal').classList.remove('show');
 }
+
 
 // 서비스 약관 모달을 여는 함수
 function openTermsModal() {
