@@ -9,7 +9,7 @@ if (typeof window.languages === 'undefined') {
 const languages = {
    ko: {
        // ==================== 기본 UI 요소 ====================
-       start: "크롤링 시작",
+       start: "시작",
        clear: "결과 지우기", 
        ok: "확인",
        cancel: "취소",
@@ -53,7 +53,7 @@ const languages = {
            blind: "게시판 이름 (예: 개발자)",
            lemmy: "커뮤니티@인스턴스 (예: technology@lemmy.world)",
            bbc: "BBC 섹션 URL",
-           universal: "크롤링할 웹사이트 URL을 입력하세요..."
+           universal: "수집 할 웹사이트 URL을 입력하세요..."
        },
        
        // ==================== 시간 필터 옵션 ====================
@@ -118,7 +118,7 @@ const languages = {
             rankRange: "순위 범위",
             estimatedPages: "예상 페이지",
             sourcesite: "소스 사이트",
-            crawlingMode: "크롤링 모드",
+            crawlingMode: "수집 모드",
             basic: "기본",
             advanced: "고급 검색", 
             duration: "소요 시간",
@@ -179,14 +179,14 @@ const languages = {
        
        // ==================== 에러 메시지 ====================
        errorMessages: {
-           empty_input: "크롤링할 사이트나 게시판을 입력해주세요",
+           empty_input: "수집 할 사이트나 게시판을 입력해주세요",
            site_detection_failed: "사이트를 감지할 수 없습니다: {input}",
            unsupported_site: "지원하지 않는 사이트입니다: {site}",
            connection_failed: "{site} 연결에 실패했습니다",
            no_posts_found: "{site} {board}에서 조건에 맞는 게시물을 찾을 수 없습니다",
-           crawling_timeout: "크롤링 시간이 초과되었습니다 ({site})",
+           crawling_timeout: "시간이 초과되었습니다 ({site})",
            invalid_board: "올바르지 않은 게시판입니다: {board}",
-           crawling_error: "크롤링 중 오류가 발생했습니다: {error}",
+           crawling_error: "수집 중 오류가 발생했습니다: {error}",
            translation_failed: "번역 중 오류가 발생했습니다",
            analysis_failed: "사이트 분석에 실패했습니다: {error}",
            rate_limited: "요청 제한에 걸렸습니다. 잠시 후 시도해주세요",
@@ -195,7 +195,7 @@ const languages = {
            permission_denied: "접근 권한이 없습니다",
            invalid_credentials: "인증 정보가 올바르지 않습니다",
            quota_exceeded: "일일 사용량을 초과했습니다",
-           general: "크롤링 중 오류가 발생했습니다",
+           general: "수집 중 오류가 발생했습니다",
            unknown: "알 수 없는 오류가 발생했습니다",
            invalid_url: "올바르지 않은 URL입니다",
            site_not_found: "사이트를 찾을 수 없습니다",
@@ -212,15 +212,15 @@ const languages = {
            lemmyEmpty: "커뮤니티를 입력하세요",
            lemmyFormatError: "올바른 Lemmy 형식을 입력하세요",
            redditFormatError: "올바른 Reddit 형식을 입력하세요",
-           crawling: "크롤링 중...",
+           crawling: "수집 중...",
            connecting: "연결 중...",
            analyzing: "분석 중..."
        },
        
        // ==================== 취소 메시지 ====================
        cancellationMessages: {
-           crawl_cancelled: "크롤링이 취소되었습니다",
-           cancelling: "크롤링을 취소하는 중...",
+           crawl_cancelled: "수집이 취소되었습니다",
+           cancelling: "취소하는 중...",
            cancel_requested: "취소 요청이 전송되었습니다"
        },
        
@@ -229,14 +229,13 @@ const languages = {
             found: "개 발견",
             page: "페이지",
             timeRemaining: "예상 시간",
-            inProgress: "크롤링 중...",
-            cancelled: "크롤링이 취소되었습니다.",
+            inProgress: "수집 중...",
+            cancelled: "취소되었습니다.",
             processing: "처리 중...",
             connecting: "연결 중...",
             analyzing: "분석 중...",
             collecting: "수집 중...",
             completed: "수집 완료",
-            cancelled: "크롤링이 취소되었습니다",
             noResults: "결과가 없습니다"
        },
        
@@ -255,8 +254,8 @@ const languages = {
         connectionDropped: "연결이 예기치 않게 종료되었습니다",
         
         // 진행 상황 세분화 
-        preparingCrawl: "크롤링 준비 중...",
-        completedNoResults: "크롤링이 완료되었지만 결과가 없습니다.",
+        preparingCrawl: "수집 준비 중...",
+        completedNoResults: "게시물 수집이 완료되었지만 결과가 없습니다.",
         
         // 자동완성 도움말 
         urlDetected: "URL 감지됨",
@@ -336,7 +335,7 @@ const languages = {
    // ==================== 영어 ====================
    en: {
        // ==================== 기본 UI 요소 ====================
-       start: "Start Crawling",
+       start: "Start",
        clear: "Clear Results", 
        ok: "OK",
        cancel: "Cancel",
@@ -445,7 +444,7 @@ const languages = {
             rankRange: "Rank Range", 
             estimatedPages: "Est. Pages",
             sourcesite: "Source Site",
-            crawlingMode: "Crawling Mode",
+            crawlingMode: "Collecting Mode",
             basic: "Basic",
             advanced: "Advanced Search",
             duration: "Duration", 
@@ -544,8 +543,8 @@ const languages = {
        
        // ==================== 취소 메시지 ====================
        cancellationMessages: {
-           crawl_cancelled: "Crawling has been cancelled",
-           cancelling: "Cancelling crawl...",
+           crawl_cancelled: "Collecting has been cancelled",
+           cancelling: "Cancelling collect...",
            cancel_requested: "Cancel request sent"
        },
        
@@ -554,14 +553,13 @@ const languages = {
             found: "found",
             page: "page",
             timeRemaining: "estimated time",
-            inProgress: "Crawling...",
-            cancelled: "Crawling has been cancelled.",
+            inProgress: "Crollecting...",
+            cancelled: "Collecting has been cancelled.",
             processing: "Processing...",
             connecting: "Connecting...", 
             analyzing: "Analyzing...",
             collecting: "Collecting...",
             completed: "Complete",
-            cancelled: "Crawling has been cancelled",
             noResults: "No results found"
         },
        
@@ -575,8 +573,8 @@ const languages = {
         confirmClose: "There is content being written. Are you sure you want to close?",
         pageRefreshNeeded: "Please refresh the page.",
         connectionDropped: "Connection was unexpectedly closed",
-        preparingCrawl: "Preparing to crawl...",
-        completedNoResults: "Crawling completed but no results found.",
+        preparingCrawl: "Preparing to collect...",
+        completedNoResults: "Collecting completed but no results found.",
         urlDetected: "URL detected",
         formatSuggestion: "Format suggestion",
            
@@ -877,7 +875,6 @@ const languages = {
             analyzing: "分析中...", 
             collecting: "収集中...",
             completed: "収集完了",
-            cancelled: "クロールがキャンセルされました",
             noResults: "結果がありません"
        },
        
