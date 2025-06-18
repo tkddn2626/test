@@ -241,6 +241,20 @@ function updateLabels() {
         { id: 'minCommentsLabel', value: lang.labels?.minComments }
     ];
     
+    const modalCloseButtons = [
+        'closePrivacyBtn',
+        'closeTermsBtn', 
+        'closeBusinessBtn'
+    ];
+    
+    modalCloseButtons.forEach(buttonId => {
+        const button = document.getElementById(buttonId);
+        if (button) {
+            button.textContent = lang.ok || 'OK';
+        }
+    });
+    
+
     // 날짜 라벨들 (콜론 포함)
     const dateLabels = [
         { id: 'startDateLabel', value: (lang.labels?.startDate || 'Start Date') + ':' },
@@ -457,9 +471,16 @@ function closeBugReportModal() {
 function openTermsModal() {
     const modal = document.getElementById('termsModal');
     const terms = window.policies[currentLanguage]?.terms || window.policies.en?.terms || {};
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
     document.getElementById('termsModalTitle').textContent = terms.title || 'Terms of Service';
     document.getElementById('termsModalContent').innerHTML = terms.content || '<p>Terms of service content not available.</p>';
+    
+    // ✅ 확인 버튼 번역 추가
+    const closeBtn = document.getElementById('closeTermsBtn');
+    if (closeBtn) {
+        closeBtn.textContent = lang.ok || 'OK';
+    }
     
     modal.classList.add('show');
     setupModalKeyboardTrap(modal);
@@ -475,9 +496,16 @@ function closeTermsModal() {
 function openPrivacyModal() {
     const modal = document.getElementById('privacyModal');
     const policy = window.policies[currentLanguage]?.privacy || window.policies.en?.privacy || {};
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
     document.getElementById('privacyModalTitle').textContent = policy.title || 'Privacy Policy';
     document.getElementById('privacyModalContent').innerHTML = policy.content || '<p>Privacy policy content not available.</p>';
+    
+    // ✅ 확인 버튼 번역 추가
+    const closeBtn = document.getElementById('closePrivacyBtn');
+    if (closeBtn) {
+        closeBtn.textContent = lang.ok || 'OK';
+    }
     
     modal.classList.add('show');
     setupModalKeyboardTrap(modal);
@@ -491,14 +519,20 @@ function closePrivacyModal() {
 function openBusinessModal() {
     const modal = document.getElementById('businessModal');
     const policy = window.policies[currentLanguage]?.business || window.policies.en?.business || {};
+    const lang = window.languages[currentLanguage] || window.languages.en;
     
     document.getElementById('businessModalTitle').textContent = policy.title || '💼 Business Information';
     document.getElementById('businessModalContent').innerHTML = policy.content || '<p>Business information not available.</p>';
     
+    // ✅ 확인 버튼 번역 추가
+    const closeBtn = document.getElementById('closeBusinessBtn');
+    if (closeBtn) {
+        closeBtn.textContent = lang.ok || 'OK';
+    }
+    
     modal.classList.add('show');
     setupModalKeyboardTrap(modal);
 }
-
 // 비즈니스 모달을 닫는 함수
 function closeBusinessModal() {
     document.getElementById('businessModal').classList.remove('show');
