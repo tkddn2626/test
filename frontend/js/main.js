@@ -3047,7 +3047,7 @@ function displayResults(results, startIndex = 1) {
                         ${texts.crawlingComplete}
                     </h3>
                     <p style="color: #5f6368; margin: 0; font-size: 11.5px;">
-                        ${new Date().toLocaleString(en-US)} ${texts.completedAt}
+                        ${new Date().toLocaleString('en-US')} ${texts.completedAt}
                     </p>
                 </div>
             </div>
