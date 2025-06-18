@@ -2406,8 +2406,9 @@ function buildCrawlConfig(boardInput) {
         time_filter: timeFilter,
         start_date: safeGetValue('startDate') || null,
         end_date: safeGetValue('endDate') || null,
-        translate: selectedLangs.length > 0,  // ✅ 번역 여부 결정
-        target_languages: selectedLangs,      // ✅ 대상 언어 목록
+        translate: selectedLangs.length > 0,  
+        target_languages: selectedLangs,      
+        skip_translation: selectedLangs.length === 0,
         language: currentLanguage || 'en'
     };
     
@@ -3152,7 +3153,7 @@ function displayResults(results, startIndex = 1) {
                         <a href="${link}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500; font-size: 16px; line-height: 1.4;" rel="noopener noreferrer">
                             ${title}
                         </a>
-                        ${translatedTitle ? `<div style="color: #5f6368; font-size: 14px; margin-top: 4px;">${translatedTitle}</div>` : ''}
+                        ${shouldShowTranslation ? `<div style="color: #5f6368; font-size: 14px; margin-top: 4px;">${translatedTitle}</div>` : ''}
                     </div>
                 </div>
                 
@@ -3701,7 +3702,7 @@ function showProgressBar(show) {
 function detectContentLanguage() {
     console.log(`🔍 detectContentLanguage 호출됨, currentSite: ${currentSite}`);
     
-    // 사이트별 기본 언어 매핑
+    // 사이트별 기본 언어 매핑 (더 정확하게)
     const siteLanguageMap = {
         'reddit': 'en',
         'lemmy': 'en', 
@@ -3710,15 +3711,26 @@ function detectContentLanguage() {
         'blind': 'ko'
     };
     
-    // Universal 크롤러의 경우 URL에서 언어 추정
+    // Universal 크롤러의 경우 URL에서 언어 추정 (더 정교하게)
     if (currentSite === 'universal') {
         const boardInput = document.getElementById('boardInput')?.value || '';
-        if (boardInput.includes('.kr') || boardInput.includes('korean') || boardInput.includes('한국')) {
+        
+        // 한국어 사이트 패턴
+        if (boardInput.includes('.kr') || 
+            boardInput.includes('korean') || 
+            boardInput.includes('한국') ||
+            boardInput.includes('naver.com') ||
+            boardInput.includes('daum.net')) {
             return 'ko';
         }
-        if (boardInput.includes('.jp') || boardInput.includes('japanese') || boardInput.includes('日본')) {
+        
+        // 일본어 사이트 패턴  
+        if (boardInput.includes('.jp') || 
+            boardInput.includes('japanese') || 
+            boardInput.includes('日本')) {
             return 'ja';
         }
+        
         return 'en'; // 기본값
     }
     
@@ -3733,7 +3745,6 @@ function getSelectedLanguages() {
     // 언어 선택 체크박스가 있는지 확인 (수동 선택)
     const languageCheckboxes = document.querySelectorAll('input[name="target_languages"]:checked');
     if (languageCheckboxes.length > 0) {
-        console.log('📋 수동 선택된 언어:', languageCheckboxes);
         return Array.from(languageCheckboxes).map(cb => cb.value);
     }
     
@@ -3741,13 +3752,12 @@ function getSelectedLanguages() {
     const detectedLanguage = detectContentLanguage();
     console.log(`🎯 감지된 언어: ${detectedLanguage}, 현재 UI 언어: ${currentLanguage}`);
     
-    // 번역 필요성 판단: 현재 UI 언어와 게시물 언어가 같으면 번역 안함
+    // ✅ 핵심: 언어가 같으면 빈 배열 반환 (번역 안함)
     if (detectedLanguage === currentLanguage) {
         console.log(`🚫 번역 안함: 언어가 동일함 (${detectedLanguage} === ${currentLanguage})`);
-        return []; // 번역 안함
+        return []; 
     }
     
-    // 다르면 현재 UI 언어로 번역
     console.log(`✅ 번역 진행: ${detectedLanguage} → ${currentLanguage}`);
     return [currentLanguage];
 }
