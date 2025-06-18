@@ -1013,7 +1013,39 @@ const policies = {
                    <li>기타 회사가 정하는 업무</li>
                </ul>
            `
-       }
+       },
+       business: {
+            title: "💼 비즈니스 안내",
+            content: `
+                <div style="line-height: 1.8;">
+                    <h3>🚀 PickPost 비즈니스 솔루션</h3>
+                    <p>PickPost는 다양한 온라인 플랫폼의 데이터를 효율적으로 수집하고 분석할 수 있는 강력한 도구입니다.</p>
+                    
+                    <h4>📊 주요 기능</h4>
+                    <ul>
+                        <li><strong>다중 플랫폼 지원:</strong> Reddit, DCInside, Blind, BBC, Lemmy 등</li>
+                        <li><strong>실시간 데이터 수집:</strong> 최신 게시물과 댓글 정보</li>
+                        <li><strong>고급 필터링:</strong> 조회수, 추천수, 댓글수 기준 필터</li>
+                        <li><strong>자동 번역:</strong> 다국어 컨텐츠 자동 번역</li>
+                        <li><strong>Excel 내보내기:</strong> 수집된 데이터의 간편한 활용</li>
+                    </ul>
+                    
+                    <h4>💼 비즈니스 활용</h4>
+                    <ul>
+                        <li><strong>마케팅 리서치:</strong> 브랜드 언급 및 소비자 반응 분석</li>
+                        <li><strong>경쟁사 분석:</strong> 업계 트렌드 및 경쟁 동향 파악</li>
+                        <li><strong>콘텐츠 기획:</strong> 인기 주제 및 키워드 발굴</li>
+                        <li><strong>고객 피드백:</strong> 제품/서비스에 대한 실시간 반응 수집</li>
+                    </ul>
+                    
+                    <h4>📞 문의하기</h4>
+                    <p>기업용 맞춤 솔루션이나 API 연동에 관심이 있으시다면 언제든 연락주세요.</p>
+                    <p><strong>이메일:</strong> business@pickpost.com</p>
+                    <p><strong>전화:</strong> 02-1234-5678</p>
+                </div>
+            `
+        }
+
    },
    ja: {
        privacy: {
@@ -1066,8 +1098,39 @@ const policies = {
                    <li>その他会社が定める業務</li>
                </ul>
            `
-       }
-   },
+       },
+       business: {
+            title: "💼 ビジネス案内",
+            content: `
+                <div style="line-height: 1.8;">
+                    <h3>🚀 PickPost ビジネスソリューション</h3>
+                    <p>PickPostは、さまざまなオンラインプラットフォームからデータを効率的に収集・分析できる強力なツールです。</p>
+                    
+                    <h4>📊 主要機能</h4>
+                    <ul>
+                        <li><strong>マルチプラットフォーム対応:</strong> Reddit、DCInside、Blind、BBC、Lemmyなど</li>
+                        <li><strong>リアルタイムデータ収集:</strong> 最新投稿とコメント情報</li>
+                        <li><strong>高度なフィルタリング:</strong> 閲覧数、いいね数、コメント数による絞り込み</li>
+                        <li><strong>自動翻訳:</strong> 多言語コンテンツの自動翻訳</li>
+                        <li><strong>Excel書き出し:</strong> 収集データの簡単活用</li>
+                    </ul>
+                    
+                    <h4>💼 ビジネス活用</h4>
+                    <ul>
+                        <li><strong>マーケティングリサーチ:</strong> ブランド言及と消費者反応分析</li>
+                        <li><strong>競合分析:</strong> 業界トレンドと競合動向把握</li>
+                        <li><strong>コンテンツ企画:</strong> 人気トピックとキーワード発掘</li>
+                        <li><strong>顧客フィードバック:</strong> 製品・サービスへのリアルタイム反応収集</li>
+                    </ul>
+                    
+                    <h4>📞 お問い合わせ</h4>
+                    <p>企業向けカスタムソリューションやAPI連携にご興味がございましたら、いつでもご連絡ください。</p>
+                    <p><strong>メール:</strong> business@pickpost.com</p>
+                    <p><strong>電話:</strong> +82-2-1234-5678</p>
+                </div>
+            `
+        },
+    },
    en: {
        privacy: {
            title: "Privacy Policy",
@@ -1119,7 +1182,38 @@ const policies = {
                    <li>Other tasks determined by the company</li>
                </ul>
            `
-       }
+       },
+       business: {
+            title: "💼 Business Information",
+            content: `
+                <div style="line-height: 1.8;">
+                    <h3>🚀 PickPost Business Solutions</h3>
+                    <p>PickPost is a powerful tool for efficiently collecting and analyzing data from various online platforms.</p>
+                    
+                    <h4>📊 Key Features</h4>
+                    <ul>
+                        <li><strong>Multi-platform Support:</strong> Reddit, DCInside, Blind, BBC, Lemmy, and more</li>
+                        <li><strong>Real-time Data Collection:</strong> Latest posts and comment information</li>
+                        <li><strong>Advanced Filtering:</strong> Filter by views, likes, and comment count</li>
+                        <li><strong>Auto Translation:</strong> Automatic translation of multilingual content</li>
+                        <li><strong>Excel Export:</strong> Easy utilization of collected data</li>
+                    </ul>
+                    
+                    <h4>💼 Business Applications</h4>
+                    <ul>
+                        <li><strong>Marketing Research:</strong> Brand mention and consumer reaction analysis</li>
+                        <li><strong>Competitor Analysis:</strong> Industry trends and competitive landscape</li>
+                        <li><strong>Content Planning:</strong> Popular topics and keyword discovery</li>
+                        <li><strong>Customer Feedback:</strong> Real-time response collection on products/services</li>
+                    </ul>
+                    
+                    <h4>📞 Contact Us</h4>
+                    <p>If you're interested in enterprise custom solutions or API integration, please contact us anytime.</p>
+                    <p><strong>Email:</strong> business@pickpost.com</p>
+                    <p><strong>Phone:</strong> +82-2-1234-5678</p>
+                </div>
+            `
+        }
    }
 };
 
