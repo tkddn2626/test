@@ -1,4 +1,3 @@
-
 // ==================== 전역 변수 및 상태 관리 ====================
 // 애플리케이션의 전역 상태와 설정을 관리하는 변수들
 let currentSite = null;
@@ -3075,7 +3074,7 @@ function displayResults(results, startIndex = 1) {
         <div style="background: #f8f9fa; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(32,33,36,.1);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
                 <div style="width: 40px; height: 40px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                    <div style="width: 24px; height: 24px; background: #ff8000; border-radius: 50%;"></div>
+                    <img src="logo.png" alt="PickPost" style="width: 24px; height: 24px;">
                 </div>
                 <div>
                     <h3 style="color: #ff8000; margin: 0; font-size: 16px; font-weight: 550;">
@@ -3142,6 +3141,7 @@ function displayResults(results, startIndex = 1) {
         const viewsLabel = lang.views || 'Views';
         const likesLabel = lang.likes || 'Likes'; 
         const commentsLabel = lang.comments || 'Comments';
+        
         //번역 제목이 원제목과 같거나 의미없는 경우 표시하지 않음
         const shouldShowTranslation = translatedTitle && 
                                 translatedTitle !== title && 
@@ -3149,36 +3149,32 @@ function displayResults(results, startIndex = 1) {
                                 !translatedTitle.includes('Translation not needed');
         
         return `
-            <div class="result-item" style="opacity: 0; transform: translateY(8px); border: 1px solid #e8eaed; border-radius: 12px; padding: 16px; margin-bottom: 12px; background: white; transition: all 0.3s ease;">
-                <div style="display: flex; align-items: flex-start; margin-bottom: 12px;">
-                    <div style="min-width: 32px; height: 32px; background: #ff8000; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; margin-right: 12px;">
-                        ${itemNumber}
-                    </div>
-                    <div style="flex: 1;">
-                        <a href="${link}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: 500; font-size: 16px; line-height: 1.4;" rel="noopener noreferrer">
-                            ${title}
-                        </a>
-                        ${shouldShowTranslation ? `<div style="color: #5f6368; font-size: 14px; margin-top: 4px;">${translatedTitle}</div>` : ''}
-                    </div>
-                </div>
-                
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: #5f6368;">
-                    <div>📅 ${date}</div>
-                    <div style="display: flex; gap: 16px;">
-                        ${views > 0 ? `<span title="${viewsLabel}">👁️ ${views.toLocaleString()}</span>` : ''}
-                        ${likes > 0 ? `<span title="${likesLabel}">👍 ${likes.toLocaleString()}</span>` : ''}
-                        ${comments > 0 ? `<span title="${commentsLabel}">💬 ${comments.toLocaleString()}</span>` : ''}
+            <div class="result-item" style="opacity: 0; transform: translateY(8px);">
+                <div class="result-header">
+                    <div style="display: flex; align-items: flex-start; flex: 1;">
+                        <div class="result-number">${itemNumber}</div>
+                        <div style="flex: 1;">
+                            <a href="${link}" target="_blank" class="result-title" rel="noopener noreferrer">
+                                ${title}
+                            </a>
+                            ${shouldShowTranslation ? `<div class="result-translation">${translatedTitle}</div>` : ''}
+                        </div>
                     </div>
                 </div>
                 
-                ${content ? `
-                    <div style="color: #3c4043; font-size: 14px; line-height: 1.5; margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
-                        ${content.length > 200 ? content.substring(0, 200) + '...' : content}
+                <div class="result-meta-row">
+                    <div class="result-date">📅 ${date}</div>
+                    <div class="result-stats">
+                        ${views > 0 ? `<div class="stat-item" title="${viewsLabel}">👁️ ${views.toLocaleString()}</div>` : ''}
+                        ${likes > 0 ? `<div class="stat-item" title="${likesLabel}">👍 ${likes.toLocaleString()}</div>` : ''}
+                        ${comments > 0 ? `<div class="stat-item" title="${commentsLabel}">💬 ${comments.toLocaleString()}</div>` : ''}
                     </div>
-                ` : ''}
+                </div>
                 
-                <div style="text-align: right;">
-                    <a href="${link}" target="_blank" style="color: #ff8000; text-decoration: none; font-size: 14px; font-weight: 500;" rel="noopener noreferrer">
+                ${content ? `<div class="result-content">${content.length > 200 ? content.substring(0, 200) + '...' : content}</div>` : ''}
+                
+                <div class="result-links">
+                    <a href="${link}" target="_blank" rel="noopener noreferrer">
                         ${texts.viewOriginal} →
                     </a>
                 </div>
