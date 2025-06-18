@@ -3047,7 +3047,7 @@ function displayResults(results, startIndex = 1) {
                         ${texts.crawlingComplete}
                     </h3>
                     <p style="color: #5f6368; margin: 0; font-size: 11.5px;">
-                        ${new Date().toLocaleString()} ${texts.completedAt}
+                        ${new Date().toLocaleString(en-US)} ${texts.completedAt}
                     </p>
                 </div>
             </div>
@@ -3665,6 +3665,8 @@ function showProgressBar(show) {
 
 // 게시물 언어를 감지하는 함수
 function detectContentLanguage() {
+    console.log(`🔍 detectContentLanguage 호출됨, currentSite: ${currentSite}`);
+    
     // 사이트별 기본 언어 매핑
     const siteLanguageMap = {
         'reddit': 'en',
@@ -3680,29 +3682,34 @@ function detectContentLanguage() {
         if (boardInput.includes('.kr') || boardInput.includes('korean') || boardInput.includes('한국')) {
             return 'ko';
         }
-        if (boardInput.includes('.jp') || boardInput.includes('japanese') || boardInput.includes('日本')) {
+        if (boardInput.includes('.jp') || boardInput.includes('japanese') || boardInput.includes('日본')) {
             return 'ja';
         }
         return 'en'; // 기본값
     }
     
-    return siteLanguageMap[currentSite] || 'en';
+    const result = siteLanguageMap[currentSite] || 'en';
+    console.log(`🎯 ${currentSite} → ${result}`);
+    return result;
 }
-
 // 선택된 언어 가져오기
 function getSelectedLanguages() {
+    console.log('🔍 getSelectedLanguages 호출됨');
+    
     // 언어 선택 체크박스가 있는지 확인 (수동 선택)
     const languageCheckboxes = document.querySelectorAll('input[name="target_languages"]:checked');
     if (languageCheckboxes.length > 0) {
+        console.log('📋 수동 선택된 언어:', languageCheckboxes);
         return Array.from(languageCheckboxes).map(cb => cb.value);
     }
     
     // 게시물 언어 감지
     const detectedLanguage = detectContentLanguage();
+    console.log(`🎯 감지된 언어: ${detectedLanguage}, 현재 UI 언어: ${currentLanguage}`);
     
     // 번역 필요성 판단: 현재 UI 언어와 게시물 언어가 같으면 번역 안함
     if (detectedLanguage === currentLanguage) {
-        console.log(`🚫 번역 안함: 게시물 언어(${detectedLanguage})와 UI 언어(${currentLanguage})가 동일`);
+        console.log(`🚫 번역 안함: 언어가 동일함 (${detectedLanguage} === ${currentLanguage})`);
         return []; // 번역 안함
     }
     
