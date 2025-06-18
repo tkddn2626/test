@@ -2350,8 +2350,7 @@ async function startUnifiedCrawling(boardInput) {
     }
 }
 
-// 🔥 통합 엔드포인트용 설정 생성
-// main.js의 buildCrawlConfig 함수 수정
+// 통합 엔드포인트용 설정 생성
 function buildCrawlConfig(boardInput) {
     const selectedLangs = getSelectedLanguages();
     const sort = safeGetValue('sortMethod', 'recent');
@@ -2373,35 +2372,29 @@ function buildCrawlConfig(boardInput) {
         time_filter: timeFilter,
         start_date: safeGetValue('startDate') || null,
         end_date: safeGetValue('endDate') || null,
-        translate: selectedLangs.length > 0,
-        target_languages: selectedLangs,
+        translate: selectedLangs.length > 0,  
+        target_languages: selectedLangs,      
         language: currentLanguage || 'en'
     };
     
-    // 🔥 사이트별로 지원하지 않는 매개변수 제거
+    // 사이트별로 지원하지 않는 매개변수 제거
     const siteSpecificConfigs = {
         'lemmy': {
-            // Lemmy는 min_comments를 지원하지 않음
             excludeParams: ['min_comments']
         },
         'reddit': {
-            // Reddit은 모든 매개변수 지원
             excludeParams: []
         },
         'dcinside': {
-            // DCInside는 min_comments를 지원하지 않음
             excludeParams: ['min_comments']
         },
         'blind': {
-            // Blind는 min_comments를 지원하지 않음
             excludeParams: ['min_comments']
         },
         'bbc': {
-            // BBC는 특별한 제한 없음
             excludeParams: []
         },
         'universal': {
-            // Universal은 특별한 제한 없음
             excludeParams: []
         }
     };
@@ -2413,6 +2406,7 @@ function buildCrawlConfig(boardInput) {
         baseConfig.min_comments = parseInt(safeGetValue('minComments', '0'));
     }
     
+    console.log(`🔧 번역 설정: translate=${baseConfig.translate}, target_languages=[${baseConfig.target_languages.join(', ')}]`);
     console.log(`🔧 사이트별 설정 적용 (${currentSite}):`, baseConfig);
     
     return baseConfig;
@@ -3642,20 +3636,30 @@ function showProgressBar(show) {
     }
 }
 
-// 선택된 언어 가져오기
-function getSelectedLanguages() {
-    // 언어 선택 체크박스가 있는지 확인
-    const languageCheckboxes = document.querySelectorAll('input[name="target_languages"]:checked');
-    if (languageCheckboxes.length > 0) {
-        return Array.from(languageCheckboxes).map(cb => cb.value);
+// 게시물 언어를 감지하는 함수
+function detectContentLanguage() {
+    // 사이트별 기본 언어 매핑
+    const siteLanguageMap = {
+        'reddit': 'en',
+        'lemmy': 'en', 
+        'bbc': 'en',
+        'dcinside': 'ko',
+        'blind': 'ko'
+    };
+    
+    // Universal 크롤러의 경우 URL에서 언어 추정
+    if (currentSite === 'universal') {
+        const boardInput = document.getElementById('boardInput')?.value || '';
+        if (boardInput.includes('.kr') || boardInput.includes('korean') || boardInput.includes('한국')) {
+            return 'ko';
+        }
+        if (boardInput.includes('.jp') || boardInput.includes('japanese') || boardInput.includes('日本')) {
+            return 'ja';
+        }
+        return 'en'; // 기본값
     }
     
-    // 기본값: 현재 선택된 언어로 번역
-    if (currentLanguage !== 'ko') {
-        return [currentLanguage];
-    }
-    
-    return []; // 번역 안함
+    return siteLanguageMap[currentSite] || 'en';
 }
 
 // 선택된 범위 가져오기
