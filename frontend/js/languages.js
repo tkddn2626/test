@@ -105,7 +105,10 @@ const languages = {
         noResults: "검색 결과가 없습니다",
         resultsCount: "{count}개의 결과를 찾았습니다",
         showing: "{start}-{end} / {total}",
-        loadMore: "더 보기"
+        loadMore: "더 보기",
+        minutes: "min",
+        seconds: "s",           
+        calculating: "Calculating..."
         },
 
         results: {
@@ -429,7 +432,10 @@ const languages = {
             noResults: "No search results found",
             resultsCount: "Found {count} results",
             showing: "{start}-{end} / {total}",
-            loadMore: "Load More"
+            loadMore: "Load More",
+            minutes: "min",
+            seconds: "s",           
+            calculating: "Calculating..."
         },
 
         results: {
@@ -744,7 +750,10 @@ const languages = {
             noResults: "検索結果がありません",
             resultsCount: "{count}件の結果が見つかりました",
             showing: "{start}-{end} / {total}",
-            loadMore: "もっと見る"
+            loadMore: "もっと見る",
+            minutes: "min",
+            seconds: "s",           
+            calculating: "Calculating..."
         },
         results: {
             crawlingComplete: "収集完了",
