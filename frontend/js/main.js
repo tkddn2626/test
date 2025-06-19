@@ -809,8 +809,8 @@ function setupEventListeners() {
     function showSiteHelp(site) {
         if (site === 'lemmy') {
             showLemmyHelp();
-        } else if (site === 'universal') {
-            showUniversalHelp();
+        } else if (site === 'auto_crawl') {
+            showauto_crawlHelp();
         }
     }
 
@@ -1044,7 +1044,7 @@ function loadShortcuts() {
         blind: '#00d2d3',
         bbc: '#bb1919',
         lemmy: '#00af54',
-        universal: '#28a745'
+        auto_crawl: '#28a745'
     };
     
     const shortcutButtons = shortcuts.map((shortcut, index) => {
@@ -1135,7 +1135,7 @@ function saveShortcut() {
         return;
     }
     
-    const shortcut = { name, url, site: 'universal' };
+    const shortcut = { name, url, site: 'auto_crawl' };
     shortcuts.push(shortcut);
     localStorage.setItem('pickpost_shortcuts', JSON.stringify(shortcuts));
     
@@ -1160,7 +1160,7 @@ function useShortcut(site, url) {
         blind: 'Blind',
         bbc: 'BBC',
         lemmy: 'Lemmy',
-        universal: 'universal'
+        auto_crawl: 'auto_crawl'
     };
     
     siteInput.value = siteNames[site] || site;
@@ -1279,36 +1279,35 @@ function showSiteAutocomplete(keyword) {
     const extractedURL = extractURLFromInput(keyword);
     
     const suggestions = [
-        { name: 'X (Twitter)', site: 'x', icon: '#1DA1F2', desc: 'x.com (formerly Twitter)' }, // 🔥 X 추가
-        { name: 'Reddit', site: 'reddit', icon: '#ff4500', desc: 'reddit.com' },
-        { name: 'DCInside', site: 'dcinside', icon: '#00a8ff', desc: 'dcinside.com' },
-        { name: 'Blind', site: 'blind', icon: '#00d2d3', desc: 'teamblind.com' },
-        { name: 'BBC', site: 'bbc', icon: '#bb1919', desc: 'bbc.com (British Broadcasting)' }, 
-        { name: 'Lemmy', site: 'lemmy', icon: '#00af54', desc: 'lemmy federation network' }, 
-        { name: 'Universal Crawler', site: 'universal', icon: '#28a745', desc: 'All websites (Direct URL input)' } 
+    { name: 'Reddit', site: 'reddit', icon: '#ff4500', desc: 'reddit.com' },
+    { name: 'DCInside', site: 'dcinside', icon: '#00a8ff', desc: 'dcinside.com' },
+    { name: 'Blind', site: 'blind', icon: '#00d2d3', desc: 'teamblind.com' },
+    { name: 'BBC', site: 'bbc', icon: '#bb1919', desc: 'bbc.com (British Broadcasting)' }, 
+    { name: 'Lemmy', site: 'lemmy', icon: '#00af54', desc: 'lemmy federation network' }, 
+    { name: 'Auto Crawler', site: 'auto_crawl', icon: '#28a745', desc: 'All websites (Direct URL input)' }
+    
     ].filter(item => {
         return item.name.toLowerCase().includes(keywordLower) ||
             item.site.toLowerCase().includes(keywordLower) ||
             item.desc.toLowerCase().includes(keywordLower) ||
-            // 🔥 X 관련 키워드 추가
-            (keywordLower.includes('twitter') && item.site === 'x') ||
-            (keywordLower.includes('트위터') && item.site === 'x') ||
-            (keywordLower === 'x' && item.site === 'x') ||
-            // 기존 키워드들...
             (keywordLower === '레딧' && item.site === 'reddit') ||
             (keywordLower.includes('디시') && item.site === 'dcinside') ||
             (keywordLower.includes('갤러리') && item.site === 'dcinside') ||
             (keywordLower.includes('블라인드') && item.site === 'blind') ||
+            (keywordLower.includes('bbc') && item.site === 'bbc') ||
+            (keywordLower.includes('뉴스') && item.site === 'bbc') ||
+            (keywordLower.includes('영국') && item.site === 'bbc') ||
+            (keywordLower.includes('레미') && item.site === 'lemmy') ||
+            (keywordLower.includes('범용') && item.site === 'auto_crawl') ||
             extractedURL;
     });
 
-    // 🔥 URL에서 X 도메인 감지
-    if (extractedURL && (extractedURL.includes('x.com') || extractedURL.includes('twitter.com'))) {
-        const xIndex = suggestions.findIndex(s => s.site === 'x');
-        if (xIndex > -1) {
-            const xSite = suggestions.splice(xIndex, 1)[0];
-            xSite.desc = `X URL 감지됨: ${extractedURL}`;
-            suggestions.unshift(xSite);
+    if (extractedURL) {
+        const auto_crawlIndex = suggestions.findIndex(s => s.site === 'auto_crawl');
+        if (auto_crawlIndex > -1) {
+            const auto_crawl = suggestions.splice(auto_crawlIndex, 1)[0];
+            auto_crawl.desc = `URL 감지됨: ${extractedURL}`;
+            suggestions.unshift(auto_crawl);
         }
     }
 
@@ -1341,7 +1340,7 @@ function showSiteSuggestions(suggestions, keyword, extractedURL = null) {
         
         let descHighlighted = item.desc;
         
-        if (extractedURL && item.site === 'universal') {
+        if (extractedURL && item.site === 'auto_crawl') {
             const urlDetectedText = getLocalizedMessage('urlDetected');
             descHighlighted = `${urlDetectedText}: ${extractedURL}`;
         } else {
@@ -1414,7 +1413,7 @@ function selectSiteAutocompleteItem(index) {
         const originalInput = document.getElementById('siteInput').value;
         const extractedURL = extractURLFromInput(originalInput);
         
-        if (selectedSite.site === 'universal' && extractedURL) {
+        if (selectedSite.site === 'auto_crawl' && extractedURL) {
             const siteName = extractSiteName(extractedURL);
             document.getElementById('siteInput').value = siteName;
             
@@ -1523,7 +1522,7 @@ function handleSiteSearch() {
     if (extractedURL) {
         const siteName = extractSiteName(extractedURL);
         document.getElementById('siteInput').value = siteName;
-        selectSite('universal', extractedURL);
+        selectSite('auto_crawl', extractedURL);
         
         setTimeout(() => {
             document.getElementById('boardInput').value = extractedURL;
@@ -1546,7 +1545,7 @@ function handleSiteSearch() {
             selectSite('lemmy');
         } else {
             document.getElementById('siteInput').value = siteInputValue;
-            selectSite('universal');
+            selectSite('auto_crawl');
         }
     }
 }
@@ -1617,7 +1616,7 @@ function selectSite(site, extractedURL = null) {
         showBoardSearch();
         showOptions(site);
         
-        if (extractedURL && site === 'universal' && boardInput) {
+        if (extractedURL && site === 'auto_crawl' && boardInput) {
             boardInput.value = extractedURL;
             const clearBtn = document.getElementById('clearBoardBtn');
             if (clearBtn) {
@@ -1658,19 +1657,12 @@ function updateBoardPlaceholder(site) {
     const boardInput = document.getElementById('boardInput');
     const lang = window.languages[currentLanguage];
     
-    if (boardInput && lang && lang.boardPlaceholders) {
-        let placeholder;
-        
-        // 🔥 X 전용 플레이스홀더 추가
-        if (site === 'x' || site === 'twitter') {
-            placeholder = lang.boardPlaceholders.x || 'Enter X username (e.g., @elonmusk)';
-        } else {
-            placeholder = lang.boardPlaceholders[site] || lang.boardPlaceholders.default;
-        }
-        
+    if (boardInput && lang.boardPlaceholders) {
+        const placeholder = lang.boardPlaceholders[site] || lang.boardPlaceholders.default;
         boardInput.placeholder = placeholder;
     }
 }
+
 // 사이트별 정렬 옵션을 로드하는 함수
 async function loadSiteSortOptions(site, url = null) {
     const sortSelect = document.getElementById('sortMethod');
@@ -1679,16 +1671,7 @@ async function loadSiteSortOptions(site, url = null) {
     if (!sortSelect) return;
     
     try {
-        // 🔥 X 전용 정렬 옵션
-        if (site === 'x' || site === 'twitter') {
-            sortSelect.innerHTML = `
-                <option value="recent">${lang.sortOptions?.x?.recent || 'Recent'}</option>
-                <option value="popular">${lang.sortOptions?.x?.popular || 'Popular'}</option>
-                <option value="top">${lang.sortOptions?.x?.top || 'Top'}</option>
-                <option value="media">${lang.sortOptions?.x?.media || 'Media'}</option>
-            `;
-        } else if (site === 'reddit') {
-            // 기존 Reddit 로직...
+        if (site === 'reddit') {
             sortSelect.innerHTML = `
                 <option value="new">${lang.sortOptions?.reddit?.new || 'New'}</option>
                 <option value="top">${lang.sortOptions?.reddit?.top || 'Top'}</option>
@@ -1697,7 +1680,7 @@ async function loadSiteSortOptions(site, url = null) {
                 <option value="rising">${lang.sortOptions?.reddit?.rising || 'Rising'}</option>
             `;
         } else {
-            // 기존 다른 사이트들...
+            // ✅ 안전한 접근으로 수정
             sortSelect.innerHTML = `
                 <option value="popular">${lang.sortOptions?.other?.popular || 'Popular'}</option>
                 <option value="recommend">${lang.sortOptions?.other?.recommend || 'Recommend'}</option>
@@ -1964,11 +1947,6 @@ function selectBBCSection(index) {
 // 키워드에 따른 자동완성을 가져오는 함수
 async function fetchAutocomplete(keyword) {
     if (!keyword || keyword.trim().length < 2 || !currentSite) {
-        // 🔥 X 도움말 표시
-        if (currentSite === 'x' && (!keyword || keyword.trim().length === 0)) {
-            showXHelp();
-            return;
-        }
         if (currentSite === 'lemmy' && (!keyword || keyword.trim().length === 0)) {
             showLemmyHelp();
             return;
@@ -1976,13 +1954,12 @@ async function fetchAutocomplete(keyword) {
         hideAutocomplete();
         return;
     }
-    
-    if (currentSite === 'universal') {
+    if (currentSite === 'auto_crawl') {
         if (keyword.startsWith('http://') || keyword.startsWith('https://')) {
             hideAutocomplete();
             updateCrawlButton();
         } else {
-            showUniversalHelp();
+            showauto_crawlHelp();
         }
         return;
     }
@@ -1991,14 +1968,7 @@ async function fetchAutocomplete(keyword) {
         showBBCAutocomplete(keyword);
         return;
     }
-    
-    // 🔥 X 자동완성 처리 추가
-    if (currentSite === 'x' || currentSite === 'twitter') {
-        showXAutocomplete(keyword);
-        return;
-    }
 
-    // 기존 API 호출 로직...
     try {
         const response = await fetch(`${API_BASE_URL}/autocomplete/${currentSite}?keyword=${encodeURIComponent(keyword)}`);
         const data = await response.json();
@@ -2149,120 +2119,6 @@ function setLemmyCommunity(community) {
     safeSetBoardInput(community);
 }
 
-function showXHelp() {
-    const container = document.getElementById('autocomplete');
-    const boardSearchContainer = document.getElementById('boardSearchContainer');
-    
-    if (!container || !boardSearchContainer) return;
-    
-    boardSearchContainer.classList.add('dropdown-active');
-    
-    container.innerHTML = `
-        <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
-            <div style="flex: 1;">
-                <div style="font-weight: 500; color: #1DA1F2;">🐦 X (Twitter) Help</div>
-                <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
-                    Enter a username to crawl their timeline:<br>
-                    • @elonmusk<br>
-                    • elonmusk<br>
-                    • https://x.com/elonmusk
-                </div>
-            </div>
-        </div>
-        <div class="autocomplete-item" onclick="setXUser('elonmusk');">
-            <div style="flex: 1;">
-                <div style="color: #1DA1F2;">🚀 @elonmusk</div>
-                <div style="font-size: 11px; color: #70757a;">Elon Musk's timeline</div>
-            </div>
-        </div>
-        <div class="autocomplete-item" onclick="setXUser('tesla');">
-            <div style="flex: 1;">
-                <div style="color: #1DA1F2;">🔋 @tesla</div>
-                <div style="font-size: 11px; color: #70757a;">Tesla's official account</div>
-            </div>
-        </div>
-    `;
-    
-    container.classList.add('show');
-}
-
-// 6. X 자동완성 함수 (간단 버전)
-function showXAutocomplete(keyword) {
-    const keywordLower = keyword.toLowerCase();
-    
-    // 유명한 X 계정들
-    const xAccounts = [
-        { username: 'elonmusk', name: 'Elon Musk' },
-        { username: 'tesla', name: 'Tesla' },
-        { username: 'spacex', name: 'SpaceX' },
-        { username: 'openai', name: 'OpenAI' },
-        { username: 'microsoft', name: 'Microsoft' },
-        { username: 'google', name: 'Google' },
-        { username: 'apple', name: 'Apple' },
-        { username: 'meta', name: 'Meta' }
-    ];
-
-    const filtered = xAccounts.filter(account => {
-        return account.username.toLowerCase().includes(keywordLower) ||
-            account.name.toLowerCase().includes(keywordLower);
-    });
-
-    if (filtered.length > 0) {
-        autocompleteData = filtered.map(account => account.username);
-        showXAutocompleteDropdown(filtered, keyword);
-    } else {
-        // 키워드가 있으면 그대로 사용자명으로 제안
-        if (keywordLower.length > 1) {
-            autocompleteData = [keywordLower];
-            showXAutocompleteDropdown([{
-                username: keywordLower,
-                name: `@${keywordLower}`
-            }], keyword);
-        } else {
-            hideAutocomplete();
-        }
-    }
-}
-
-// 7. X 자동완성 드롭다운 표시
-function showXAutocompleteDropdown(accounts, keyword) {
-    const container = document.getElementById('autocomplete');
-    const boardSearchContainer = document.getElementById('boardSearchContainer');
-    
-    boardSearchContainer.classList.add('dropdown-active');
-
-    container.innerHTML = accounts.map((account, index) => {
-        const usernameHighlighted = account.username.replace(
-            new RegExp(`(${keyword})`, 'gi'),
-            '<mark style="background: #ffeb3b;">$1</mark>'
-        );
-        
-        return `
-            <div class="autocomplete-item" data-index="${index}" onclick="selectXAccount(${index})">
-                <div style="width: 20px; height: 20px; background: #1DA1F2; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold;">X</div>
-                <div style="flex: 1;">
-                    <div>@${usernameHighlighted} - ${account.name}</div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    container.classList.add('show');
-    highlightIndex = -1;
-}
-
-// 8. X 사용자 설정 함수들
-function setXUser(username) {
-    safeSetBoardInput(username);
-}
-
-function selectXAccount(index) {
-    if (index >= 0 && index < autocompleteData.length) {
-        safeSetBoardInput(autocompleteData[index]);
-    }
-}
-
-
 // 크롤링 버튼 상태를 업데이트하는 함수
 function updateCrawlButton() {
     const boardValue = document.getElementById('boardInput')?.value?.trim() || '';
@@ -2278,11 +2134,9 @@ function updateCrawlButton() {
         buttonText = lang.crawlButtonMessages?.siteNotSelected || 'Select a site';
         isValid = false;
     } else if (!boardValue) {
-        // 🔥 X 전용 빈 입력 메시지
-        if (currentSite === 'x' || currentSite === 'twitter') {
-            buttonText = lang.crawlButtonMessages?.xEmpty || 'Enter X username';
-        } else if (currentSite === 'universal') {
-            buttonText = lang.crawlButtonMessages?.universalEmpty || 'Enter website URL';
+        // 🔥 사이트별 메시지도 번역
+        if (currentSite === 'auto_crawl') {
+            buttonText = lang.crawlButtonMessages?.auto_crawlEmpty || 'Enter website URL';
         } else if (currentSite === 'lemmy') {
             buttonText = lang.crawlButtonMessages?.lemmyEmpty || 'Enter Lemmy community';
         } else {
@@ -2299,15 +2153,16 @@ function updateCrawlButton() {
     
     crawlBtn.disabled = !isValid || isLoading;
     
+    // 🔥 크롤링 중일 때도 번역
     if (isLoading) {
-        buttonText = lang.crawlingStatus?.processing || 'Crawling...';
+        buttonText = lang.crawlingStatus?.processing || '크롤링 중...';
     }
     
     crawlBtn.textContent = buttonText;
 }
 
 // 범용 크롤러 도움말을 표시하는 함수
-function showUniversalHelp() {
+function showauto_crawlHelp() {
     const container = document.getElementById('autocomplete');
     const boardSearchContainer = document.getElementById('boardSearchContainer');
     const lang = window.languages[currentLanguage];
@@ -2317,9 +2172,9 @@ function showUniversalHelp() {
     container.innerHTML = `
         <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
             <div style="flex: 1;">
-                <div style="font-weight: 500; color: #1a73e8;">${lang.helpTexts.universalTitle}</div>
+                <div style="font-weight: 500; color: #1a73e8;">${lang.helpTexts.auto_crawlTitle}</div>
                 <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
-                    ${lang.helpTexts.universalDesc.replace(/\n/g, '<br>')}
+                    ${lang.helpTexts.auto_crawlDesc.replace(/\n/g, '<br>')}
                 </div>
             </div>
         </div>
@@ -2496,7 +2351,7 @@ function determineLegacyEndpoint(site) {
         'blind': 'blind-crawl', 
         'bbc': 'bbc-crawl',
         'lemmy': 'lemmy-crawl',
-        'universal': 'universal-crawl'
+        'auto_crawl': 'auto_crawl-crawl'
     };
     
     return endpointMap[site] || 'auto-crawl';
@@ -2573,7 +2428,7 @@ function buildCrawlConfig(boardInput) {
         'bbc': {
             excludeParams: []
         },
-        'universal': {
+        'auto_crawl': {
             excludeParams: []
         }
     };
@@ -2794,8 +2649,8 @@ function startLemmyCrawling() {
     return startCrawling();
 }
 
-function startUniversalCrawling() {
-    currentSite = 'universal';
+function startauto_crawlCrawling() {
+    currentSite = 'auto_crawl';
     return startCrawling();
 }
 
@@ -3156,15 +3011,15 @@ function updateProgress(progress, message, details = {}) {
     console.log(`🎯 진행률 UI 업데이트: ${progress}% - ${message}`);
 }
 
-// ================================
-// 🔥 향상된 displayResults 함수 - 썸네일 및 미디어 지원
-// ================================
+// 크롤링 결과를 표시하는 함수
 
+// 크롤링 결과를 표시하는 함수
 function displayResults(results, startIndex = 1) {
     // 안전한 DOM 요소 접근
     const container = safeGetElement('resultsContainer');
     if (!container) {
         console.error('resultsContainer 요소를 찾을 수 없습니다.');
+        // 간단한 폴백 표시
         showSimpleResults(results);
         return;
     }
@@ -3196,9 +3051,6 @@ function displayResults(results, startIndex = 1) {
     const end = parseInt(safeGetValue(isAdvanced ? 'endRankAdv' : 'endRank', '20'));
     const estimatedPages = Math.ceil(end / 25);
     
-    // 미디어 통계 계산
-    const mediaStats = calculateMediaStats(results);
-    
     // 번역된 텍스트들
     const texts = {
         crawlingComplete: lang.results?.crawlingComplete || 'Crawling Complete',
@@ -3214,109 +3066,11 @@ function displayResults(results, startIndex = 1) {
         viewOriginal: lang.results?.viewOriginal || 'View Original',
         seconds: lang.results?.seconds || 's',
         posts: lang.results?.posts || 'posts',
-        page: lang.results?.page || 'page',
-        mediaContent: lang.results?.mediaContent || 'Media Content',
-        withImages: lang.results?.withImages || 'With Images',
-        withVideos: lang.results?.withVideos || 'With Videos'
+        page: lang.results?.page || 'page'
     };
     
     // HTML 생성
-    const summaryHtml = generateSummaryHTML(results, texts, mediaStats, {
-        elapsedTime, isAdvanced, start, end, estimatedPages
-    });
-    
-    // 개별 결과 HTML 생성
-    const resultsHtml = results.map((item, index) => {
-        return generatePostHTML(item, startIndex + index, texts, lang);
-    }).join('');
-    
-    // 컨테이너에 HTML 삽입
-    try {
-        container.innerHTML = summaryHtml + resultsHtml;
-        
-        // 결과 아이템들 순차적 애니메이션
-        const resultItems = container.querySelectorAll('.result-item');
-        resultItems.forEach((item, index) => {
-            setTimeout(() => {
-                item.style.opacity = '1';
-                item.style.transform = 'translateY(0)';
-            }, index * 100);
-        });
-        
-        // 썸네일 로드 에러 처리 설정
-        setupThumbnailErrorHandling();
-        
-        // UI 상태 업데이트
-        setTimeout(() => {
-            enableDownloadButtons();
-            
-            const cancelBtn = safeGetElement('cancelBtn');
-            if (cancelBtn) {
-                cancelBtn.style.display = 'none';
-            }
-            
-            const crawlBtn = safeGetElement('crawlBtn');
-            if (crawlBtn) {
-                crawlBtn.textContent = lang.start || 'Start Crawling';
-                crawlBtn.disabled = false;
-            }
-        }, 100);
-        
-        console.log(`${results.length}개 결과 표시 완료 (미디어: ${mediaStats.totalMedia}개)`);
-        
-    } catch (error) {
-        console.error('결과 표시 중 오류:', error);
-        showSimpleResults(results);
-    }
-}
-
-// ================================
-// 🔥 미디어 통계 계산
-// ================================
-
-function calculateMediaStats(results) {
-    let totalMedia = 0;
-    let imageCount = 0;
-    let videoCount = 0;
-    let postsWithMedia = 0;
-    
-    results.forEach(item => {
-        const mediaCount = item['미디어수'] || item.media_count || 0;
-        const mediaType = item['미디어타입'] || item.media_type || 'none';
-        
-        if (mediaCount > 0) {
-            postsWithMedia++;
-            totalMedia += mediaCount;
-            
-            if (mediaType === 'image') {
-                imageCount += mediaCount;
-            } else if (mediaType === 'video') {
-                videoCount += mediaCount;
-            } else if (mediaType === 'mixed') {
-                // mixed의 경우 반반으로 나누어 계산
-                imageCount += Math.ceil(mediaCount / 2);
-                videoCount += Math.floor(mediaCount / 2);
-            }
-        }
-    });
-    
-    return {
-        totalMedia,
-        imageCount,
-        videoCount,
-        postsWithMedia,
-        mediaPercentage: Math.round((postsWithMedia / results.length) * 100)
-    };
-}
-
-// ================================
-// 🔥 요약 HTML 생성
-// ================================
-
-function generateSummaryHTML(results, texts, mediaStats, options) {
-    const { elapsedTime, isAdvanced, start, end, estimatedPages } = options;
-    
-    return `
+    const summaryHtml = `
         <div style="background: #f8f9fa; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(32,33,36,.1);">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
                 <div style="width: 40px; height: 40px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
@@ -3352,37 +3106,7 @@ function generateSummaryHTML(results, texts, mediaStats, options) {
                     <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${(currentSite || 'UNKNOWN').toUpperCase()}</div>
                     <div style="font-size: 12px; color: #5f6368;">${texts.sourcesite}</div>
                 </div>
-                
-                ${mediaStats.totalMedia > 0 ? `
-                <div style="text-align: center; background: white; padding: 8px; border-radius: 8px; border: 1px solid #e8eaed;">
-                    <div style="font-size: 16px; font-weight: 550; color: #ff8000;">${mediaStats.totalMedia}</div>
-                    <div style="font-size: 12px; color: #5f6368;">${texts.mediaContent}</div>
-                </div>
-                ` : ''}
             </div>
-            
-            ${mediaStats.totalMedia > 0 ? `
-            <div style="background: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #e8eaed;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-size: 14px; font-weight: 500; color: #202124;">📊 미디어 분석</span>
-                    <span style="font-size: 12px; color: #5f6368;">${mediaStats.mediaPercentage}% 포함</span>
-                </div>
-                <div style="display: flex; gap: 16px; font-size: 12px;">
-                    ${mediaStats.imageCount > 0 ? `
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <span>📸</span>
-                        <span>${mediaStats.imageCount} ${texts.withImages}</span>
-                    </div>
-                    ` : ''}
-                    ${mediaStats.videoCount > 0 ? `
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <span>🎥</span>
-                        <span>${mediaStats.videoCount} ${texts.withVideos}</span>
-                    </div>
-                    ` : ''}
-                </div>
-            </div>
-            ` : ''}
             
             <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid #e8eaed;">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -3398,663 +3122,102 @@ function generateSummaryHTML(results, texts, mediaStats, options) {
             </div>
         </div>
     `;
-}
-
-// ================================
-// 🔥 개별 게시물 HTML 생성
-// ================================
-
-function generatePostHTML(item, itemNumber, texts, lang) {
-    // 안전한 필드 접근
-    const title = item.원제목 || item.title || item.제목 || 'No Title';
-    const translatedTitle = item.번역제목 || item.translated_title || '';
-    const link = item.링크 || item.link || item.url || '#';
-    const content = item.본문 || item.content || item.내용 || '';
-    const views = item.조회수 || item.views || 0;
-    const likes = item.추천수 || item.likes || item.score || 0;
-    const comments = item.댓글수 || item.comments || 0;
-    const date = item.작성일 || item.date || item.created_at || '';
     
-    // 🔥 미디어 정보 추출
-    const thumbnailUrl = item['썸네일 URL'] || item.thumbnail_url || '';
-    const mediaCount = item['미디어수'] || item.media_count || 0;
-    const mediaType = item['미디어타입'] || item.media_type || 'none';
-    const mediaList = item['미디어목록'] || item.media_list || [];
-    
-    // 번역된 라벨들
-    const viewsLabel = lang.views || 'Views';
-    const likesLabel = lang.likes || 'Likes'; 
-    const commentsLabel = lang.comments || 'Comments';
-    
-    // 번역 제목이 원제목과 같거나 의미없는 경우 표시하지 않음
-    const shouldShowTranslation = translatedTitle && 
-                            translatedTitle !== title && 
-                            translatedTitle.trim() !== '' &&
-                            !translatedTitle.includes('Translation not needed');
-    
-    // 썸네일 HTML 생성
-    const thumbnailHTML = generateThumbnailHTML({
-        thumbnailUrl,
-        mediaCount,
-        mediaType,
-        mediaList,
-        title,
-        link
-    });
-    
-    return `
-        <div class="result-item" style="opacity: 0; transform: translateY(8px);">
-            <div class="result-header">
-                <div style="display: flex; align-items: flex-start; flex: 1;">
-                    <div class="result-number">${itemNumber}</div>
-                    <div style="flex: 1;">
-                        <a href="${link}" target="_blank" class="result-title" rel="noopener noreferrer">
-                            ${title}
-                        </a>
-                        ${shouldShowTranslation ? `<div class="result-translation">${translatedTitle}</div>` : ''}
+    // 개별 결과 HTML 생성
+    const resultsHtml = results.map((item, index) => {
+        const itemNumber = startIndex + index;
+        
+        // 안전한 필드 접근
+        const title = item.원제목 || item.title || item.제목 || 'No Title';
+        const translatedTitle = item.번역제목 || item.translated_title || '';
+        const link = item.링크 || item.link || item.url || '#';
+        const content = item.본문 || item.content || item.내용 || '';
+        const views = item.조회수 || item.views || 0;
+        const likes = item.추천수 || item.likes || item.score || 0;
+        const comments = item.댓글수 || item.comments || 0;
+        const date = item.작성일 || item.date || item.created_at || '';
+        
+        // 번역된 라벨들
+        const viewsLabel = lang.views || 'Views';
+        const likesLabel = lang.likes || 'Likes'; 
+        const commentsLabel = lang.comments || 'Comments';
+        
+        //번역 제목이 원제목과 같거나 의미없는 경우 표시하지 않음
+        const shouldShowTranslation = translatedTitle && 
+                                translatedTitle !== title && 
+                                translatedTitle.trim() !== '' &&
+                                !translatedTitle.includes('Translation not needed');
+        
+        return `
+            <div class="result-item" style="opacity: 0; transform: translateY(8px);">
+                <div class="result-header">
+                    <div style="display: flex; align-items: flex-start; flex: 1;">
+                        <div class="result-number">${itemNumber}</div>
+                        <div style="flex: 1;">
+                            <a href="${link}" target="_blank" class="result-title" rel="noopener noreferrer">
+                                ${title}
+                            </a>
+                            ${shouldShowTranslation ? `<div class="result-translation">${translatedTitle}</div>` : ''}
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            ${thumbnailHTML}
-            
-            <div class="result-meta-row">
-                <div class="result-date">📅 ${date}</div>
-                <div class="result-stats">
-                    ${views > 0 ? `<div class="stat-item" title="${viewsLabel}">👁️ ${views.toLocaleString()}</div>` : ''}
-                    ${likes > 0 ? `<div class="stat-item" title="${likesLabel}">👍 ${likes.toLocaleString()}</div>` : ''}
-                    ${comments > 0 ? `<div class="stat-item" title="${commentsLabel}">💬 ${comments.toLocaleString()}</div>` : ''}
-                    ${mediaCount > 0 ? `<div class="stat-item media-stat" title="미디어">${getMediaIcon(mediaType)} ${mediaCount}</div>` : ''}
-                </div>
-            </div>
-            
-            ${content ? `<div class="result-content">${content.length > 200 ? content.substring(0, 200) + '...' : content}</div>` : ''}
-            
-            <div class="result-links">
-                <a href="${link}" target="_blank" rel="noopener noreferrer">
-                    ${texts.viewOriginal} →
-                </a>
-            </div>
-        </div>
-    `;
-}
-
-// ================================
-// 🔥 썸네일 HTML 생성
-// ================================
-
-function generateThumbnailHTML(mediaInfo) {
-    const { thumbnailUrl, mediaCount, mediaType, mediaList, title, link } = mediaInfo;
-    
-    if (!thumbnailUrl || mediaCount === 0) {
-        return '';
-    }
-    
-    // 미디어 뱃지 텍스트
-    const mediaBadge = generateMediaBadge(mediaCount, mediaType);
-    
-    // 추가 미디어가 있는 경우 표시
-    const additionalMediaHTML = mediaCount > 1 ? `
-        <div class="additional-media-indicator">
-            +${mediaCount - 1}
-        </div>
-    ` : '';
-    
-    return `
-        <div class="result-thumbnail" onclick="openMediaModal('${link}', '${escapeHtml(title)}', ${JSON.stringify(mediaList).replace(/"/g, '&quot;')})">
-            <img src="${thumbnailUrl}" 
-                 alt="Post media" 
-                 loading="lazy"
-                 onerror="handleThumbnailError(this, '${mediaType}')"
-                 style="width: 100%; height: 200px; object-fit: cover; border-radius: 8px; cursor: pointer; transition: transform 0.2s ease;"
-                 onmouseover="this.style.transform='scale(1.02)'"
-                 onmouseout="this.style.transform='scale(1)'">
-            <div class="media-badge">${mediaBadge}</div>
-            ${additionalMediaHTML}
-            <div class="thumbnail-overlay">
-                <div class="play-button" style="display: ${mediaType === 'video' ? 'flex' : 'none'};">▶</div>
-            </div>
-        </div>
-    `;
-}
-
-// ================================
-// 🔥 미디어 관련 유틸리티 함수들
-// ================================
-
-function generateMediaBadge(mediaCount, mediaType) {
-    const icons = {
-        'image': '📸',
-        'video': '🎥',
-        'gif': '🎞️',
-        'mixed': '📎',
-        'none': '📄'
-    };
-    
-    const icon = icons[mediaType] || icons['none'];
-    return `${icon}${mediaCount > 1 ? ` ${mediaCount}` : ''}`;
-}
-
-function getMediaIcon(mediaType) {
-    const icons = {
-        'image': '📸',
-        'video': '🎥',
-        'gif': '🎞️',
-        'mixed': '📎',
-        'none': '📄'
-    };
-    return icons[mediaType] || icons['none'];
-}
-
-function handleThumbnailError(img, mediaType) {
-    console.warn('썸네일 로드 실패:', img.src);
-    
-    // 폴백 이미지 설정
-    const fallbackImages = {
-        'video': 'https://via.placeholder.com/400x200/1DA1F2/FFFFFF?text=🎥+Video+Not+Available',
-        'image': 'https://via.placeholder.com/400x200/28a745/FFFFFF?text=📸+Image+Not+Available',
-        'gif': 'https://via.placeholder.com/400x200/6f42c1/FFFFFF?text=🎞️+GIF+Not+Available',
-        'mixed': 'https://via.placeholder.com/400x200/fd7e14/FFFFFF?text=📎+Media+Not+Available',
-        'none': 'https://via.placeholder.com/400x200/6c757d/FFFFFF?text=📄+Content'
-    };
-    
-    img.src = fallbackImages[mediaType] || fallbackImages['none'];
-    img.onerror = null; // 무한 루프 방지
-}
-
-function setupThumbnailErrorHandling() {
-    // 모든 썸네일 이미지에 대해 지연 로딩 및 에러 처리 설정
-    const thumbnailImages = document.querySelectorAll('.result-thumbnail img');
-    
-    thumbnailImages.forEach(img => {
-        // 이미 로드된 이미지가 깨진 경우 처리
-        if (img.complete && img.naturalWidth === 0) {
-            const mediaType = img.closest('.result-item')?.querySelector('.media-stat')?.textContent?.includes('🎥') ? 'video' : 'image';
-            handleThumbnailError(img, mediaType);
-        }
-        
-        // 호버 효과 개선
-        img.addEventListener('mouseenter', function() {
-            this.style.transform = 'scale(1.02)';
-            this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-        });
-        
-        img.addEventListener('mouseleave', function() {
-            this.style.transform = 'scale(1)';
-            this.style.boxShadow = 'none';
-        });
-    });
-}
-
-// ================================
-// 🔥 미디어 모달 시스템
-// ================================
-
-function openMediaModal(link, title, mediaList) {
-    try {
-        // 미디어 리스트가 문자열인 경우 파싱
-        if (typeof mediaList === 'string') {
-            mediaList = JSON.parse(mediaList);
-        }
-        
-        // 모달이 이미 존재하는 경우 제거
-        const existingModal = document.getElementById('mediaModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-        
-        // 모달 HTML 생성
-        const modalHTML = generateMediaModalHTML(link, title, mediaList);
-        
-        // 모달을 body에 추가
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-        
-        // 모달 표시 애니메이션
-        const modal = document.getElementById('mediaModal');
-        setTimeout(() => {
-            modal.classList.add('show');
-        }, 10);
-        
-        // ESC 키로 닫기
-        document.addEventListener('keydown', handleMediaModalKeydown);
-        
-    } catch (error) {
-        console.error('미디어 모달 열기 오류:', error);
-        // 폴백: 원본 링크로 이동
-        window.open(link, '_blank');
-    }
-}
-
-function generateMediaModalHTML(link, title, mediaList) {
-    const lang = window.languages[currentLanguage] || window.languages.en;
-    
-    // 미디어 갤러리 생성
-    const mediaGalleryHTML = mediaList && mediaList.length > 0 ? 
-        generateMediaGallery(mediaList) : 
-        '<div class="no-media">미디어를 불러올 수 없습니다.</div>';
-    
-    return `
-        <div id="mediaModal" class="media-modal" onclick="closeMediaModal(event)">
-            <div class="media-modal-content" onclick="event.stopPropagation()">
-                <div class="media-modal-header">
-                    <h3>${escapeHtml(title)}</h3>
-                    <button class="modal-close-btn" onclick="closeMediaModal()">&times;</button>
+                
+                <div class="result-meta-row">
+                    <div class="result-date">📅 ${date}</div>
+                    <div class="result-stats">
+                        ${views > 0 ? `<div class="stat-item" title="${viewsLabel}">👁️ ${views.toLocaleString()}</div>` : ''}
+                        ${likes > 0 ? `<div class="stat-item" title="${likesLabel}">👍 ${likes.toLocaleString()}</div>` : ''}
+                        ${comments > 0 ? `<div class="stat-item" title="${commentsLabel}">💬 ${comments.toLocaleString()}</div>` : ''}
+                    </div>
                 </div>
                 
-                <div class="media-modal-body">
-                    ${mediaGalleryHTML}
-                </div>
+                ${content ? `<div class="result-content">${content.length > 200 ? content.substring(0, 200) + '...' : content}</div>` : ''}
                 
-                <div class="media-modal-footer">
-                    <button class="btn-secondary" onclick="closeMediaModal()">
-                        ${lang.close || 'Close'}
-                    </button>
-                    <a href="${link}" target="_blank" class="btn-primary">
-                        ${lang.results?.viewOriginal || 'View Original'} →
+                <div class="result-links">
+                    <a href="${link}" target="_blank" rel="noopener noreferrer">
+                        ${texts.viewOriginal} →
                     </a>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function generateMediaGallery(mediaList) {
-    if (!mediaList || mediaList.length === 0) {
-        return '<div class="no-media">미디어가 없습니다.</div>';
-    }
-    
-    return `
-        <div class="media-gallery">
-            ${mediaList.map((mediaUrl, index) => `
-                <div class="media-item" data-index="${index}">
-                    ${generateMediaElement(mediaUrl, index)}
-                </div>
-            `).join('')}
-        </div>
-    `;
-}
-
-function generateMediaElement(mediaUrl, index) {
-    if (!mediaUrl) return '<div class="media-error">미디어를 불러올 수 없습니다.</div>';
-    
-    // 미디어 타입 감지
-    const isVideo = /\.(mp4|mov|avi|webm)$/i.test(mediaUrl) || mediaUrl.includes('video');
-    const isGif = /\.gif$/i.test(mediaUrl);
-    
-    if (isVideo) {
-        return `
-            <video controls style="width: 100%; max-height: 400px; border-radius: 8px;">
-                <source src="${mediaUrl}" type="video/mp4">
-                비디오를 재생할 수 없습니다.
-            </video>
-        `;
-    } else {
-        return `
-            <img src="${mediaUrl}" 
-                 alt="Media ${index + 1}"
-                 style="width: 100%; max-height: 400px; object-fit: contain; border-radius: 8px; cursor: pointer;"
-                 onclick="openFullscreenImage('${mediaUrl}')"
-                 onerror="this.parentElement.innerHTML='<div class=&quot;media-error&quot;>이미지를 불러올 수 없습니다.</div>'">
-        `;
-    }
-}
-
-function closeMediaModal(event) {
-    // 이벤트가 있고 모달 컨텐츠 내부 클릭인 경우 닫지 않음
-    if (event && event.target.closest('.media-modal-content')) {
-        return;
-    }
-    
-    const modal = document.getElementById('mediaModal');
-    if (modal) {
-        modal.classList.remove('show');
-        setTimeout(() => {
-            modal.remove();
-        }, 300);
-    }
-    
-    // 키보드 이벤트 리스너 제거
-    document.removeEventListener('keydown', handleMediaModalKeydown);
-}
-
-function handleMediaModalKeydown(event) {
-    if (event.key === 'Escape') {
-        closeMediaModal();
-    }
-}
-
-function openFullscreenImage(imageUrl) {
-    // 전체화면 이미지 뷰어 (간단한 구현)
-    const fullscreenHTML = `
-        <div id="fullscreenImageViewer" class="fullscreen-viewer" onclick="closeFullscreenImage()">
-            <img src="${imageUrl}" style="max-width: 90vw; max-height: 90vh; object-fit: contain;">
-            <button class="fullscreen-close" onclick="closeFullscreenImage()">&times;</button>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', fullscreenHTML);
-}
-
-function closeFullscreenImage() {
-    const viewer = document.getElementById('fullscreenImageViewer');
-    if (viewer) {
-        viewer.remove();
-    }
-}
-
-// ================================
-// 🔥 유틸리티 함수들
-// ================================
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function showSimpleResults(results) {
-    // 폴백 결과 표시 (기본 형태)
-    const container = safeGetElement('resultsContainer');
-    if (!container) return;
-    
-    const lang = window.languages[currentLanguage] || window.languages.en;
-    
-    if (!results || results.length === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: #5f6368;">
-                ${lang.results?.noResults || 'No results found'}
-            </div>
-        `;
-        return;
-    }
-    
-    const simpleHTML = results.map((item, index) => {
-        const title = item.원제목 || item.title || 'No Title';
-        const link = item.링크 || item.link || '#';
-        
-        return `
-            <div style="border: 1px solid #e8eaed; border-radius: 8px; padding: 16px; margin-bottom: 8px;">
-                <div style="font-weight: 500; margin-bottom: 8px;">
-                    ${index + 1}. <a href="${link}" target="_blank">${title}</a>
                 </div>
             </div>
         `;
     }).join('');
     
-    container.innerHTML = `
-        <div style="margin-bottom: 16px; padding: 16px; background: #f8f9fa; border-radius: 8px;">
-            <h3 style="margin: 0; color: #ff8000;">크롤링 완료</h3>
-            <p style="margin: 4px 0 0 0; color: #5f6368;">총 ${results.length}개 게시물</p>
-        </div>
-        ${simpleHTML}
-    `;
-}
-
-// ================================
-// 🔥 CSS 스타일 추가 (동적으로 삽입)
-// ================================
-
-function addThumbnailStyles() {
-    // 이미 스타일이 추가되어 있는지 확인
-    if (document.getElementById('thumbnailStyles')) {
-        return;
-    }
-    
-    const styles = `
-        <style id="thumbnailStyles">
-        .result-thumbnail {
-            position: relative;
-            margin: 8px 0;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #f8f9fa;
-        }
+    // 컨테이너에 HTML 삽입
+    try {
+        container.innerHTML = summaryHtml + resultsHtml;
         
-        .media-badge {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 500;
-            backdrop-filter: blur(4px);
-        }
+        // 결과 아이템들 순차적 애니메이션
+        const resultItems = container.querySelectorAll('.result-item');
+        resultItems.forEach((item, index) => {
+            setTimeout(() => {
+                item.style.opacity = '1';
+                item.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
         
-        .additional-media-indicator {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: rgba(255,128,0,0.9);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-        }
-        
-        .thumbnail-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s ease;
-        }
-        
-        .result-thumbnail:hover .thumbnail-overlay {
-            background: rgba(0,0,0,0.2);
-        }
-        
-        .play-button {
-            width: 50px;
-            height: 50px;
-            background: rgba(255,255,255,0.9);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-            color: #333;
-        }
-        
-        .result-thumbnail:hover .play-button {
-            opacity: 1;
-        }
-        
-        .media-stat {
-            color: #ff8000 !important;
-            font-weight: 500;
-        }
-        
-        .media-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 10000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .media-modal.show {
-            opacity: 1;
-        }
-        
-        .media-modal-content {
-            background: white;
-            border-radius: 12px;
-            max-width: 90vw;
-            max-height: 90vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .media-modal-header {
-            padding: 16px;
-            border-bottom: 1px solid #e8eaed;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .media-modal-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-        }
-        
-        .media-modal-footer {
-            padding: 16px;
-            border-top: 1px solid #e8eaed;
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-        }
-        
-        .modal-close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #5f6368;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-        }
-        
-        .modal-close-btn:hover {
-            background: #f1f3f4;
-        }
-        
-        .media-gallery {
-            display: grid;
-            gap: 16px;
-        }
-        
-        .media-item {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .media-error {
-            padding: 40px;
-            text-align: center;
-            color: #5f6368;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        
-        .fullscreen-viewer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 20000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
-        
-        .fullscreen-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(255,255,255,0.9);
-            border: none;
-            font-size: 24px;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            cursor: pointer;
-        }
-        
-        .btn-primary, .btn-secondary {
-            padding: 8px 16px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-        }
-        
-        .btn-primary {
-            background: #ff8000;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #e67300;
-        }
-        
-        .btn-secondary {
-            background: #f1f3f4;
-            color: #202124;
-        }
-        
-        .btn-secondary:hover {
-            background: #e8eaed;
-        }
-        
-        @media (max-width: 768px) {
-            .media-modal-content {
-                max-width: 95vw;
-                max-height: 95vh;
+        // UI 상태 업데이트
+        setTimeout(() => {
+            enableDownloadButtons();
+            
+            const cancelBtn = safeGetElement('cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
             }
             
-            .result-thumbnail img {
-                height: 150px !important;
+            const crawlBtn = safeGetElement('crawlBtn');
+            if (crawlBtn) {
+                crawlBtn.textContent = lang.start || 'Start Crawling';
+                crawlBtn.disabled = false;
             }
-        }
-        </style>
-    `;
-    
-    document.head.insertAdjacentHTML('beforeend', styles);
+        }, 100);
+        
+        console.log(`${results.length}개 결과 표시 완료`);
+        
+    } catch (error) {
+        console.error('결과 표시 중 오류:', error);
+        showSimpleResults(results);
+    }
 }
-
-// ================================
-// 🔥 초기화
-// ================================
-
-// 페이지 로드 시 스타일 추가
-document.addEventListener('DOMContentLoaded', function() {
-    addThumbnailStyles();
-});
-
-// 이미 DOM이 로드된 경우 즉시 실행
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', addThumbnailStyles);
-} else {
-    addThumbnailStyles();
-}
-
-// ================================
-// 🔥 전역 함수로 노출
-// ================================
-
-
 
 
 // 결과를 초기화하는 함수
@@ -4458,17 +3621,18 @@ function enhancedSiteDetection(input) {
     return null;
 }
 
+
 // 입력 유효성을 검사하는 함수
 function validateSiteInput(site, boardValue, lang) {
     switch (site) {
-        case 'universal':
+        case 'auto_crawl':
             const isValidUrl = boardValue.startsWith('http://') || 
                              boardValue.startsWith('https://') ||
                              (boardValue.includes('.') && boardValue.includes('/'));
             
             return {
                 isValid: isValidUrl,
-                message: isValidUrl ? '' : getLocalizedMessage('crawlButtonMessages.universalUrlError')
+                message: isValidUrl ? '' : getLocalizedMessage('crawlButtonMessages.auto_crawlUrlError')
             };
             
         case 'lemmy':
@@ -4549,8 +3713,8 @@ function detectContentLanguage() {
         'blind': 'ko'
     };
     
-    // Universal 크롤러의 경우 URL에서 언어 추정 (더 정교하게)
-    if (currentSite === 'universal') {
+    // auto_crawl 크롤러의 경우 URL에서 언어 추정 (더 정교하게)
+    if (currentSite === 'auto_crawl') {
         const boardInput = document.getElementById('boardInput')?.value || '';
         
         // 한국어 사이트 패턴
@@ -4611,8 +3775,8 @@ function detectContentLanguage() {
         'blind': 'ko'
     };
     
-    // Universal 크롤러의 경우 URL에서 언어 추정
-    if (currentSite === 'universal') {
+    // auto_crawl 크롤러의 경우 URL에서 언어 추정
+    if (currentSite === 'auto_crawl') {
         const boardInput = document.getElementById('boardInput')?.value || '';
         if (boardInput.includes('.kr') || boardInput.includes('korean') || boardInput.includes('한국')) {
             return 'ko';
@@ -4669,7 +3833,7 @@ function getSafeLanguagePack() {
 // 사이트별 빈 입력 메시지 가져오기
 function getSiteSpecificEmptyMessage(site, lang) {
     const messages = {
-        'universal': lang.crawlButtonMessages?.universalEmpty || 'Enter website URL',
+        'auto_crawl': lang.crawlButtonMessages?.auto_crawlEmpty || 'Enter website URL',
         'lemmy': lang.crawlButtonMessages?.lemmyEmpty || 'Enter Lemmy community',
         'default': lang.crawlButtonMessages?.boardEmpty || 'Enter board name'
     };
@@ -4680,14 +3844,14 @@ function getSiteSpecificEmptyMessage(site, lang) {
 // 사이트별 입력 유효성 검사
 function validateSiteInput(site, boardValue, lang) {
     switch (site) {
-        case 'universal':
+        case 'auto_crawl':
             const isValidUrl = boardValue.startsWith('http://') || 
                              boardValue.startsWith('https://') ||
                              (boardValue.includes('.') && boardValue.includes('/'));
             
             return {
                 isValid: isValidUrl,
-                message: isValidUrl ? '' : getLocalizedMessage('crawlButtonMessages.universalUrlError')
+                message: isValidUrl ? '' : getLocalizedMessage('crawlButtonMessages.auto_crawlUrlError')
             };
             
         case 'lemmy':
@@ -4839,17 +4003,3 @@ window.PickPostGlobals = {
     extractSiteName,
     updateLabels
 };
-
-// HTML onclick에서 사용할 수 있도록 전역 함수로 노출
-window.openMediaModal = openMediaModal;
-window.closeMediaModal = closeMediaModal;
-window.handleThumbnailError = handleThumbnailError;
-window.openFullscreenImage = openFullscreenImage;
-window.closeFullscreenImage = closeFullscreenImage;
-
-console.log('✅ 향상된 displayResults 함수 로드 완료 - 썸네일 및 미디어 지원');
-
-window.showXHelp = showXHelp;
-window.setXUser = setXUser;
-window.selectXAccount = selectXAccount;
-window.showXAutocomplete = showXAutocomplete;
