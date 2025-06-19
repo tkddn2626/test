@@ -1279,35 +1279,36 @@ function showSiteAutocomplete(keyword) {
     const extractedURL = extractURLFromInput(keyword);
     
     const suggestions = [
-    { name: 'Reddit', site: 'reddit', icon: '#ff4500', desc: 'reddit.com' },
-    { name: 'DCInside', site: 'dcinside', icon: '#00a8ff', desc: 'dcinside.com' },
-    { name: 'Blind', site: 'blind', icon: '#00d2d3', desc: 'teamblind.com' },
-    { name: 'BBC', site: 'bbc', icon: '#bb1919', desc: 'bbc.com (British Broadcasting)' }, 
-    { name: 'Lemmy', site: 'lemmy', icon: '#00af54', desc: 'lemmy federation network' }, 
-    { name: 'Universal Crawler', site: 'universal', icon: '#28a745', desc: 'All websites (Direct URL input)' } 
-    
+        { name: 'X (Twitter)', site: 'x', icon: '#1DA1F2', desc: 'x.com (formerly Twitter)' }, // 🔥 X 추가
+        { name: 'Reddit', site: 'reddit', icon: '#ff4500', desc: 'reddit.com' },
+        { name: 'DCInside', site: 'dcinside', icon: '#00a8ff', desc: 'dcinside.com' },
+        { name: 'Blind', site: 'blind', icon: '#00d2d3', desc: 'teamblind.com' },
+        { name: 'BBC', site: 'bbc', icon: '#bb1919', desc: 'bbc.com (British Broadcasting)' }, 
+        { name: 'Lemmy', site: 'lemmy', icon: '#00af54', desc: 'lemmy federation network' }, 
+        { name: 'Universal Crawler', site: 'universal', icon: '#28a745', desc: 'All websites (Direct URL input)' } 
     ].filter(item => {
         return item.name.toLowerCase().includes(keywordLower) ||
             item.site.toLowerCase().includes(keywordLower) ||
             item.desc.toLowerCase().includes(keywordLower) ||
+            // 🔥 X 관련 키워드 추가
+            (keywordLower.includes('twitter') && item.site === 'x') ||
+            (keywordLower.includes('트위터') && item.site === 'x') ||
+            (keywordLower === 'x' && item.site === 'x') ||
+            // 기존 키워드들...
             (keywordLower === '레딧' && item.site === 'reddit') ||
             (keywordLower.includes('디시') && item.site === 'dcinside') ||
             (keywordLower.includes('갤러리') && item.site === 'dcinside') ||
             (keywordLower.includes('블라인드') && item.site === 'blind') ||
-            (keywordLower.includes('bbc') && item.site === 'bbc') ||
-            (keywordLower.includes('뉴스') && item.site === 'bbc') ||
-            (keywordLower.includes('영국') && item.site === 'bbc') ||
-            (keywordLower.includes('레미') && item.site === 'lemmy') ||
-            (keywordLower.includes('범용') && item.site === 'universal') ||
             extractedURL;
     });
 
-    if (extractedURL) {
-        const universalIndex = suggestions.findIndex(s => s.site === 'universal');
-        if (universalIndex > -1) {
-            const universal = suggestions.splice(universalIndex, 1)[0];
-            universal.desc = `URL 감지됨: ${extractedURL}`;
-            suggestions.unshift(universal);
+    // 🔥 URL에서 X 도메인 감지
+    if (extractedURL && (extractedURL.includes('x.com') || extractedURL.includes('twitter.com'))) {
+        const xIndex = suggestions.findIndex(s => s.site === 'x');
+        if (xIndex > -1) {
+            const xSite = suggestions.splice(xIndex, 1)[0];
+            xSite.desc = `X URL 감지됨: ${extractedURL}`;
+            suggestions.unshift(xSite);
         }
     }
 
@@ -1657,12 +1658,19 @@ function updateBoardPlaceholder(site) {
     const boardInput = document.getElementById('boardInput');
     const lang = window.languages[currentLanguage];
     
-    if (boardInput && lang.boardPlaceholders) {
-        const placeholder = lang.boardPlaceholders[site] || lang.boardPlaceholders.default;
+    if (boardInput && lang && lang.boardPlaceholders) {
+        let placeholder;
+        
+        // 🔥 X 전용 플레이스홀더 추가
+        if (site === 'x' || site === 'twitter') {
+            placeholder = lang.boardPlaceholders.x || 'Enter X username (e.g., @elonmusk)';
+        } else {
+            placeholder = lang.boardPlaceholders[site] || lang.boardPlaceholders.default;
+        }
+        
         boardInput.placeholder = placeholder;
     }
 }
-
 // 사이트별 정렬 옵션을 로드하는 함수
 async function loadSiteSortOptions(site, url = null) {
     const sortSelect = document.getElementById('sortMethod');
@@ -1671,7 +1679,16 @@ async function loadSiteSortOptions(site, url = null) {
     if (!sortSelect) return;
     
     try {
-        if (site === 'reddit') {
+        // 🔥 X 전용 정렬 옵션
+        if (site === 'x' || site === 'twitter') {
+            sortSelect.innerHTML = `
+                <option value="recent">${lang.sortOptions?.x?.recent || 'Recent'}</option>
+                <option value="popular">${lang.sortOptions?.x?.popular || 'Popular'}</option>
+                <option value="top">${lang.sortOptions?.x?.top || 'Top'}</option>
+                <option value="media">${lang.sortOptions?.x?.media || 'Media'}</option>
+            `;
+        } else if (site === 'reddit') {
+            // 기존 Reddit 로직...
             sortSelect.innerHTML = `
                 <option value="new">${lang.sortOptions?.reddit?.new || 'New'}</option>
                 <option value="top">${lang.sortOptions?.reddit?.top || 'Top'}</option>
@@ -1680,7 +1697,7 @@ async function loadSiteSortOptions(site, url = null) {
                 <option value="rising">${lang.sortOptions?.reddit?.rising || 'Rising'}</option>
             `;
         } else {
-            // ✅ 안전한 접근으로 수정
+            // 기존 다른 사이트들...
             sortSelect.innerHTML = `
                 <option value="popular">${lang.sortOptions?.other?.popular || 'Popular'}</option>
                 <option value="recommend">${lang.sortOptions?.other?.recommend || 'Recommend'}</option>
@@ -1947,6 +1964,11 @@ function selectBBCSection(index) {
 // 키워드에 따른 자동완성을 가져오는 함수
 async function fetchAutocomplete(keyword) {
     if (!keyword || keyword.trim().length < 2 || !currentSite) {
+        // 🔥 X 도움말 표시
+        if (currentSite === 'x' && (!keyword || keyword.trim().length === 0)) {
+            showXHelp();
+            return;
+        }
         if (currentSite === 'lemmy' && (!keyword || keyword.trim().length === 0)) {
             showLemmyHelp();
             return;
@@ -1954,6 +1976,7 @@ async function fetchAutocomplete(keyword) {
         hideAutocomplete();
         return;
     }
+    
     if (currentSite === 'universal') {
         if (keyword.startsWith('http://') || keyword.startsWith('https://')) {
             hideAutocomplete();
@@ -1968,7 +1991,14 @@ async function fetchAutocomplete(keyword) {
         showBBCAutocomplete(keyword);
         return;
     }
+    
+    // 🔥 X 자동완성 처리 추가
+    if (currentSite === 'x' || currentSite === 'twitter') {
+        showXAutocomplete(keyword);
+        return;
+    }
 
+    // 기존 API 호출 로직...
     try {
         const response = await fetch(`${API_BASE_URL}/autocomplete/${currentSite}?keyword=${encodeURIComponent(keyword)}`);
         const data = await response.json();
@@ -2119,6 +2149,120 @@ function setLemmyCommunity(community) {
     safeSetBoardInput(community);
 }
 
+function showXHelp() {
+    const container = document.getElementById('autocomplete');
+    const boardSearchContainer = document.getElementById('boardSearchContainer');
+    
+    if (!container || !boardSearchContainer) return;
+    
+    boardSearchContainer.classList.add('dropdown-active');
+    
+    container.innerHTML = `
+        <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
+            <div style="flex: 1;">
+                <div style="font-weight: 500; color: #1DA1F2;">🐦 X (Twitter) Help</div>
+                <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
+                    Enter a username to crawl their timeline:<br>
+                    • @elonmusk<br>
+                    • elonmusk<br>
+                    • https://x.com/elonmusk
+                </div>
+            </div>
+        </div>
+        <div class="autocomplete-item" onclick="setXUser('elonmusk');">
+            <div style="flex: 1;">
+                <div style="color: #1DA1F2;">🚀 @elonmusk</div>
+                <div style="font-size: 11px; color: #70757a;">Elon Musk's timeline</div>
+            </div>
+        </div>
+        <div class="autocomplete-item" onclick="setXUser('tesla');">
+            <div style="flex: 1;">
+                <div style="color: #1DA1F2;">🔋 @tesla</div>
+                <div style="font-size: 11px; color: #70757a;">Tesla's official account</div>
+            </div>
+        </div>
+    `;
+    
+    container.classList.add('show');
+}
+
+// 6. X 자동완성 함수 (간단 버전)
+function showXAutocomplete(keyword) {
+    const keywordLower = keyword.toLowerCase();
+    
+    // 유명한 X 계정들
+    const xAccounts = [
+        { username: 'elonmusk', name: 'Elon Musk' },
+        { username: 'tesla', name: 'Tesla' },
+        { username: 'spacex', name: 'SpaceX' },
+        { username: 'openai', name: 'OpenAI' },
+        { username: 'microsoft', name: 'Microsoft' },
+        { username: 'google', name: 'Google' },
+        { username: 'apple', name: 'Apple' },
+        { username: 'meta', name: 'Meta' }
+    ];
+
+    const filtered = xAccounts.filter(account => {
+        return account.username.toLowerCase().includes(keywordLower) ||
+            account.name.toLowerCase().includes(keywordLower);
+    });
+
+    if (filtered.length > 0) {
+        autocompleteData = filtered.map(account => account.username);
+        showXAutocompleteDropdown(filtered, keyword);
+    } else {
+        // 키워드가 있으면 그대로 사용자명으로 제안
+        if (keywordLower.length > 1) {
+            autocompleteData = [keywordLower];
+            showXAutocompleteDropdown([{
+                username: keywordLower,
+                name: `@${keywordLower}`
+            }], keyword);
+        } else {
+            hideAutocomplete();
+        }
+    }
+}
+
+// 7. X 자동완성 드롭다운 표시
+function showXAutocompleteDropdown(accounts, keyword) {
+    const container = document.getElementById('autocomplete');
+    const boardSearchContainer = document.getElementById('boardSearchContainer');
+    
+    boardSearchContainer.classList.add('dropdown-active');
+
+    container.innerHTML = accounts.map((account, index) => {
+        const usernameHighlighted = account.username.replace(
+            new RegExp(`(${keyword})`, 'gi'),
+            '<mark style="background: #ffeb3b;">$1</mark>'
+        );
+        
+        return `
+            <div class="autocomplete-item" data-index="${index}" onclick="selectXAccount(${index})">
+                <div style="width: 20px; height: 20px; background: #1DA1F2; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold;">X</div>
+                <div style="flex: 1;">
+                    <div>@${usernameHighlighted} - ${account.name}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.classList.add('show');
+    highlightIndex = -1;
+}
+
+// 8. X 사용자 설정 함수들
+function setXUser(username) {
+    safeSetBoardInput(username);
+}
+
+function selectXAccount(index) {
+    if (index >= 0 && index < autocompleteData.length) {
+        safeSetBoardInput(autocompleteData[index]);
+    }
+}
+
+
 // 크롤링 버튼 상태를 업데이트하는 함수
 function updateCrawlButton() {
     const boardValue = document.getElementById('boardInput')?.value?.trim() || '';
@@ -2134,8 +2278,10 @@ function updateCrawlButton() {
         buttonText = lang.crawlButtonMessages?.siteNotSelected || 'Select a site';
         isValid = false;
     } else if (!boardValue) {
-        // 🔥 사이트별 메시지도 번역
-        if (currentSite === 'universal') {
+        // 🔥 X 전용 빈 입력 메시지
+        if (currentSite === 'x' || currentSite === 'twitter') {
+            buttonText = lang.crawlButtonMessages?.xEmpty || 'Enter X username';
+        } else if (currentSite === 'universal') {
             buttonText = lang.crawlButtonMessages?.universalEmpty || 'Enter website URL';
         } else if (currentSite === 'lemmy') {
             buttonText = lang.crawlButtonMessages?.lemmyEmpty || 'Enter Lemmy community';
@@ -2153,9 +2299,8 @@ function updateCrawlButton() {
     
     crawlBtn.disabled = !isValid || isLoading;
     
-    // 🔥 크롤링 중일 때도 번역
     if (isLoading) {
-        buttonText = lang.crawlingStatus?.processing || '크롤링 중...';
+        buttonText = lang.crawlingStatus?.processing || 'Crawling...';
     }
     
     crawlBtn.textContent = buttonText;
@@ -4703,4 +4848,8 @@ window.openFullscreenImage = openFullscreenImage;
 window.closeFullscreenImage = closeFullscreenImage;
 
 console.log('✅ 향상된 displayResults 함수 로드 완료 - 썸네일 및 미디어 지원');
-        
+
+window.showXHelp = showXHelp;
+window.setXUser = setXUser;
+window.selectXAccount = selectXAccount;
+window.showXAutocomplete = showXAutocomplete;
