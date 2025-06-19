@@ -53,7 +53,7 @@ const languages = {
            blind: "게시판 이름 (예: 개발자)",
            lemmy: "커뮤니티@인스턴스 (예: technology@lemmy.world)",
            bbc: "BBC 섹션 URL",
-           universal: "수집 할 웹사이트 URL을 입력하세요..."
+           auto_crawl: "수집 할 웹사이트 URL을 입력하세요..."
        },
        
        // ==================== 시간 필터 옵션 ====================
@@ -207,8 +207,8 @@ const languages = {
        crawlButtonMessages: {
            siteNotSelected: "사이트를 선택하세요",
            boardEmpty: "게시판을 입력하세요", 
-           universalEmpty: "URL을 입력하세요",
-           universalUrlError: "올바른 URL을 입력하세요",
+           auto_crawlEmpty: "URL을 입력하세요",
+           auto_crawlUrlError: "올바른 URL을 입력하세요",
            lemmyEmpty: "커뮤니티를 입력하세요",
            lemmyFormatError: "올바른 Lemmy 형식을 입력하세요",
            redditFormatError: "올바른 Reddit 형식을 입력하세요",
@@ -325,7 +325,7 @@ const languages = {
                    asklemmy: "Lemmy 커뮤니티에 질문하기"
                }
            },
-           universalHelp: {
+           autoHelp: {
                title: "범용 크롤러 사용법",
                description: "크롤링할 웹사이트의 완전한 URL을 입력하세요\n예시: https://example.com/forum"
            }
@@ -379,7 +379,7 @@ const languages = {
            blind: "Board name (e.g., developers)",
            lemmy: "community@instance (e.g., technology@lemmy.world)",
            bbc: "BBC section URL",
-           universal: "Enter website URL to crawl..."
+           auto_crawl: "Enter website URL to crawl..."
        },
        
        // ==================== 시간 필터 옵션 ====================
@@ -531,8 +531,8 @@ const languages = {
        crawlButtonMessages: {
            siteNotSelected: "Select a site",
            boardEmpty: "Enter board name",
-           universalEmpty: "Enter URL", 
-           universalUrlError: "Enter valid URL",
+           auto_crawlEmpty: "Enter URL", 
+           auto_crawlUrlError: "Enter valid URL",
            lemmyEmpty: "Enter community",
            lemmyFormatError: "Enter valid Lemmy format",
            redditFormatError: "Enter valid Reddit format",
@@ -642,7 +642,7 @@ const languages = {
                    asklemmy: "Ask the Lemmy community"
                }
            },
-           universalHelp: {
+           autoHelp: {
                title: "Universal Crawler Usage",
                description: "Enter the complete URL of the website to crawl\nExample: https://example.com/forum"
            }
@@ -696,7 +696,7 @@ const languages = {
            blind: "掲示板名 (例: 開発者)",
            lemmy: "コミュニティ@インスタンス (例: technology@lemmy.world)",
            bbc: "BBC セクション URL",
-           universal: "クロールするウェブサイトのURLを入力してください..."
+           auto_crawl: "クロールするウェブサイトのURLを入力してください..."
        },
        
        // ==================== 시간 필터 옵션 ====================
@@ -846,8 +846,8 @@ const languages = {
        crawlButtonMessages: {
            siteNotSelected: "サイトを選択してください",
            boardEmpty: "掲示板を入力してください",
-           universalEmpty: "URLを入力してください",
-           universalUrlError: "正しいURLを入力してください", 
+           auto_crawlEmpty: "URLを入力してください",
+           auto_crawlUrlError: "正しいURLを入力してください", 
            lemmyEmpty: "コミュニティを入力してください",
            lemmyFormatError: "正しいLemmy形式を入力してください",
            redditFormatError: "正しいReddit形式を入力してください",
@@ -958,7 +958,7 @@ const languages = {
                    asklemmy: "Lemmyコミュニティに質問"
                }
            },
-           universalHelp: {
+           autoHelp: {
                title: "汎用クローラー使用方法",
                description: "クロールするウェブサイトの完全なURLを入力してください\n例: https://example.com/forum"
            }
