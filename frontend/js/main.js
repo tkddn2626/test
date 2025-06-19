@@ -2311,8 +2311,8 @@ async function startCrawling() {
     }
 
     const boardInput = document.getElementById('boardInput')?.value?.trim();
-    if (!boardInput) {
-        showMessage('crawlButtonMessages.boardEmpty', 'error', { translate: true });
+    if (!boardInput || !currentSite) {
+        showMessage('사이트와 게시판을 선택해주세요.', 'error');
         return;
     }
 
@@ -2324,10 +2324,12 @@ async function startCrawling() {
         updateUIForCrawlStart();
         updateProgress(0, getLocalizedMessage('preparingCrawl'));
         
-        // 기존 설정 코드...
+        // 🔥 사이트 정보를 명시적으로 전달하는 설정
         const config = {
             input: boardInput,
-            site: currentSite || 'auto',
+            site: currentSite,  // ✅ 프론트엔드에서 감지한 사이트 정보
+            detected_site: currentSite,  // 백엔드에서 바로 사용할 수 있도록
+            board_identifier: boardInput,
             sort: safeGetValue('sortMethod', 'recent'),
             start: parseInt(safeGetValue('startRank', '1')),
             end: parseInt(safeGetValue('endRank', '20')),
@@ -2339,6 +2341,8 @@ async function startCrawling() {
             end_date: safeGetValue('endDate') || null,
             language: currentLanguage || 'en'
         };
+        
+        console.log(`🚀 크롤링 요청 전송: ${currentSite} -> ${boardInput}`);
         
         currentSocket = await createWebSocketWithRetry('crawl', config);
         console.log('✅ 크롤링 시작');
@@ -3618,14 +3622,62 @@ function enhancedSiteDetection(input) {
         { pattern: /sh\.itjust\.works/i, site: 'lemmy', name: 'Lemmy' }
     ];
     
+    // URL 기반 감지
     for (const {pattern, site, name} of patterns) {
         if (pattern.test(input)) {
-            return { site, name };
+            return { site, name, input: extractBoardFromUrl(input, site) };
         }
     }
     
-    return null;
+    // 키워드 기반 감지
+    const keywordLower = input.toLowerCase();
+    if (keywordLower.includes('reddit') || keywordLower.includes('레딧')) {
+        return { site: 'reddit', name: 'Reddit', input: input };
+    } else if (keywordLower.includes('디시') || keywordLower.includes('갤러리')) {
+        return { site: 'dcinside', name: 'DCInside', input: input };
+    } else if (keywordLower.includes('블라인드')) {
+        return { site: 'blind', name: 'Blind', input: input };
+    } else if (keywordLower.includes('lemmy') || keywordLower.includes('레미')) {
+        return { site: 'lemmy', name: 'Lemmy', input: input };
+    }
+    
+    // URL이면 auto_crawl, 아니면 일반 키워드
+    return extractURLFromInput(input) ? 
+        { site: 'auto_crawl', name: 'Auto Crawler', input: input } : 
+        null;
 }
+
+function extractBoardFromUrl(url, siteType) {
+    try {
+        switch(siteType) {
+            case 'reddit':
+                const redditMatch = url.match(/\/r\/([^\/]+)/);
+                return redditMatch ? redditMatch[1] : url;
+            
+            case 'dcinside':
+                const dcMatch = url.match(/[?&]id=([^&]+)/);
+                return dcMatch ? dcMatch[1] : url;
+            
+            case 'lemmy':
+                if (url.includes('/c/')) {
+                    const parts = url.split('/c/');
+                    if (parts.length > 1) {
+                        const domain = new URL(url).hostname;
+                        const community = parts[1].split('/')[0];
+                        return `${community}@${domain}`;
+                    }
+                }
+                return url;
+            
+            default:
+                return url;
+        }
+    } catch (error) {
+        console.warn('URL 파싱 오류:', error);
+        return url;
+    }
+}
+
 
 
 // 입력 유효성을 검사하는 함수
