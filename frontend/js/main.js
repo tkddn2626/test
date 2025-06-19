@@ -3619,32 +3619,50 @@ function enhancedSiteDetection(input) {
         { pattern: /(bbc\.com|bbc\.co\.uk)/i, site: 'bbc', name: 'BBC' },
         { pattern: /lemmy\./i, site: 'lemmy', name: 'Lemmy' },
         { pattern: /beehaw\.org/i, site: 'lemmy', name: 'Lemmy' },
-        { pattern: /sh\.itjust\.works/i, site: 'lemmy', name: 'Lemmy' }
+        { pattern: /sh\.itjust\.works/i, site: 'lemmy', name: 'Lemmy' },
+        // ✅ X.com 패턴 추가
+        { pattern: /(x\.com|twitter\.com)/i, site: 'x', name: 'X (Twitter)' }
     ];
     
-    // URL 기반 감지
+    // 1. URL 기반 감지 (패턴 매칭)
     for (const {pattern, site, name} of patterns) {
         if (pattern.test(input)) {
-            return { site, name, input: extractBoardFromUrl(input, site) };
+            return { 
+                site, 
+                name, 
+                input: extractBoardFromUrl(input, site) 
+            };
         }
     }
     
-    // 키워드 기반 감지
-    const keywordLower = input.toLowerCase();
-    if (keywordLower.includes('reddit') || keywordLower.includes('레딧')) {
-        return { site: 'reddit', name: 'Reddit', input: input };
-    } else if (keywordLower.includes('디시') || keywordLower.includes('갤러리')) {
-        return { site: 'dcinside', name: 'DCInside', input: input };
-    } else if (keywordLower.includes('블라인드')) {
-        return { site: 'blind', name: 'Blind', input: input };
-    } else if (keywordLower.includes('lemmy') || keywordLower.includes('레미')) {
-        return { site: 'lemmy', name: 'Lemmy', input: input };
+    // 2. 키워드 기반 감지 (URL이 아닌 경우)
+    if (!extractURLFromInput(input)) {
+        const keywordLower = input.toLowerCase();
+        
+        if (keywordLower.includes('reddit') || keywordLower.includes('레딧')) {
+            return { site: 'reddit', name: 'Reddit', input: input };
+        } else if (keywordLower.includes('디시') || keywordLower.includes('갤러리')) {
+            return { site: 'dcinside', name: 'DCInside', input: input };
+        } else if (keywordLower.includes('블라인드')) {
+            return { site: 'blind', name: 'Blind', input: input };
+        } else if (keywordLower.includes('lemmy') || keywordLower.includes('레미')) {
+            return { site: 'lemmy', name: 'Lemmy', input: input };
+        } else if (keywordLower.includes('x') || keywordLower.includes('twitter') || keywordLower.includes('트위터')) {
+            return { site: 'x', name: 'X (Twitter)', input: input };
+        }
     }
     
-    // URL이면 auto_crawl, 아니면 일반 키워드
-    return extractURLFromInput(input) ? 
-        { site: 'auto_crawl', name: 'Auto Crawler', input: input } : 
-        null;
+    // 3. 알 수 없는 URL은 auto_crawl로 처리
+    if (extractURLFromInput(input)) {
+        return { 
+            site: 'auto_crawl', 
+            name: 'Auto Crawler', 
+            input: input 
+        };
+    }
+    
+    // 4. 모든 감지 실패
+    return null;
 }
 
 function extractBoardFromUrl(url, siteType) {
@@ -3666,6 +3684,14 @@ function extractBoardFromUrl(url, siteType) {
                         const community = parts[1].split('/')[0];
                         return `${community}@${domain}`;
                     }
+                }
+                return url;
+            
+            // ✅ X.com 처리 추가
+            case 'x':
+                const xMatch = url.match(/x\.com\/([^\/]+)/);
+                if (xMatch) {
+                    return xMatch[1]; // 사용자명 추출
                 }
                 return url;
             
@@ -4063,5 +4089,3 @@ window.PickPostGlobals = {
     updateLabels
 };
 
-
-         
