@@ -810,7 +810,7 @@ function setupEventListeners() {
         if (site === 'lemmy') {
             showLemmyHelp();
         } else if (site === 'auto_crawl') {
-            showauto_crawlHelp();
+            showAutoHelp();
         }
     }
 
@@ -1160,7 +1160,7 @@ function useShortcut(site, url) {
         blind: 'Blind',
         bbc: 'BBC',
         lemmy: 'Lemmy',
-        auto_crawl: 'auto_crawl'
+        auto_crawl: 'Auto_Crawler'
     };
     
     siteInput.value = siteNames[site] || site;
@@ -1959,7 +1959,7 @@ async function fetchAutocomplete(keyword) {
             hideAutocomplete();
             updateCrawlButton();
         } else {
-            showauto_crawlHelp();
+            showAutoHelp();
         }
         return;
     }
@@ -2162,19 +2162,25 @@ function updateCrawlButton() {
 }
 
 // 범용 크롤러 도움말을 표시하는 함수
-function showauto_crawlHelp() {
+function showAutoHelp() {
     const container = document.getElementById('autocomplete');
     const boardSearchContainer = document.getElementById('boardSearchContainer');
-    const lang = window.languages[currentLanguage];
+    
+    if (!container || !boardSearchContainer) return;
     
     boardSearchContainer.classList.add('dropdown-active');
+    
+    // 안전한 번역 처리
+    const lang = window.languages?.[currentLanguage] || window.languages?.en || {};
+    const title = lang.helpTexts?.autoHelp?.title || 'Auto Crawler';
+    const description = lang.helpTexts?.autoHelp?.description || 'Enter website URL to crawl any site';
     
     container.innerHTML = `
         <div class="autocomplete-item" style="cursor: default; background: #f8f9fa;">
             <div style="flex: 1;">
-                <div style="font-weight: 500; color: #1a73e8;">${lang.helpTexts.auto_crawlTitle}</div>
+                <div style="font-weight: 500; color: #1a73e8;">${title}</div>
                 <div style="font-size: 12px; color: #70757a; margin-top: 4px;">
-                    ${lang.helpTexts.auto_crawlDesc.replace(/\n/g, '<br>')}
+                    ${description.replace(/\n/g, '<br>')}
                 </div>
             </div>
         </div>
@@ -3968,6 +3974,7 @@ window.showLemmyHelpContent = showLemmyHelpContent;
 window.updateTimeFilterLabels = updateTimeFilterLabels;
 window.updateSortMethodLabels = updateSortMethodLabels;
 window.updateFooterLabels = updateFooterLabels;
+window.showAutoHelp = showAutoHelp;
 
 // 자동완성 관련
 window.selectBBCSection = selectBBCSection;
@@ -4003,3 +4010,4 @@ window.PickPostGlobals = {
     extractSiteName,
     updateLabels
 };
+
