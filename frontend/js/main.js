@@ -1517,37 +1517,20 @@ function isElementVisible(element) {
 // 사이트 검색을 처리하는 함수
 function handleSiteSearch() {
     const siteInputValue = document.getElementById('siteInput').value.trim();
-    const extractedURL = extractURLFromInput(siteInputValue);
     
-    if (extractedURL) {
-        const siteName = extractSiteName(extractedURL);
-        document.getElementById('siteInput').value = siteName;
-        selectSite('auto_crawl', extractedURL);
-        
-        setTimeout(() => {
-            document.getElementById('boardInput').value = extractedURL;
-            document.getElementById('clearBoardBtn').style.display = 'flex';
-            updateCrawlButton();
-        }, 200);
-        
-    } else {
-        if (siteInputValue.toLowerCase().includes('reddit')) {
-            document.getElementById('siteInput').value = 'Reddit';
-            selectSite('reddit');
-        } else if (siteInputValue.toLowerCase().includes('dc') || siteInputValue.toLowerCase().includes('디시')) {
-            document.getElementById('siteInput').value = 'DCInside';
-            selectSite('dcinside');
-        } else if (siteInputValue.toLowerCase().includes('blind') || siteInputValue.toLowerCase().includes('블라인드')) {
-            document.getElementById('siteInput').value = 'Blind';
-            selectSite('blind');
-        } else if (siteInputValue.toLowerCase().includes('lemmy') || siteInputValue.toLowerCase().includes('레미')) {
-            document.getElementById('siteInput').value = 'Lemmy';
-            selectSite('lemmy');
-        } else {
-            document.getElementById('siteInput').value = siteInputValue;
-            selectSite('auto_crawl');
-        }
-    }
+    // 단순히 URL을 그대로 보드 입력창에 넣고
+    setTimeout(() => {
+        const boardInput = document.getElementById('boardInput');
+        boardInput.value = siteInputValue; // 원본 URL 그대로
+        document.getElementById('clearBoardBtn').style.display = 'flex';
+        updateCrawlButton();
+    }, 200);
+    
+    // 사이트 검색창은 비우고
+    document.getElementById('siteInput').value = '';
+    
+    // auto_crawl로 처리 (백엔드에서 판단)
+    selectSite('auto_crawl');
 }
 
 // 퀵 사이트를 선택하는 함수
@@ -1578,8 +1561,10 @@ function selectSite(site, extractedURL = null) {
     }
     
     const boardInput = document.getElementById('boardInput');
-    if (boardInput) {
-        boardInput.value = '';
+    // 🔥 기존 URL 값이 있으면 유지 (handleSiteSearch에서 설정한 값)
+    if (!extractedURL && boardInput) {
+        // URL이 따로 전달되지 않았고, 이미 boardInput에 값이 있으면 유지
+        // 새로 비우지 않음
     }
     
     if (searchInitiated && currentSite === site && !extractedURL) return;
@@ -1589,7 +1574,6 @@ function selectSite(site, extractedURL = null) {
     searchInitiated = true;
     
     if (site === 'lemmy') {
-        // ✅ 전역 변수를 안전하게 초기화
         if (typeof window.community_name === 'undefined') {
             window.community_name = '';
         }
@@ -1599,23 +1583,18 @@ function selectSite(site, extractedURL = null) {
     }
     
     updateBoardPlaceholder(site);
-    
-    document.querySelectorAll('.site-btn').forEach(btn => {
-        if (btn && btn.classList) {
-            btn.classList.remove('active');
-            if (btn.dataset?.site === site) {
-                btn.classList.add('active');
-            }
-        }
-    });
-
+    updateSiteButtonStates(site);
     loadSiteSortOptions(site, extractedURL);
     animateToSearchMode();
-    
+    showBoardSearch();
+    showOptions();
+    updateCrawlButton()
+
     setTimeout(() => {
         showBoardSearch();
         showOptions(site);
         
+        // extractedURL이 있을 때만 boardInput 설정
         if (extractedURL && site === 'auto_crawl' && boardInput) {
             boardInput.value = extractedURL;
             const clearBtn = document.getElementById('clearBoardBtn');
@@ -2327,9 +2306,6 @@ async function startCrawling() {
         // 🔥 사이트 정보를 명시적으로 전달하는 설정
         const config = {
             input: boardInput,
-            site: currentSite,  // ✅ 프론트엔드에서 감지한 사이트 정보
-            detected_site: currentSite,  // 백엔드에서 바로 사용할 수 있도록
-            board_identifier: boardInput,
             sort: safeGetValue('sortMethod', 'recent'),
             start: parseInt(safeGetValue('startRank', '1')),
             end: parseInt(safeGetValue('endRank', '20')),
@@ -2400,10 +2376,11 @@ function buildCrawlConfig(boardInput) {
     const timeFilter = safeGetValue('timePeriod', 'day');
     const range = getSelectedRange();
     
-    // 기본 설정
+    // 🔥 사이트 검색창에서 입력된 사이트 이름 가져오기
+    const siteInputValue = document.getElementById('siteInput')?.value?.trim() || '';
+    
     const baseConfig = {
         input: boardInput,
-        site: currentSite || 'auto',
         board: boardInput,
         sort: sort,
         start: range.start,
@@ -2421,41 +2398,27 @@ function buildCrawlConfig(boardInput) {
         language: currentLanguage || 'en'
     };
     
-    // 🔥 사이트별로 지원하지 않는 매개변수 제거
+    // min_comments 조건부 추가 (기존 로직 유지)
     const siteSpecificConfigs = {
-        'lemmy': {
-            excludeParams: ['min_comments']
-        },
-        'reddit': {
-            excludeParams: []
-        },
-        'dcinside': {
-            excludeParams: ['min_comments']
-        },
-        'blind': {
-            excludeParams: ['min_comments']
-        },
-        'bbc': {
-            excludeParams: []
-        },
-        'auto_crawl': {
-            excludeParams: []
-        }
+        'lemmy': { excludeParams: ['min_comments'] },
+        'reddit': { excludeParams: [] },
+        'dcinside': { excludeParams: ['min_comments'] },
+        'blind': { excludeParams: ['min_comments'] },
+        'bbc': { excludeParams: [] },
+        'auto_crawl': { excludeParams: [] }
     };
     
-    // min_comments는 조건부로만 추가
     const siteConfig = siteSpecificConfigs[currentSite] || { excludeParams: [] };
     
     if (!siteConfig.excludeParams.includes('min_comments')) {
         baseConfig.min_comments = parseInt(safeGetValue('minComments', '0'));
     }
     
+    console.log(`🔧 사이트 이름 전달: ${siteInputValue} (currentSite: ${currentSite})`);
     console.log(`🔧 번역 설정: translate=${baseConfig.translate}, target_languages=[${baseConfig.target_languages.join(', ')}]`);
-    console.log(`🔧 사이트별 설정 적용 (${currentSite}):`, baseConfig);
     
     return baseConfig;
 }
-
 // 레거시 auto-crawl용 설정 생성 
 function buildLegacyCrawlConfig(boardInput) {
     const config = buildCrawlConfig(boardInput);
@@ -3576,95 +3539,6 @@ function setupSafeEventListeners() {
     });
 }
 
-// URL에서 사이트명을 추출하는 함수
-function extractSiteName(url) {
-    try {
-        const urlObj = new URL(url.startsWith('http') ? url : 'https://' + url);
-        const hostname = urlObj.hostname.toLowerCase();
-        
-        const siteMap = {
-            'reddit.com': 'Reddit',
-            'www.reddit.com': 'Reddit',
-            'dcinside.com': 'DCInside',
-            'gall.dcinside.com': 'DCInside',
-            'teamblind.com': 'Blind',
-            'blind.com': 'Blind',
-            'lemmy.world': 'Lemmy',
-            'lemmy.ml': 'Lemmy',
-            'beehaw.org': 'Lemmy'
-        };
-        
-        if (siteMap[hostname]) {
-            return siteMap[hostname];
-        }
-        
-        let siteName = hostname.replace(/^(www\.|m\.|mobile\.)/, '');
-        
-        siteName = siteName.split('.')[0];
-        siteName = siteName.charAt(0).toUpperCase() + siteName.slice(1);
-        
-        return siteName;
-        
-    } catch (error) {
-        return url;
-    }
-}
-
-// 사이트를 자동으로 감지하는 함수
-function enhancedSiteDetection(input) {
-    const patterns = [
-        { pattern: /reddit\.com/i, site: 'reddit', name: 'Reddit' },
-        { pattern: /(dcinside\.com|gall\.dcinside)/i, site: 'dcinside', name: 'DCInside' },
-        { pattern: /(teamblind\.com|blind\.com)/i, site: 'blind', name: 'Blind' },
-        { pattern: /(bbc\.com|bbc\.co\.uk)/i, site: 'bbc', name: 'BBC' },
-        { pattern: /lemmy\./i, site: 'lemmy', name: 'Lemmy' },
-        { pattern: /beehaw\.org/i, site: 'lemmy', name: 'Lemmy' },
-        { pattern: /sh\.itjust\.works/i, site: 'lemmy', name: 'Lemmy' },
-        // ✅ X.com 패턴 추가
-        { pattern: /(x\.com|twitter\.com)/i, site: 'x', name: 'X (Twitter)' }
-    ];
-    
-    // 1. URL 기반 감지 (패턴 매칭)
-    for (const {pattern, site, name} of patterns) {
-        if (pattern.test(input)) {
-            return { 
-                site, 
-                name, 
-                input: extractBoardFromUrl(input, site) 
-            };
-        }
-    }
-    
-    // 2. 키워드 기반 감지 (URL이 아닌 경우)
-    if (!extractURLFromInput(input)) {
-        const keywordLower = input.toLowerCase();
-        
-        if (keywordLower.includes('reddit') || keywordLower.includes('레딧')) {
-            return { site: 'reddit', name: 'Reddit', input: input };
-        } else if (keywordLower.includes('디시') || keywordLower.includes('갤러리')) {
-            return { site: 'dcinside', name: 'DCInside', input: input };
-        } else if (keywordLower.includes('블라인드')) {
-            return { site: 'blind', name: 'Blind', input: input };
-        } else if (keywordLower.includes('lemmy') || keywordLower.includes('레미')) {
-            return { site: 'lemmy', name: 'Lemmy', input: input };
-        } else if (keywordLower.includes('x') || keywordLower.includes('twitter') || keywordLower.includes('트위터')) {
-            return { site: 'x', name: 'X (Twitter)', input: input };
-        }
-    }
-    
-    // 3. 알 수 없는 URL은 auto_crawl로 처리
-    if (extractURLFromInput(input)) {
-        return { 
-            site: 'auto_crawl', 
-            name: 'Auto Crawler', 
-            input: input 
-        };
-    }
-    
-    // 4. 모든 감지 실패
-    return null;
-}
-
 function extractBoardFromUrl(url, siteType) {
     try {
         switch(siteType) {
@@ -3787,15 +3661,7 @@ function showProgressBar(show) {
 // 게시물 언어를 감지하는 함수
 function detectContentLanguage() {
     console.log(`🔍 detectContentLanguage 호출됨, currentSite: ${currentSite}`);
-    
-    // 사이트별 기본 언어 매핑 (더 정확하게)
-    const siteLanguageMap = {
-        'reddit': 'en',
-        'lemmy': 'en', 
-        'bbc': 'en',
-        'dcinside': 'ko',
-        'blind': 'ko'
-    };
+
     
     // auto_crawl 크롤러의 경우 URL에서 언어 추정 (더 정교하게)
     if (currentSite === 'auto_crawl') {
