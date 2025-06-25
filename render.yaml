@@ -1,0 +1,57 @@
+# render.yaml
+# Render 배포 설정
+
+services:
+  - type: web
+    name: pickpost-backend
+    env: python
+    region: frankfurt
+    plan: starter
+    buildCommand: "cd backend && pip install -r requirements.txt && cd .. && python build.py"
+    startCommand: "cd backend && python main.py"
+    healthCheckPath: "/health"
+    
+    envVars:
+      # 기본 설정
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: LOG_LEVEL
+        value: WARNING
+      - key: PORT
+        value: 8000
+      
+      # API 키들 (Render UI에서 수동 설정 필요)
+      - key: DEEPL_API_KEY
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        value: PickPost/2.1
+      
+      # 보안
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://pickpost.netlify.app
+      
+      # 성능 설정
+      - key: MAX_CONCURRENT_CRAWLS
+        value: 5
+      - key: CRAWL_TIMEOUT
+        value: 300
+      - key: MAX_PAGES_PER_CRAWL
+        value: 100
+      
+      # 번역 설정
+      - key: DEFAULT_TRANSLATE_LANG
+        value: auto
+      - key: SUPPORTED_TRANSLATE_LANGS
+        value: ko,en,ja,zh,de,fr,es,pt,ru,it
+      - key: MAX_TRANSLATE_LENGTH
+        value: 5000
+      - key: SKIP_SAME_LANGUAGE
+        value: true

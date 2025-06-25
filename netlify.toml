@@ -1,0 +1,50 @@
+# netlify.toml
+# Netlify 배포 설정
+
+[build]
+  command = "python build.py"
+  publish = "frontend"
+
+[build.environment]
+  PYTHON_VERSION = "3.9"
+  NODE_ENV = "production"
+
+# API 프록시 설정 (백엔드 연결)
+[[redirects]]
+  from = "/api/*"
+  to = "https://pickpost.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+# WebSocket 프록시
+[[redirects]]
+  from = "/ws/*"
+  to = "https://pickpost.onrender.com/ws/:splat"
+  status = 200
+  force = true
+
+# 정적 파일 캐싱
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000"
+    
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000"
+
+# 보안 헤더
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# SPA 라우팅 (필요시)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
