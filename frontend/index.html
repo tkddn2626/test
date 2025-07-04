@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PickPost</title>
+        <link rel="icon" type="image/png" href="logo.png">
+        <link rel="stylesheet" href="css/style.css">
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8742005050963144"
+     crossorigin="anonymous"></script>
+        <script>
+            fetch('/api/check-first-visitor')
+                .then(response => response.json())
+                .then(data => {
+                    const script = document.createElement('script');
+                    script.src = data.isFirstVisitor ? 'js/first_one.js' : 'js/present.js';
+                    script.defer = true;
+                    document.head.appendChild(script);
+                })
+                .catch(error => {
+                    console.error('First visitor check failed:', error);
+                    const script = document.createElement('script');
+                    script.src = 'js/present.js';
+                    script.defer = true;
+                    document.head.appendChild(script);
+                });
+            </script>
+        
+    </head>
+    <body>
+        <!-- 사용법 가이드 모달 -->
+        <div class="bug-report-modal" id="guideModal" style="display: none;">
+            <div class="bug-report-modal-content">
+                <div class="bug-report-header">
+                    <h2 class="bug-report-title" id="guideModalTitle"></h2>
+                    <button class="bug-report-close" onclick="closeGuideModal()" aria-label="Close modal">✕</button>
+                </div>
+                
+                <div class="bug-report-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div id="guideModalContent" style="line-height: 1.6; color: #202124;">
+                        <!-- 내용이 JavaScript에서 동적으로 생성됩니다 -->
+                    </div>
+                </div>
+                
+                <div class="bug-report-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                    <!-- 체크박스와 버튼이 JavaScript에서 동적으로 생성됩니다 -->
+                    <div id="guideModalFooterLeft"></div>
+                    <div id="guideModalFooterRight"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 바로가기 추가 모달 -->
+        <div class="shortcut-modal" id="shortcutModal">
+            <div class="shortcut-modal-content">
+                <div class="shortcut-modal-header">사이트 추가</div>
+                <div class="shortcut-modal-form">
+                    <input type="text" class="shortcut-modal-input" id="shortcutNameInput" placeholder="사이트 이름">
+                    <input type="text" class="shortcut-modal-input" id="shortcutUrlInput" placeholder="사이트 URL">
+                    <!-- 사이트 선택 드롭다운 제거됨 -->
+                </div>
+                <div class="shortcut-modal-buttons">
+                    <button class="btn" onclick="closeShortcutModal()" data-lang-key="cancel">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveShortcut()" data-lang-key="save">Save</button>
+                </div>
+            </div>
+        </div>
+        <!-- 피드백 모달 -->
+        <div class="bug-report-modal" id="bugReportModal">
+            <div class="bug-report-modal-content">
+                <div class="bug-report-header">
+                    <h2 class="bug-report-title" id="bugReportTitleText">
+                        PickPost에 의견 보내기
+                    </h2>
+                    <button class="bug-report-close" onclick="closeBugReportModal()" aria-label="모달 닫기">
+                        ✕
+                    </button>
+                </div>
+                
+                <div class="bug-report-body">
+                    <!-- 메인 입력 섹션 -->
+                    <div class="bug-report-section">
+                        <label class="bug-report-label" for="bugReportDescription" id="bugReportDescLabel">
+                            의견을 설명해 주세요. (필수)
+                        </label>
+                        <textarea 
+                            class="bug-report-textarea" 
+                            id="bugReportDescription" 
+                            placeholder="이 의견을 제시한 이유를 알려주세요. 구체적인 설명은 개선에 큰 도움이 됩니다." 
+                            maxlength="1000"
+                            oninput="updateCharacterCount(); updateBugReportButton();"
+                            aria-describedby="charCount bugReportWarning">
+                        </textarea>
+                        <div class="character-count">
+                            <span id="charCount">0</span>/1000
+                        </div>
+                    </div>
+
+                    <!-- 파일 첨부 섹션 -->
+                    <div class="bug-report-section">
+                        <div class="screenshot-section">
+                            <div class="screenshot-title" id="screenshotTitle">
+                                사진을 첨부해 PickPost에서 의견을 더 잘 이해하는 데 도움이 됩니다.
+                            </div>
+                            <input 
+                                type="file" 
+                                id="fileInput" 
+                                accept="image/*" 
+                                style="display: none;" 
+                                onchange="handleFileUpload(event)"
+                                aria-label="사진 파일 선택">
+                            <button 
+                                class="screenshot-capture-btn" 
+                                id="screenshotBtn" 
+                                onclick="document.getElementById('fileInput').click()"
+                                type="button">
+                                <span class="screenshot-icon">📷</span>
+                                <span id="screenshotBtnText">사진 첨부</span>
+                            </button>
+                            <div id="filePreview" style="display: none;">
+                                <div class="file-info">
+                                    <span>📎</span>
+                                    <span id="fileName"></span>
+                                    <button 
+                                        onclick="removeFile()" 
+                                        type="button"
+                                        aria-label="첨부 파일 제거"
+                                        title="파일 제거">
+                                        ×
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 경고 메시지 -->
+                    <div class="bug-report-warning" id="bugReportWarning">
+                        <div class="warning-icon">⚠️</div>
+                        <div class="warning-text">
+                            <span id="bugReportWarningText">민감한 정보는 포함하지 마세요</span>
+                            <div class="warning-detail" id="bugReportWarningDetail">
+                                개인정보, 비밀번호, 금융정보 등은 포함하지 마세요. 제출된 피드백은 서비스 개선 목적으로만 사용됩니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bug-report-footer">
+                    <button 
+                        class="btn" 
+                        onclick="closeBugReportModal()" 
+                        id="bugReportCancelBtn"
+                        type="button">
+                        취소
+                    </button>
+                    <button 
+                        class="btn btn-primary" 
+                        onclick="submitBugReport()" 
+                        id="bugReportSubmitBtn"
+                        type="button"
+                        disabled>
+                        보내기
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 서비스 약관 -->
+        <div class="bug-report-modal" id="termsModal">
+            <div class="bug-report-modal-content">
+                <div class="bug-report-header">
+                    <h2 class="bug-report-title" id="termsModalTitle">📋 서비스 약관</h2>
+                    <button class="bug-report-close" onclick="closeTermsModal()">✕</button>
+                </div>
+                
+                <div class="bug-report-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div id="termsModalContent" style="line-height: 1.6; color: #202124;">
+                    </div>
+                </div>
+                
+                <div class="bug-report-footer">
+                    <button class="btn" id="closeTermsBtn" onclick="closeTermsModal()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 개인정보처리방침 모달 -->
+        <div class="bug-report-modal" id="privacyModal">
+            <div class="bug-report-modal-content">
+                <div class="bug-report-header">
+                    <h2 class="bug-report-title" id="privacyModalTitle">🔒 개인정보처리방침</h2>
+                    <button class="bug-report-close" onclick="closePrivacyModal()">✕</button>
+                </div>
+                
+                <div class="bug-report-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div id="privacyModalContent" style="line-height: 1.6; color: #202124;">
+                        <!-- 내용이 동적으로 로드됩니다 -->
+                    </div>
+                </div>
+                
+                <div class="bug-report-footer">
+                    <button class="btn" id="closePrivacyBtn" onclick="closePrivacyModal()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 비즈니스 모달 -->
+        <div class="bug-report-modal" id="businessModal">
+            <div class="bug-report-modal-content">
+                <div class="bug-report-header">
+                    <h2 class="bug-report-title" id="businessModalTitle">💼 비즈니스 안내</h2>
+                    <button class="bug-report-close" onclick="closeBusinessModal()">✕</button>
+                </div>
+                
+                <div class="bug-report-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div id="businessModalContent" style="line-height: 1.6; color: #202124;">
+                        <!-- 내용이 동적으로 로드됩니다 -->
+                    </div>
+                </div>
+                
+                <div class="bug-report-footer">
+                    <button class="btn" id=closeBusinessBtn onclick="closeBusinessModal()">확인</button>
+                </div>
+            </div>
+        </div>
+
+
+        <!--공지사항 -->
+        <div class="header-actions">
+            <button class="announcement-btn" id="announcementBtn" onclick="openAnnouncementModal()">
+                <span id="announcementBtnText">Announcement</span>
+                <span class="announcement-badge" id="announcementBadge" style="display: none;">New</span>
+            </button>
+        </div>
+
+        <!-- 공지사항 모달도 기존 모달들과 함께 추가 -->
+        <div class="announcement-modal" id="announcementModal">
+            <div class="announcement-modal-content">
+                <div class="announcement-header">
+                    <h2 class="announcement-title" id="announcementTitle">📢 Announcement</h2>
+                    <button class="announcement-close" onclick="closeAnnouncementModal()">✕</button>
+                </div>
+                
+                <div class="announcement-body">
+                    <div class="announcement-list" id="announcementList">
+                        <!-- 공지사항 내용이 동적으로 로드됩니다 -->
+                    </div>
+                </div>
+                
+                <div class="announcement-footer">
+                    <!-- index.html 수정 -->
+                    <button class="btn" id="announcementCloseBtn" onclick="closeAnnouncementModal()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Container -->
+        <div class="main-container" id="mainContainer">
+            <!-- Logo -->
+            <div class="logo-container" id="logoContainer">
+                <img src="site_logo.png" alt="PickPost 로고" onerror="this.style.display='none'" class="logo-image" />
+            </div>
+
+            <!-- Site Search Container -->
+            <div class="search-container">
+                <input type="text" class="search-box" placeholder="사이트 이름 또는 주소를 입력하세요..." id="siteInput">
+                <button class="clear-btn" id="clearSiteBtn" onclick="clearSiteInput()" style="display: none;">✕</button>
+                <svg class="search-icon" viewBox="0 0 24 24" fill="currentColor" onclick="handleSiteSearch()">
+                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                </svg>
+            </div>
+
+            <div class="site-selection" id="siteSelection">
+                <!-- 모든 버튼이 여기에 동적으로 생성됨 -->
+            </div>
+            
+
+            <!-- Board Search Container -->
+            <div class="board-search-container" id="boardSearchContainer">
+                <button class="back-button" onclick="goBack()" title="뒤로가기">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                    </svg>
+                </button>
+                <input type="text" class="board-search-box" placeholder="게시판 이름을 입력하세요..." id="boardInput">
+                <button class="clear-btn" id="clearBoardBtn" onclick="clearBoardInput()" style="display: none;">✕</button>
+                <div class="autocomplete-container" id="autocomplete"></div>
+            </div>
+
+            <!-- Options -->
+            <div class="options-container" id="optionsContainer">
+                <!-- First Row - Left: 정렬 방식 -->
+                <div class="option-group">
+                    <label class="option-label" id="sortMethodLabel" data-lang-key="labels.sortMethod">Sort</label>
+                    <select class="option-select" id="sortMethod">
+                        <option value="recent">Recent</option>
+                        <option value="popular">Popular</option>
+                        <option value="recommend">Recommand</option>
+                        <option value="comments">Command</option>
+                    </select>
+                </div>
+
+                <!-- First Row - Right: 기간 -->
+                <div class="option-group">
+                    <label class="option-label" id="timePeriodLabel">기간</label>
+                    <select class="option-select" id="timePeriod">
+                        <option value="hour">시간</option>
+                        <option value="day" selected>하루</option>
+                        <option value="week">일주일</option>
+                        <option value="month">한 달</option>
+                        <option value="year">일 년</option>
+                        <option value="all">전체</option>
+                        <option value="custom">사용자지정</option>
+                    </select>
+                </div>
+
+                <!-- Advanced Search Toggle -->
+                <div class="option-group advanced-toggle-container">
+                    <label class="option-label" id="advancedSearchLabel">고급 검색</label>
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="advancedSearch" onchange="toggleAdvancedSearch()">
+                        <span class="checkmark"></span>
+                    </label>
+                </div>
+
+                <!-- Basic Options (Always visible) -->
+                <div class="basic-options" id="basicOptions">
+                    <!-- Second Row - Left: 시작 순위 -->
+                    <div class="option-group">
+                        <label class="option-label" id="startRankLabel">시작 순위</label>
+                        <input type="number" class="option-input" id="startRank" value="1" min="1">
+                    </div>
+
+                    <!-- Second Row - Right: 끝 순위 -->
+                    <div class="option-group">
+                        <label class="option-label" id="endRankLabel">끝 순위</label>
+                        <input type="number" class="option-input" id="endRank" value="20" min="1">
+                    </div>
+                </div>
+
+                <!-- Advanced Options (Hidden by default) -->
+                <div class="advanced-options" id="advancedOptions" style="display: none;">
+                    <!-- Advanced filters in 3-column layout -->
+                    <div class="option-group">
+                        <label class="option-label" id="minViewsLabel">최소 조회수</label>
+                        <input type="number" class="option-input" id="minViews" value="0" min="0">
+                    </div>
+
+                    <div class="option-group">
+                        <label class="option-label" id="minRecommendLabel">최소 추천수</label>
+                        <input type="number" class="option-input" id="minRecommend" value="0" min="0">
+                    </div>
+
+                    <div class="option-group">
+                        <label class="option-label" id="minCommentsLabel">최소 댓글수</label>
+                        <input type="number" class="option-input" id="minComments" value="0" min="0">
+                    </div>
+
+                    <!-- Second row in advanced -->
+                    <div class="option-group">
+                        <label class="option-label" id="startRankAdvLabel">시작 순위</label>
+                        <input type="number" class="option-input" id="startRankAdv" value="1" min="1">
+                    </div>
+
+                    <div class="option-group">
+                        <label class="option-label" id="endRankAdvLabel">끝 순위</label>
+                        <input type="number" class="option-input" id="endRankAdv" value="20" min="1">
+                    </div>
+
+                    <!-- 빈 공간 (3열 레이아웃 유지용) -->
+                    <div class="option-group layout-spacer"></div>
+                </div>
+
+                <!-- Custom Date Range -->
+                <div class="custom-date-container" id="customDateContainer">
+                    <div class="date-input-group">
+                        <label id="startDateLabel">시작일:</label>
+                        <input type="date" class="date-input" id="startDate">
+                    </div>
+                    <div class="date-input-group">
+                        <label id="endDateLabel">종료일:</label>
+                        <input type="date" class="date-input" id="endDate">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-container" id="buttonContainer">
+                <button class="btn btn-primary" id="crawlBtn" onclick="startCrawling()" disabled></button>
+                <button class="btn btn-danger" id="cancelBtn" onclick="cancelCrawling()" style="display: none;"></button>
+                <button class="btn btn-success" id="downloadBtn" onclick="downloadExcel()" style="display: none;"></button>
+                <button class="btn btn-media" id="downloadMediaBtn" onclick="downloadMedia()" style="display: none;">Media</button>
+            </div>
+
+            <!-- Progress - 향상된 표시 -->
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">0%</div>
+                <div class="progress-details" id="progressDetails" style="display: none;">
+                    <div class="progress-stats">
+                        <div class="progress-stat">
+                            <span id="postsLabel" data-lang-key="results.found">collected</span>
+                        </div>
+                        <div class="progress-stat">
+                            <span id="pageLabel" data-lang-key="results.page">page</span>
+                        </div>
+                    </div>
+                    <div class="progress-eta" id="progressEta">예상 시간: 계산 중...</div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="results-container" id="resultsContainer"></div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-links">
+                    <a href="javascript:void(0)" id="privacyLink" onclick="openPrivacyModal()" data-lang-key="privacy">Privacy Policy</a>
+                    <a href="javascript:void(0)" id="termsLink" onclick="openTermsModal()" data-lang-key="terms">Terms of Service</a>
+                </div>
+                <div class="footer-links">
+                    <a href="javascript:void(0)" id="bugReportLink" onclick="openBugReportModal()" data-lang-key="feedback">Fedback</a>
+                    <a href="javascript:void(0)" id="businessLink" onclick="openBusinessModal()" data-lang-key="business">Business</a>
+                </div>
+            </div>
+            
+            <!-- Language Selector - 둥근 버튼으로 변경 -->
+            <div class="language-selector">
+                <button class="language-btn" onclick="toggleLanguageDropdown()">
+                    🌐 <span id="currentLang">English</span>
+                </button>
+                <div class="language-dropdown" id="languageDropdown">
+                    <div class="language-option active" onclick="selectLanguage('ko', '한국어')">한국어</div>
+                    <div class="language-option" onclick="selectLanguage('en', 'English')">English</div>
+                    <div class="language-option" onclick="selectLanguage('ja', '日本語')">日本語</div>
+                </div>
+            </div>
+        </footer>
+        <script src="js/languages.js"></script>
+        <script src="js/modal.js"></script>
+        <script src="js/announcements.js"></script>
+        <script src="js/feedback.js" defer></script>
+        <script src="js/guide.js" defer></script>
+        <script src="js/download.js"></script>
+        <script src="js/first_one.js"></script>
+        <script src="js/present.js"></script>
+        <script src="js/robots-check.js"></script>
+        <script src="js/main.js"></script>
+    </body>
+    </html>

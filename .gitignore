@@ -1,0 +1,24 @@
+# 환경 변수
+.env
+.env.*
+
+# 파이썬 캐시
+__pycache__/
+*.pyc
+*.pyo
+
+# 출력 파일
+*.log
+*.xlsx
+backend/outputs/
+
+# IDE 설정
+.vscode/
+
+# OS 캐시
+.DS_Store
+Thumbs.db
+
+# 기타
+*.sqlite3
+

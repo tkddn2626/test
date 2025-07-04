@@ -1,0 +1,19 @@
+공지사항 우선순위별 정렬 기준
+
+priority: 'high' → 최상단 고정 (긴급, 중요)
+priority: 'normal' → 날짜순 정렬 (일반)
+priority: 'low' → 가장 하단 (참고사항)
+
+카테고리별 예시
+
+category: 'feature' → 새 기능 추가 (🔄 아이콘)
+category: 'update' → 시스템 업데이트 (✨ 아이콘)
+category: 'security' → 보안/정책 관련 (🔒 아이콘)
+category: 'maintenance' → 점검 관련 (🔧 아이콘)
+category: 'notice' → 일반 공지 (📢 아이콘)
+
+주요 속성
+
+isNew: true/false → New 뱃지 표시 여부
+priority → 정렬 우선순위 결정
+category → 아이콘과 카테고리 뱃지 결정

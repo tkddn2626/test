@@ -1,0 +1,45 @@
+// announcements/announcement-2.js
+// 점검 공지사항 파일
+
+announcementData = {
+    id: 2,
+    date: '2025-06-13',
+    isNew: true,
+    category: 'maintenance',
+    priority: 'high',
+    translations: {
+        ko: {
+            title: '⚠️ 긴급 점검 안내',
+            content: `
+                <p>서버 점검으로 인해 일시적으로 서비스가 중단됩니다.</p>
+                <ul>
+                    <li><strong>점검 시간</strong>: 2025-06-13 02:00 ~ 04:00 (2시간)</li>
+                    <li><strong>영향 범위</strong>: 모든 크롤링 기능</li>
+                </ul>
+                <p>이용에 불편을 드려 죄송합니다.</p>
+            `
+        },
+        en: {
+            title: '⚠️ Emergency Maintenance Notice',
+            content: `
+                <p>Service will be temporarily unavailable due to server maintenance.</p>
+                <ul>
+                    <li><strong>Maintenance Time</strong>: 2025-06-13 02:00 ~ 04:00 (2 hours)</li>
+                    <li><strong>Affected Services</strong>: All crawling functions</li>
+                </ul>
+                <p>We apologize for any inconvenience.</p>
+            `
+        },
+        ja: {
+            title: '⚠️ 緊急メンテナンス案内',
+            content: `
+                <p>サーバーメンテナンスにより一時的にサービスが中断されます。</p>
+                <ul>
+                    <li><strong>メンテナンス時間</strong>: 2025-06-13 02:00 ~ 04:00 (2時間)</li>
+                    <li><strong>影響範囲</strong>: すべてのクロール機能</li>
+                </ul>
+                <p>ご不便をおかけして申し訳ございません。</p>
+            `
+        }
+    }
+};

@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PickPost Admin - First Visitor Management</title>
+    
+    <!-- 전역 설정 -->
+    <script>
+        window.PickPostGlobals = {
+            API_BASE_URL: 'https://api.pick-post.com',
+            DEBUG: false,
+            VERSION: '1.0.0'
+        };
+
+        // 환경별 자동 감지
+        (function() {
+            const hostname = window.location.hostname;
+            
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                window.PickPostGlobals.API_BASE_URL = 'http://localhost:8000';
+                window.PickPostGlobals.DEBUG = true;
+            }
+            
+            console.log('PickPost API URL:', window.PickPostGlobals.API_BASE_URL);
+        })();
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+            color: #202124;
+            line-height: 1.6;
+        }
+
+        /* ==================== 로그인 페이지 스타일 ==================== */
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-title {
+            font-size: 28px;
+            font-weight: 600;
+            color: #202124;
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            color: #5f6368;
+            margin-bottom: 32px;
+            font-size: 16px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            text-align: left;
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #202124;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .form-input {
+            width: 100%;
+            height: 48px;
+            border: 2px solid #dadce0;
+            border-radius: 8px;
+            padding: 0 16px;
+            font-size: 16px;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+        }
+
+        .login-btn {
+            width: 100%;
+            height: 48px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .login-btn:hover {
+            background: #1557b0;
+            transform: translateY(-2px);
+        }
+
+        .login-btn:disabled {
+            background: #dadce0;
+            color: #5f6368;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .login-error {
+            background: #fce8e6;
+            border: 1px solid #fcad9a;
+            color: #d93025;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 16px;
+        }
+
+        .login-security-note {
+            font-size: 12px;
+            color: #5f6368;
+            margin-top: 20px;
+            line-height: 1.4;
+        }
+
+        /* ==================== 관리자 페이지 스타일 ==================== */
+        .admin-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            display: none; /* 초기에는 숨김 */
+        }
+
+        .admin-header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-header-content {
+            flex: 1;
+        }
+
+        .admin-title {
+            font-size: 28px;
+            font-weight: 600;
+            color: #1a73e8;
+            margin-bottom: 8px;
+        }
+
+        .admin-subtitle {
+            color: #5f6368;
+            font-size: 16px;
+        }
+
+        .logout-btn {
+            background: #ea4335;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .logout-btn:hover {
+            background: #d33b2c;
+            transform: translateY(-1px);
+        }
+
+        .session-info {
+            font-size: 12px;
+            color: #5f6368;
+            margin-top: 4px;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .info-card h3 {
+            color: #202124;
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .info-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #1a73e8;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #5f6368;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            color: #202124;
+            word-break: break-all;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-claimed {
+            background: #e8f5e8;
+            color: #137333;
+        }
+
+        .status-waiting {
+            background: #fef7e0;
+            color: #b06000;
+        }
+
+        .btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: #1557b0;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #dadce0;
+            color: #5f6368;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: #ea4335;
+        }
+
+        .btn-danger:hover {
+            background: #d33b2c;
+        }
+
+        .btn-danger:disabled {
+            background: #dadce0;
+            color: #5f6368;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #5f6368;
+        }
+
+        .error {
+            background: #fce8e6;
+            border: 1px solid #fcad9a;
+            color: #d93025;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background: #e8f5e8;
+            border: 1px solid #81c995;
+            color: #137333;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .timestamp {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            color: #5f6368;
+        }
+
+        .special-visitor {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .special-visitor h3 {
+            color: white;
+            margin-bottom: 8px;
+            font-size: 20px;
+        }
+
+        .special-visitor .visitor-name {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .admin-container {
+                padding: 20px 16px;
+            }
+            
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+
+            .admin-header {
+                flex-direction: column;
+                text-align: center;
+                gap: 16px;
+            }
+
+            .login-card {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 로그인 페이지 -->
+    <div id="loginPage" class="login-container">
+        <div class="login-card">
+            <h1 class="login-title">🔐 Admin Login</h1>
+            <p class="login-subtitle">PickPost 관리자 페이지</p>
+            
+            <form class="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label class="form-label" for="username">사용자명</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        class="form-input" 
+                        placeholder="관리자 사용자명을 입력하세요"
+                        required
+                        autocomplete="username"
+                    />
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="password">비밀번호</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        class="form-input" 
+                        placeholder="관리자 비밀번호를 입력하세요"
+                        required
+                        autocomplete="current-password"
+                    />
+                </div>
+                
+                <button type="submit" class="login-btn" id="loginBtn">
+                    로그인
+                </button>
+            </form>
+            
+            <div id="loginError" class="login-error" style="display: none;"></div>
+            
+            <div class="login-security-note">
+                🔒 이 페이지는 관리자 전용입니다.<br>
+                인증된 관리자만 접근할 수 있습니다.
+            </div>
+        </div>
+    </div>
+
+    <!-- 관리자 페이지 -->
+    <div class="admin-container" id="adminPage">
+        <!-- Header -->
+        <div class="admin-header">
+            <div class="admin-header-content">
+                <h1 class="admin-title">🌟 First Visitor Management</h1>
+                <p class="admin-subtitle">PickPost 첫 번째 방문자 관리 시스템</p>
+                <div class="session-info" id="sessionInfo">
+                    로그인 시간: <span id="loginTime">-</span>
+                </div>
+            </div>
+            <div>
+                <button class="logout-btn" onclick="handleLogout()">
+                    🚪 로그아웃
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading">
+            <div>🔍 첫 번째 방문자 정보를 불러오는 중...</div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="error" style="display: none;">
+            <strong>오류가 발생했습니다:</strong>
+            <div id="errorMessage"></div>
+        </div>
+
+        <!-- First Visitor Info -->
+        <div id="firstVisitorInfo" style="display: none;">
+            <!-- Special Visitor Card -->
+            <div class="special-visitor">
+                <h3>🎉 The First One</h3>
+                <div class="visitor-name" id="visitorName">-</div>
+                <div class="timestamp" id="claimedTime">-</div>
+            </div>
+
+            <!-- Detailed Info -->
+            <div class="info-card">
+                <h3>📊 상세 정보</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">ID</div>
+                        <div class="info-value" id="visitorId">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">이름</div>
+                        <div class="info-value" id="visitorNameDetail">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">등록 시간</div>
+                        <div class="info-value timestamp" id="visitorTimestamp">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">언어</div>
+                        <div class="info-value" id="visitorLanguage">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">생성 시간</div>
+                        <div class="info-value timestamp" id="visitorCreatedAt">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- No First Visitor -->
+        <div id="noFirstVisitor" style="display: none;">
+            <div class="info-card">
+                <h3>⏳ 첫 번째 방문자 대기 중</h3>
+                <p style="color: #5f6368; margin-bottom: 20px;">
+                    아직 첫 번째 방문자가 등록되지 않았습니다. 
+                    첫 번째 방문자가 사이트에 접속하면 여기에 정보가 표시됩니다.
+                </p>
+                <span class="status-badge status-waiting">대기 중</span>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="info-card">
+            <h3>🔧 관리 작업</h3>
+            <div class="actions">
+                <button class="btn" onclick="refreshData()">
+                    🔄 새로고침
+                </button>
+                <button class="btn" onclick="checkApiStatus()">
+                    🔍 API 상태 확인
+                </button>
+                <button class="btn" onclick="exportData()" id="exportBtn" disabled>
+                    📥 데이터 내보내기
+                </button>
+                <button class="btn btn-danger" onclick="confirmResetFirstVisitor()" id="resetBtn" disabled>
+                    🗑️ 첫 번째 방문자 초기화
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = window.PickPostGlobals?.API_BASE_URL || 'https://api.pick-post.com';
+        let currentData = null;
+        let authToken = null;
+
+        // Authentication Configuration
+        const AUTH_CONFIG = {
+            DEFAULT_CREDENTIALS: {
+                username: 'admin',
+                password: 'pickpost2025!'
+            },
+            SESSION_KEY: 'pickpost_admin_session',
+            SESSION_DURATION: 2 * 60 * 60 * 1000 // 2시간
+        };
+
+        // DOM Elements
+        const loginPage = document.getElementById('loginPage');
+        const adminPage = document.getElementById('adminPage');
+        const loginError = document.getElementById('loginError');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const errorMessage = document.getElementById('errorMessage');
+        const firstVisitorInfo = document.getElementById('firstVisitorInfo');
+        const noFirstVisitor = document.getElementById('noFirstVisitor');
+        const exportBtn = document.getElementById('exportBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // ==================== 인증 관련 함수 ====================
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = '로그인 중...';
+            loginError.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.detail || '로그인에 실패했습니다');
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    const session = {
+                        username: username,
+                        loginTime: new Date().toISOString(),
+                        expiresAt: Date.now() + result.expiresIn * 1000,
+                        token: result.token
+                    };
+                    
+                    localStorage.setItem(AUTH_CONFIG.SESSION_KEY, JSON.stringify(session));
+                    authToken = result.token;
+                    
+                    showAdminPage();
+                    initializeAdminPage();
+                } else {
+                    throw new Error(result.message || '로그인에 실패했습니다');
+                }
+                
+            } catch (err) {
+                console.error('로그인 오류:', err);
+                showLoginError(err.message);
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = '로그인';
+            }
+        }
+        
+        function showLoginError(message) {
+            loginError.textContent = message;
+            loginError.style.display = 'block';
+        }
+        
+        function showAdminPage() {
+            loginPage.style.display = 'none';
+            adminPage.style.display = 'block';
+            
+            const session = getValidSession();
+            if (session) {
+                const loginTime = new Date(session.loginTime).toLocaleString('ko-KR');
+                document.getElementById('loginTime').textContent = loginTime;
+            }
+        }
+        
+        function showLoginPage() {
+            loginPage.style.display = 'flex';
+            adminPage.style.display = 'none';
+            
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            loginError.style.display = 'none';
+        }
+        
+        function handleLogout() {
+            if (confirm('정말로 로그아웃하시겠습니까?')) {
+                localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+                authToken = null;
+                showLoginPage();
+            }
+        }
+        
+        function getValidSession() {
+            try {
+                const sessionStr = localStorage.getItem(AUTH_CONFIG.SESSION_KEY);
+                if (!sessionStr) return null;
+                
+                const session = JSON.parse(sessionStr);
+                
+                if (Date.now() > session.expiresAt) {
+                    localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+                    return null;
+                }
+                
+                return session;
+            } catch (e) {
+                localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+                return null;
+            }
+        }
+        
+        function checkAuthentication() {
+            const session = getValidSession();
+            if (session) {
+                authToken = session.token;
+                showAdminPage();
+                return true;
+            } else {
+                showLoginPage();
+                return false;
+            }
+        }
+        
+        // ==================== 관리자 페이지 함수 ====================
+        function showLoading() {
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            firstVisitorInfo.style.display = 'none';
+            noFirstVisitor.style.display = 'none';
+        }
+
+        function showError(message) {
+            loading.style.display = 'none';
+            error.style.display = 'block';
+            errorMessage.textContent = message;
+            firstVisitorInfo.style.display = 'none';
+            noFirstVisitor.style.display = 'none';
+        }
+
+        function showFirstVisitorInfo(data) {
+            loading.style.display = 'none';
+            error.style.display = 'none';
+            firstVisitorInfo.style.display = 'block';
+            noFirstVisitor.style.display = 'none';
+
+            document.getElementById('visitorName').textContent = data.name;
+            document.getElementById('visitorId').textContent = data.id;
+            document.getElementById('visitorNameDetail').textContent = data.name;
+            document.getElementById('visitorTimestamp').textContent = formatTimestamp(data.timestamp);
+            document.getElementById('visitorLanguage').textContent = getLanguageDisplay(data.language);
+            document.getElementById('visitorCreatedAt').textContent = formatTimestamp(data.created_at);
+            document.getElementById('claimedTime').textContent = `등록 시간: ${formatTimestamp(data.created_at)}`;
+
+            exportBtn.disabled = false;
+            resetBtn.disabled = false;
+            currentData = data;
+        }
+
+        function showNoFirstVisitor() {
+            loading.style.display = 'none';
+            error.style.display = 'none';
+            firstVisitorInfo.style.display = 'none';
+            noFirstVisitor.style.display = 'block';
+            exportBtn.disabled = true;
+            resetBtn.disabled = true;
+            currentData = null;
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return '-';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            } catch (e) {
+                return timestamp;
+            }
+        }
+
+        function getLanguageDisplay(lang) {
+            const languages = {
+                'ko': '한국어',
+                'en': 'English',
+                'ja': '日本語'
+            };
+            return languages[lang] || lang || '-';
+        }
+
+        async function fetchFirstVisitorInfo() {
+            if (!authToken) {
+                showError('인증이 필요합니다. 다시 로그인해주세요.');
+                return;
+            }
+
+            try {
+                showLoading();
+                
+                const response = await fetch(`${API_BASE_URL}/api/admin/first-visitor-info`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+                    showLoginPage();
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.message) {
+                    showNoFirstVisitor();
+                } else {
+                    showFirstVisitorInfo(result);
+                }
+
+            } catch (err) {
+                console.error('API 오류:', err);
+                showError(`첫 번째 방문자 정보를 불러올 수 없습니다: ${err.message}`);
+            }
+        }
+
+        async function confirmResetFirstVisitor() {
+            if (!currentData) {
+                alert('삭제할 첫 번째 방문자가 없습니다.');
+                return;
+            }
+
+            const confirmMessage = `정말로 첫 번째 방문자 "${currentData.name}"를 초기화하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            const originalText = resetBtn.textContent;
+            resetBtn.disabled = true;
+            resetBtn.textContent = '삭제 중...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/admin/reset-first-visitor`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.status === 401) {
+                    localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+                    showLoginPage();
+                    return;
+                }
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    const successDiv = document.createElement('div');
+                    successDiv.className = 'success';
+                    successDiv.innerHTML = `
+                        <strong>✅ 삭제 완료</strong><br>
+                        ${result.message}
+                    `;
+                    
+                    adminPage.insertBefore(
+                        successDiv, 
+                        adminPage.querySelector('.info-card')
+                    );
+                    
+                    setTimeout(() => successDiv.remove(), 5000);
+                    
+                    await fetchFirstVisitorInfo();
+                } else {
+                    alert(result.message || '삭제에 실패했습니다.');
+                }
+
+            } catch (err) {
+                console.error('삭제 오류:', err);
+                alert(`삭제 중 오류가 발생했습니다: ${err.message}`);
+            } finally {
+                resetBtn.disabled = false;
+                resetBtn.textContent = originalText;
+            }
+        }
+
+        function refreshData() {
+            fetchFirstVisitorInfo();
+        }
+
+        async function checkApiStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/check-first-visitor`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`API 상태: 정상\n첫 번째 방문자 가능 여부: ${result.isFirstVisitor ? '가능' : '불가능'}`);
+                } else {
+                    alert(`API 상태: 오류 (${response.status})`);
+                }
+            } catch (err) {
+                alert(`API 연결 실패: ${err.message}`);
+            }
+        }
+
+        function exportData() {
+            if (!currentData) {
+                alert('내보낼 데이터가 없습니다.');
+                return;
+            }
+
+            const exportObject = {
+                exportedAt: new Date().toISOString(),
+                firstVisitor: currentData
+            };
+
+            const dataStr = JSON.stringify(exportObject, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = `first-visitor-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(link.href);
+        }
+
+        function initializeAdminPage() {
+            console.log('🚀 PickPost Admin Panel 초기화');
+            fetchFirstVisitorInfo();
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🔐 PickPost Admin Panel 시작');
+            console.log('API Base URL:', API_BASE_URL);
+            
+            if (checkAuthentication()) {
+                initializeAdminPage();
+            }
+        });
+
+        // Auto-refresh every 30 seconds (인증된 상태에서만)
+        setInterval(() => {
+            if (authToken && adminPage.style.display !== 'none') {
+                fetchFirstVisitorInfo();
+            }
+        }, 30000);
+
+        // 세션 만료 체크 (5분마다)
+        setInterval(() => {
+            if (!getValidSession() && authToken) {
+                alert('세션이 만료되었습니다. 다시 로그인해주세요.');
+                handleLogout();
+            }
+        }, 5 * 60 * 1000);
+
+        // 에러 핸들링 강화
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('처리되지 않은 Promise 거부:', event.reason);
+            if (event.reason && event.reason.message) {
+                showError(`예상치 못한 오류: ${event.reason.message}`);
+            }
+        });
+
+        window.addEventListener('error', function(event) {
+            console.error('JavaScript 오류:', event.error);
+            if (event.error && event.error.message && event.error.message.includes('fetch')) {
+                showError('네트워크 연결을 확인해주세요.');
+            }
+        });
+
+        // 디버그 정보 (개발 환경에서만)
+        if (window.PickPostGlobals?.DEBUG) {
+            console.log('🔧 디버그 모드 활성화');
+            console.log('세션 정보:', getValidSession());
+            
+            // 전역 디버그 함수
+            window.debugAdmin = {
+                getSession: getValidSession,
+                getToken: () => authToken,
+                testApi: () => fetch(`${API_BASE_URL}/api/check-first-visitor`).then(r => r.json()),
+                clearSession: () => {
+                    localStorage.removeItem(AUTH_CONFIG.SESSION_KEY);
+                    authToken = null;
+                    console.log('세션 클리어됨');
+                }
+            };
+        }
+    </script>
+</body>
+</html>
